@@ -10,7 +10,7 @@ You need Git and Node.js 24. Docker is only needed to test the image.
 git clone --recursive https://github.com/neuraldoc-ai/neuraldoc-app.git
 cd neuraldoc-app/frontend
 npm ci
-npm run dev        # http://localhost:5174/app/
+npm run dev        # http://localhost:5173/app/
 ```
 
 On Windows, clone with `git -c core.autocrlf=false clone --recursive …` so the sample code keeps its line endings. If you cloned without `--recursive`, run `git submodule update --init`.

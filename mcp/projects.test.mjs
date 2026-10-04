@@ -77,7 +77,8 @@ const jevFetch = (decide) => async (_url, options) => {
 }
 const decide = (doc, code) =>
   doc.content.includes('immer 10 Prozent') && code.path === 'src/pricing.ts' ? { choice: 'contradicts', p: 0.95 }
-  : doc.path.endsWith('export.pdf') && code.path === 'src/export.ts' ? { choice: 'contradicts', p: 0.85 } // too uncertain
+  : doc.path.endsWith('export.pdf') && code.path === 'src/export.ts' ? { choice: 'contradicts', p: 0.55 } // too uncertain
+  : doc.path.endsWith('rabatt.docx') && code.path === 'src/report.ts' ? { choice: 'incomplete', p: 0.7 }
   : doc.path.endsWith('README.md') && code.path === 'src/export.ts' ? { choice: 'consistent', p: 0.95 }
   : { choice: 'unrelated', p: 0.9 }
 const jev = (fetchImpl) => ({ createClient: (options) => createJevClient({ ...options, fetchImpl }) })
@@ -193,22 +194,22 @@ test('initial check: confident contradictions with the current code become propo
   jevCalls = 0
   const payload = await projects.checkProject(jev(jevFetch(decide)))
   assert.ok(jevCalls >= 5)
-  assert.equal(payload.dataset.proposals.length, 1)
-  proposal = payload.dataset.proposals[0]
+  assert.equal(payload.dataset.proposals.length, 2, 'a contradiction and an omission; the uncertain PDF verdict stays out')
   const rabatt = payload.project.documents.find((d) => d.path === 'dokumentation/rabatt.md')
-  assert.equal(proposal.doc, rabatt.id)
+  proposal = payload.dataset.proposals.find((x) => x.doc === rabatt.id)
+  assert.ok(proposal)
   assert.equal(proposal.text, proposal.find, 'no text invented before a draft')
   assert.match(proposal.why, /src\/pricing\.ts/)
   const links = payload.graph.edges.filter((e) => e.kind === 'semantic' && e.target.startsWith('file:'))
-  assert.deepEqual(links.map((e) => [e.target, e.evidence.decision.verdict]).sort(), [['file:src/export.ts', 'consistent'], ['file:src/pricing.ts', 'contradicts']])
+  assert.deepEqual(links.map((e) => [e.target, e.evidence.decision.verdict]).sort(), [['file:src/export.ts', 'consistent'], ['file:src/pricing.ts', 'contradicts'], ['file:src/report.ts', 'incomplete']])
   assert.ok(payload.graph.edges.some((e) => e.kind === 'documents' && e.target === `doc:${rabatt.id}`))
   const labels = fs.readFileSync(new URL('../frontend/src/dashboard/features/docs/brain/model.ts', import.meta.url), 'utf8')
   for (const kind of new Set(payload.graph.edges.map((e) => e.kind))) assert.ok(labels.includes(`  ${kind}: "`), kind)
-  assert.equal(payload.project.mapping.mismatches, 1)
+  assert.equal(payload.project.mapping.mismatches, 2)
   assert.equal(payload.project.mapping.consistent, 1)
   assert.equal(payload.project.mapping.records, undefined, 'raw records stay on the server')
   const again = await projects.checkProject(jev(async () => { throw new Error('must use cache') }))
-  assert.equal(again.dataset.proposals[0].id, proposal.id)
+  assert.ok(again.dataset.proposals.some((x) => x.id === proposal.id))
 })
 
 test('drafts: question, "no change" and a validated correction from the current code', async () => {
@@ -286,8 +287,8 @@ test('MCP project tools search own sources only and log calls', async () => {
   assert.ok(result.structuredContent.sources.length)
   assert.ok(result.structuredContent.sources.every((s) => !s.text.includes('MOBIQ')))
   const status = await projectTool('check_change', {})
-  assert.equal(status.structuredContent.proposals[0].id, proposal.id)
-  assert.equal(status.structuredContent.check.mismatches, 1)
+  assert.ok(status.structuredContent.proposals.some((x) => x.id === proposal.id))
+  assert.equal(status.structuredContent.check.mismatches, 2)
   assert.ok(fs.readFileSync(path.join(projects.projectsDir, first.project.id, 'calls.jsonl'), 'utf8').includes('"tool":"ask"'))
 })
 
@@ -324,4 +325,15 @@ test('showcase mode hides projects and blocks import', async () => {
     assert.deepEqual(projects.projectList(), [])
     await assert.rejects(projects.addProject(upload(repo, docs)), /Showcase/)
   } finally { delete process.env.NEURALDOC_MODE }
+})
+
+test('a correction may not drop most of the section or paste source code', async () => {
+  const { validateDraft } = await import('./drafting.mjs')
+  const before = '# Dialog\n\nFeld Menge ist Pflicht.\nFeld Montage ist optional.\nFeld Lieferung ist Pflicht.\nFeld Termin ist optional.\n'
+  const context = { document: { before }, target: { op: 'replace', preserve: true, instruction: 'x' }, evidence: [{ id: 'code:a', source: 's', text: "<Checkbox label={t('kv.teil')} onChange={(v) => set(v)} />\n<Button disabled={!kv.teil} onClick={() => open(kv)}>Aufteilen</Button>" }] }
+  const draft = (text) => ({ status: 'draft', text, blocks: [], rows: [], reason: 'r', question: '', evidenceIds: ['code:a'] })
+  assert.doesNotThrow(() => validateDraft(draft(before + 'Feld Teillieferung ist optional.\n'), context))
+  assert.throws(() => validateDraft(draft('# Dialog\n\nFeld Teillieferung ist optional.\n'), context), /entfernt/)
+  assert.throws(() => validateDraft(draft(before + "<Checkbox label={t('kv.teil')} onChange={(v) => set(v)} />\n<Button disabled={!kv.teil} onClick={() => open(kv)}>Aufteilen</Button>\n"), context), /Quellcode/)
+  assert.doesNotThrow(() => validateDraft(draft('# Neu\n\nAlles anders.\n'), { ...context, target: { op: 'replace', instruction: 'x' } }), 'only corrections with preserve are checked')
 })

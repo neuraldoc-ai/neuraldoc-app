@@ -568,7 +568,7 @@ function ticketContext({ ticket }, ctx) {
 /* Calling a tool                                                     */
 /* ------------------------------------------------------------------ */
 
-export const APP_URL = process.env.NEURALDOC_APP_URL ?? 'http://localhost:5174'
+export const APP_URL = process.env.NEURALDOC_APP_URL ?? 'http://localhost:5173'
 
 /** Runs a tool and logs it with what it cost: the answer's tokens next to the raw text neuraldoc read for it. */
 export async function callTool(name, args = {}, ctx = {}) {

@@ -46,16 +46,16 @@ This follows [Executor's principle of targeted discovery and retrieval](https://
 | Start | Endpoint |
 |---|---|
 | `docker run -p 8080:8080 neuraldoc` | `http://localhost:8080/mcp` (same server as the app) |
-| `npm run dev` in `frontend/` | `http://localhost:5174/mcp` (runs inside the Vite server, app page at `/app/mcp`) |
+| `npm run dev` in `frontend/` | `http://localhost:5173/mcp` (runs inside the Vite server, app page at `/app/mcp`) |
 | `npm run mcp` in `frontend/` | `http://localhost:8787/mcp` (standalone) |
 | `node mcp/stdio.mjs` | stdio, for clients that start the server themselves |
 
-Token: `Authorization: Bearer nd_demo_mobiq_2b7f9c41e8` (or set `NEURALDOC_MCP_TOKEN`). Links point to the host of the request; with stdio to `NEURALDOC_APP_URL` (default `http://localhost:5174`).
+Token: `Authorization: Bearer nd_demo_mobiq_2b7f9c41e8` (or set `NEURALDOC_MCP_TOKEN`). Links point to the host of the request; with stdio to `NEURALDOC_APP_URL` (default `http://localhost:5173`).
 
-With Docker, use port 8080 instead of 5174.
+With Docker, use port 8080 instead of 5173.
 
 ```
-claude mcp add --transport http neuraldoc http://localhost:5174/mcp --header "Authorization: Bearer nd_demo_mobiq_2b7f9c41e8"
+claude mcp add --transport http neuraldoc http://localhost:5173/mcp --header "Authorization: Bearer nd_demo_mobiq_2b7f9c41e8"
 codex mcp add neuraldoc -- node <path>/mcp/stdio.mjs
 ```
 

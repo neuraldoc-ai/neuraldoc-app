@@ -50,7 +50,7 @@ export default defineConfig(({ mode }) => {
   }
   return {
   server: {
-    port: 5174,
+    port: 5173,
     strictPort: true,
     fs: { allow: ['..'] },
     proxy: {

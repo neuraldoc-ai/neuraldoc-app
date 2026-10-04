@@ -10,7 +10,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - Import of your own projects in the browser: drag and drop a folder or ZIP, or paste a GitHub URL. Documentation is optional; without it, READMEs, `docs/` and PDF/Office files in the repository are checked.
 - PDF, Word, Excel and PowerPoint documents; long documents are split into sections.
 - Initial check: every documentation section against the current code, as if the last release had just shipped. Confident contradictions become proposals.
-- Drafts can answer "no change needed".
+- Drafts can answer "no change needed". Corrections that drop most of a section or paste source code are rejected.
+- Initial check also reports omissions (code behaviour the documentation does not mention).
 - Container logs for start, configuration, imports, checks, drafts and every error (`docker logs`).
 - CI for tests, build, lint and a Docker smoke test.
 - `ARCHITECTURE.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, guides under `docs/`.

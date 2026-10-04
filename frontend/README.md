@@ -7,7 +7,7 @@ npm ci
 npm run dev
 ```
 
-App: http://localhost:5174/app/ (`/` redirects there). Vite also serves the MCP endpoint at `/mcp`.
+App: http://localhost:5173/app/ (`/` redirects there). Vite also serves the MCP endpoint at `/mcp`.
 
 `npm run build` produces `dist/app/index.html` and the assets. The production server is `../mcp/serve.mjs`, which serves the MCP endpoint as well; the `Dockerfile` in the repository root packages both.
 

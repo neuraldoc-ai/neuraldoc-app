@@ -67,7 +67,7 @@ export function AppSidebar() {
           <SidebarMenuItem>
             {/* The landing page lives outside the app router (/app), so a plain link. */}
             <SidebarMenuButton asChild tooltip='Zur Website'>
-              <a href={import.meta.env.VITE_LANDING_URL || 'http://localhost:5173/'}>
+              <a href={import.meta.env.VITE_LANDING_URL || 'http://localhost:5174/'}>
                 <ArrowUpRight />
                 <span>Zur Website</span>
               </a>

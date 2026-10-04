@@ -46,7 +46,7 @@ function checksFor(p: LiveProposal): Check[] {
     const against = jevLinks(p).filter((e) => e.evidence.decision?.verdict !== "consistent");
     return [
       place,
-      { label: "Widerspruch zum aktuellen Code", detail: against.length ? `Laut Jev passt der Text nicht zu ${against.map((e) => e.target.slice(5)).join(", ")}.` : "Kein belegter Widerspruch.", state: against.length ? "ok" : "no" },
+      { label: "Widerspruch zum aktuellen Code", detail: against.length ? `Laut Jev passt der Text nicht zu ${against.map((e) => e.target.slice(5)).join(", ")} oder lässt etwas davon aus.` : "Kein belegter Widerspruch.", state: against.length ? "ok" : "no" },
       { label: "Korrektur aus Belegen", detail: p.generation?.status === "draft" ? `Mit ${p.generation.model} formuliert.` : p.generation?.status === "no_change" ? "Laut Modell stimmt der Text." : "Noch nicht formuliert.", state: p.generation?.status === "draft" ? "ok" : "no" },
       { label: "Keine offene Frage", detail: p.question || "Fachliche Prüfung des Texts steht aus.", state: p.question ? "no" : "na" },
     ];
@@ -193,7 +193,7 @@ function JevFiles({ p }: { p: LiveProposal }) {
       {links.map((e) => (
         <span key={e.id} className="flex items-baseline justify-between gap-3 text-xs">
           <span className="break-all">{e.target.slice(5)}</span>
-          {e.evidence.decision && <span className="shrink-0 tabular-nums text-muted-foreground">{e.evidence.decision.verdict === "consistent" ? "passt" : "widerspricht"} · {pct(e.evidence.decision.probability)}</span>}
+          {e.evidence.decision && <span className="shrink-0 tabular-nums text-muted-foreground">{{ consistent: "passt", incomplete: "fehlt in der Doku", contradicts: "widerspricht" }[e.evidence.decision.verdict ?? "contradicts"]} · {pct(e.evidence.decision.probability)}</span>}
         </span>
       ))}
     </div>
@@ -203,7 +203,7 @@ function JevFiles({ p }: { p: LiveProposal }) {
 function ProjectMethod() {
   return (
     <div className="grid gap-3 text-xs text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground">
-      <p><strong>Erstprüfung.</strong> Jev vergleicht jeden Doku-Abschnitt mit bis zu sechs passenden Stellen im aktuellen Code. Ein Widerspruch zählt nur ab 90 % Wahrscheinlichkeit und 80 % Sicherheit. Unsichere Abschnitte bleiben unverändert.</p>
+      <p><strong>Erstprüfung.</strong> Jev vergleicht jeden Doku-Abschnitt mit bis zu sechs passenden Stellen im aktuellen Code. Gemeldet werden Widersprüche und fehlende Angaben, wenn das Urteil am wahrscheinlichsten ist (ab 60 % Wahrscheinlichkeit, 50 % Sicherheit). Das Sprachmodell kann danach bestätigen, dass der Text doch stimmt.</p>
       <p><strong>Korrektur.</strong> Das Sprachmodell erhält den Abschnitt und diese Codestellen. Es muss auf die Belege verweisen, eine Rückfrage stellen oder bestätigen, dass der Text stimmt.</p>
       <p><strong>Grenzen.</strong> Für eigene Projekte gibt es noch keine gemessene Trefferquote. Codestellen werden über gemeinsame Begriffe gefunden; was anders heißt, kann fehlen. Jede Korrektur muss fachlich geprüft werden.</p>
     </div>

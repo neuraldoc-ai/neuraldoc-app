@@ -20,7 +20,7 @@ COPY mcp/ /app/mcp/
 COPY datasets/mobiq/data/ /app/datasets/mobiq/data/
 COPY datasets/mobiq-docs/ /app/datasets/mobiq-docs/
 COPY datasets/mobiq-db/ /app/datasets/mobiq-db/
-ARG VITE_LANDING_URL=http://localhost:5173/
+ARG VITE_LANDING_URL=http://localhost:5174/
 ENV VITE_LANDING_URL=$VITE_LANDING_URL
 RUN npm run build
 

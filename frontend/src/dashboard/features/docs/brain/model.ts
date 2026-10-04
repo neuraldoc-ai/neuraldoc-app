@@ -17,7 +17,7 @@ export type NodeType =
   | "person";
 export type Evidence = {
   source: string; text: string; line?: number; method?: string;
-  decision?: { model: string; probability: number; confidence?: number; createdAt: string; fingerprint: string; question?: string; alternatives: Record<string, number>; truncated?: boolean; omittedCandidates?: number; verdict?: "contradicts" | "consistent" };
+  decision?: { model: string; probability: number; confidence?: number; createdAt: string; fingerprint: string; question?: string; alternatives: Record<string, number>; truncated?: boolean; omittedCandidates?: number; verdict?: "contradicts" | "incomplete" | "consistent" };
 };
 export type BrainNode = {
   id: string;

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Standalone neuraldoc MCP server (Streamable HTTP). The Vite dev server mounts the same handler,
-// so while the app runs the endpoint is also available at http://localhost:5174/mcp.
+// so while the app runs the endpoint is also available at http://localhost:5173/mcp.
 import http from 'node:http'
 import { TOKEN, middleware } from './handler.mjs'
 

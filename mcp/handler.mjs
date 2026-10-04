@@ -99,7 +99,7 @@ const send = (res, status, body, headers = {}) => {
   res.end(body === undefined ? '' : JSON.stringify(body))
 }
 
-const originOf = (req) => `${req.headers['x-forwarded-proto'] ?? 'http'}://${req.headers['x-forwarded-host'] ?? req.headers.host ?? 'localhost:5174'}`
+const originOf = (req) => `${req.headers['x-forwarded-proto'] ?? 'http'}://${req.headers['x-forwarded-host'] ?? req.headers.host ?? 'localhost:5173'}`
 
 async function mcpEndpoint(req, res) {
   if (req.method === 'GET' || req.method === 'DELETE') return send(res, 405, { error: 'Dieser Server sendet keine SSE-Streams; bitte POST verwenden.' }, { Allow: 'POST' })

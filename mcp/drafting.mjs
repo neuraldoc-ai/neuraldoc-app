@@ -43,9 +43,21 @@ export function validateContext(input) {
     ids.add(e.id)
   }
   // Whitelist data fields; never let the caller set model, endpoint, system prompt or budget.
-  const context = { change: { id: change.id, title: change.title }, document: Object.fromEntries(['id', 'title', 'type', 'audience', 'section', 'before', 'surrounding'].map((k) => [k, document[k]])), target: { id: target.id, op: target.op, instruction: target.instruction, ...(target.columns ? { columns: target.columns } : {}), ...(target.heading ? { heading: requireText(target.heading, 'target.heading', 400) } : {}), ...(target.question ? { question: requireText(target.question, 'target.question', 1000) } : {}) }, evidence: evidence.map((e) => ({ id: e.id, source: e.source, text: e.text })) }
+  const context = { change: { id: change.id, title: change.title }, document: Object.fromEntries(['id', 'title', 'type', 'audience', 'section', 'before', 'surrounding'].map((k) => [k, document[k]])), target: { id: target.id, op: target.op, instruction: target.instruction, ...(target.columns ? { columns: target.columns } : {}), ...(target.heading ? { heading: requireText(target.heading, 'target.heading', 400) } : {}), ...(target.question ? { question: requireText(target.question, 'target.question', 1000) } : {}), ...(target.preserve === true ? { preserve: true } : {}) }, evidence: evidence.map((e) => ({ id: e.id, source: e.source, text: e.text })) }
   if (Buffer.byteLength(JSON.stringify(context)) > 40000) throw new DraftError('Der Schreibkontext ist zu groß. Bitte nur die relevanten Belege übergeben.')
   return context
+}
+
+// A correction of an existing section keeps most of it and never pastes source code into documentation.
+const meaningful = (text) => text.split('\n').map((l) => l.trim()).filter((l) => l.length > 2)
+const looksLikeCode = (line) => line.length >= 20 && (line.match(/[{}();<>=]/g) || []).length >= 3
+function checkPreserved(text, context) {
+  const before = meaningful(context.document.before), after = new Set(meaningful(text))
+  const kept = before.filter((line) => after.has(line)).length
+  if (before.length >= 4 && kept / before.length < 0.6) throw new DraftError(`Entwurf verworfen: Er hätte ${before.length - kept} von ${before.length} unveränderten Zeilen entfernt oder umgeschrieben. Bitte erneut formulieren lassen.`, 502)
+  const code = new Set(context.evidence.flatMap((e) => meaningful(e.text)).filter(looksLikeCode))
+  const copied = [...after].filter((line) => code.has(line) && !before.includes(line))
+  if (copied.length >= 2) throw new DraftError('Entwurf verworfen: Er enthält Quellcode aus den Belegen statt einer Beschreibung. Bitte erneut formulieren lassen.', 502)
 }
 
 export function validateDraft(value, context) {
@@ -63,6 +75,7 @@ export function validateDraft(value, context) {
     if (!value.evidenceIds.length || !value.reason.trim()) throw new DraftError('Belegverweise oder Begründung fehlen.', 502)
     if (op === 'replace' && (!value.text.trim() || value.blocks.length || value.rows.length) || op === 'insert' && (!value.blocks.length || value.text || value.rows.length) || op === 'rows' && (!value.rows.length || value.rows.some((r) => r.length !== columns.length) || value.text || value.blocks.length)) throw new DraftError('Der Entwurf passt nicht zur ausgewählten Textstelle.', 502)
     if (heading && op === 'insert' && !value.blocks.some((b) => b.kind === 'h' && b.text === heading)) throw new DraftError('Die vorgegebene Überschrift wurde verändert.', 502)
+    if (context.target.preserve && op === 'replace') checkPreserved(value.text, context)
   }
   return { status: value.status, text: value.text, blocks: value.blocks.map((b) => ({ kind: b.kind, text: b.text })), rows: value.rows, reason: value.reason, question: value.question, evidenceIds: [...new Set(value.evidenceIds)] }
 }

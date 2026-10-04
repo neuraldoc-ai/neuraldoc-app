@@ -56,7 +56,7 @@ export function OverviewPage() {
         `${plural(project.files.length, "Code-Datei", "Code-Dateien")} und ${plural(documentCount, "Dokument", "Dokumente")} importiert`,
         ...(project.mapping ? [
           `${plural(project.mapping.subjects, "Doku-Abschnitt", "Doku-Abschnitte")} mit Jev gegen den aktuellen Code geprüft`,
-          `${plural(project.mapping.consistent, "Abschnitt passt", "Abschnitte passen")} nachweislich zum Code`,
+          `${plural(project.mapping.consistent, "Abschnitt passt", "Abschnitte passen")} laut Jev zum Code`,
           `${plural(project.mapping.deferred.length - project.mapping.consistent, "Abschnitt", "Abschnitte")} ohne erkennbaren Bezug zum Code, bleiben unverändert`,
         ] : []),
       ]

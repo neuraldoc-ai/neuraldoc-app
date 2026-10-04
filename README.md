@@ -115,8 +115,8 @@ repo + docs ──► code graph ──► initial check ──► LLM draft ─
 |---|---|---|
 | **Import** | Reads the code and the documents. PDF, Word, Excel and PowerPoint become text; long documents are split into sections. | free, local |
 | **Code graph** | Parses Java, Kotlin, TypeScript/TSX, Pascal (tree-sitter) and SQL (PostgreSQL parser) into files, functions, calls and tables. | free, local |
-| **Initial check** | For every section, BM25 finds up to six matching places in the current code. [Jev](https://docs.typesafe.ai/api) rates each pair as *contradicts*, *consistent* or *unrelated*. Only confident contradictions become proposals. | paid, capped by budget |
-| **Drafting** | Your LLM corrects each mismatching section from those code places. It can also answer that the text is right, or ask a question. The response is validated against a JSON contract and its evidence IDs. | paid or local |
+| **Initial check** | For every section, BM25 finds up to six matching places in the current code. [Jev](https://docs.typesafe.ai/api) rates each pair as *contradicts*, *incomplete*, *consistent* or *unrelated*. Contradictions and omissions become proposals. | paid, capped by budget |
+| **Drafting** | Your LLM corrects each mismatching section from those code places. It can also answer that the text is right, or ask a question. The response is validated against a JSON contract and its evidence IDs; a correction that drops most of the section or pastes source code is rejected. | paid or local |
 | **Review & export** | You decide. Approved sections are merged back into their documents; PDF and Office files come back as Markdown. The export lists the SHA-256 of every original. | free, local |
 
 Every link in the graph is marked as **proven** (read from the code) or **derived** (from a model), so you always know what was found and what was guessed. Details: [ARCHITECTURE.md](ARCHITECTURE.md).
@@ -241,7 +241,7 @@ Without Docker you need Node.js 24:
 ```bash
 cd frontend
 npm ci
-npm run dev            # http://localhost:5174/app/, with hot reload
+npm run dev            # http://localhost:5173/app/, with hot reload
 npm test               # backend tests, Jev and LLM mocked, no costs
 npm run build          # type check and production build
 ```
