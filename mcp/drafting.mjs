@@ -3,13 +3,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
-import { PROMPT_VERSION, responseSchema, SYSTEM_PROMPT } from './draft-prompt.mjs'
+import { PATCH_PROMPT, PATCH_PROMPT_VERSION, PROMPT_VERSION, responseSchema, SYSTEM_PROMPT } from './draft-prompt.mjs'
 import { compatibleBase, DEFAULT_MODELS, PROVIDER_LABELS, providerRequest, providerResponse } from './llm-providers.mjs'
 
 const DEFAULT_STATE = fileURLToPath(new URL('./state/', import.meta.url))
 const PRICES = {
   'gemini-3.5-flash-lite': { input: 0.30, output: 2.50, thinkingConfig: { thinkingLevel: 'minimal' } },
   'gemini-2.5-flash-lite': { input: 0.10, output: 0.40, thinkingConfig: { thinkingBudget: 0 } },
+  'gemini-2.5-flash': { input: 0.30, output: 2.50, thinkingConfig: { thinkingBudget: 0 } },
 }
 const OUTPUT_LIMIT = 1800
 export class DraftError extends Error {
@@ -30,8 +31,8 @@ export function validateContext(input) {
   for (const field of ['before', 'surrounding']) if (typeof document[field] !== 'string' || document[field].length > 10000) throw new DraftError(`document.${field} muss Text bis 10.000 Zeichen sein.`)
   requireText(target?.id, 'target.id', 200)
   requireText(target?.instruction, 'target.instruction', 1600)
-  if (!['replace', 'insert', 'rows'].includes(target.op)) throw new DraftError('Nur replace, insert und rows können formuliert werden.')
-  if (target.op === 'replace') requireText(document.before, 'Zu ersetzender Text')
+  if (!['replace', 'patch', 'insert', 'rows'].includes(target.op)) throw new DraftError('Nur replace, patch, insert und rows können formuliert werden.')
+  if (['replace', 'patch'].includes(target.op)) requireText(document.before, 'Zu ersetzender Text')
   if (target.op === 'rows' && (!Array.isArray(target.columns) || !target.columns.length || target.columns.length > 12 || target.columns.some((s) => typeof s !== 'string' || s.length > 200))) throw new DraftError('Tabellenspalten fehlen oder sind ungültig.')
   if (!Array.isArray(evidence) || !evidence.length || evidence.length > 30) throw new DraftError('1 bis 30 Belege sind erforderlich.')
   const ids = new Set()
@@ -60,7 +61,62 @@ function checkPreserved(text, context) {
   if (copied.length >= 2) throw new DraftError('Entwurf verworfen: Er enthält Quellcode aus den Belegen statt einer Beschreibung. Bitte erneut formulieren lassen.', 502)
 }
 
+/** The section with line numbers, as the model sees it for line edits. */
+export const numbered = (text) => text.split('\n').map((line, i) => `${i + 1}| ${line}`).join('\n')
+const MAX_EDITS = 20
+/** Applies line edits ({ op: replace | insert_after | delete, start, end, text }) to the original section, bottom-up. */
+export function applyEdits(before, edits) {
+  const lines = before.split('\n'), n = lines.length
+  const ranges = edits.map((e) => {
+    if (!e || !['replace', 'insert_after', 'delete'].includes(e.op) || !Number.isInteger(e.start) || !Number.isInteger(e.end) || typeof e.text !== 'string') throw new DraftError('Das Modell hat ungültige Zeilenänderungen geliefert.', 502)
+    if (e.op === 'insert_after' ? e.start < 0 || e.start > n : e.start < 1 || e.end < e.start || e.end > n) throw new DraftError('Eine Zeilenänderung liegt außerhalb des Abschnitts.', 502)
+    if (e.op !== 'delete' && !e.text.trim()) throw new DraftError('Eine Zeilenänderung enthält keinen Text.', 502)
+    return { ...e, end: e.op === 'insert_after' ? e.start : e.end }
+  }).sort((a, b) => b.start - a.start || (a.op === 'insert_after') - (b.op === 'insert_after'))
+  for (let i = 1; i < ranges.length; i++) if (ranges[i].op !== 'insert_after' && ranges[i - 1].op !== 'insert_after' && ranges[i].end >= ranges[i - 1].start) throw new DraftError('Zeilenänderungen überschneiden sich.', 502)
+  for (const e of ranges) {
+    const text = e.text.replace(/\n$/, '').split('\n')
+    if (e.op === 'insert_after') lines.splice(e.start, 0, ...text)
+    else lines.splice(e.start - 1, e.end - e.start + 1, ...(e.op === 'delete' ? [] : text))
+  }
+  return lines.join('\n')
+}
+// Quotes are compared without Markdown emphasis, quote styles and whitespace differences.
+const plain = (s) => String(s || '').replace(/[`*_>#|]/g, '').replace(/[„“”"'’]/g, '"').replace(/\s+/g, ' ').trim().toLowerCase()
+export const quoted = (text, quote) => { const q = plain(quote); return q.length >= 4 && plain(text).includes(q) }
+// German or English by function words; null when unclear. A correction never switches the language of its section.
+const WORDS = { de: /^(der|die|das|und|ist|nicht|mit|für|wird|eine|einen|den|dem|auf|sie|bei|oder|wenn|auch|sind)$/, en: /^(the|and|is|are|to|of|with|for|this|that|you|be|not|can|when|or|it|an|by|if)$/ }
+export function language(text) {
+  const words = String(text).toLowerCase().match(/\p{L}+/gu) || [], de = words.filter((w) => WORDS.de.test(w)).length, en = words.filter((w) => WORDS.en.test(w)).length
+  return de >= 3 && de > 2 * en ? 'de' : en >= 3 && en > 2 * de ? 'en' : null
+}
+function validatePatch(value, context) {
+  if (!value || !['draft', 'needs_context', 'no_change'].includes(value.status) || !Array.isArray(value.edits) || !Array.isArray(value.findings) || typeof value.question !== 'string' || typeof value.reason !== 'string' || !Array.isArray(value.evidenceIds)) throw new DraftError('Das Modell hat keinen gültigen Entwurf geliefert.', 502)
+  const allowed = new Set(context.evidence.map((e) => e.id)), before = context.document.before
+  if (value.evidenceIds.some((id) => !allowed.has(id))) throw new DraftError('Der Entwurf verweist auf unbekannte Belege.', 502)
+  // A finding counts only with a literal quote from the section and from a code excerpt.
+  const findings = value.findings.filter((f) => f && quoted(before, f.doc_quote) && String(f.evidence_id).startsWith('code:') && quoted(context.evidence.find((e) => e.id === f.evidence_id)?.text, f.code_quote) && typeof f.problem === 'string' && f.problem.trim())
+  let text = ''
+  if (value.status === 'needs_context') {
+    if (!value.question.trim() || value.edits.length) throw new DraftError('Eine Rückfrage darf keinen ungesicherten Entwurf enthalten.', 502)
+  } else if (value.status === 'no_change') {
+    if (!/status=no_change/.test(context.target.instruction)) throw new DraftError('Für diese Textstelle ist „keine Änderung“ nicht vorgesehen.', 502)
+    if (!value.reason.trim() || value.edits.length) throw new DraftError('„Keine Änderung“ braucht eine Begründung und keine Zeilenänderung.', 502)
+  } else {
+    if (!value.evidenceIds.length || !value.reason.trim()) throw new DraftError('Belegverweise oder Begründung fehlen.', 502)
+    if (!findings.length) throw new DraftError('Entwurf verworfen: Kein Befund mit wörtlichem Zitat aus Abschnitt und Code.', 502)
+    if (!value.edits.length || value.edits.length > MAX_EDITS) throw new DraftError(`Ein Entwurf braucht 1 bis ${MAX_EDITS} Zeilenänderungen.`, 502)
+    text = applyEdits(before, value.edits)
+    if (text.trim() === before.trim()) throw new DraftError('Der Entwurf ändert den Abschnitt nicht.', 502)
+    const was = language(before), now = language(value.edits.map((e) => e.text).join('\n'))
+    if (was && now && was !== now) throw new DraftError('Entwurf verworfen: Er wechselt die Sprache des Abschnitts.', 502)
+    checkPreserved(text, context)
+  }
+  return { status: value.status, text, blocks: [], rows: [], reason: value.reason, question: value.question, evidenceIds: [...new Set(value.evidenceIds)], edits: value.edits.map(({ op, start, end, text }) => ({ op, start, end, text })), findings: findings.map(({ doc_quote, evidence_id, code_quote, problem }) => ({ doc_quote, evidence_id, code_quote, problem })) }
+}
+
 export function validateDraft(value, context) {
+  if (context.target.op === 'patch') return validatePatch(value, context)
   if (!value || !['draft', 'needs_context', 'no_change'].includes(value.status) || typeof value.text !== 'string' || !Array.isArray(value.blocks) || !Array.isArray(value.rows) || typeof value.question !== 'string' || typeof value.reason !== 'string' || !Array.isArray(value.evidenceIds)) throw new DraftError('Das Modell hat keinen gültigen Entwurf geliefert.', 502)
   if (JSON.stringify(value).length > 16000 || value.blocks.some((b) => !b || !['h', 'p'].includes(b.kind) || typeof b.text !== 'string' || !b.text.trim()) || value.rows.some((r) => !Array.isArray(r) || r.some((s) => typeof s !== 'string'))) throw new DraftError('Das Modell hat ungültige Textblöcke geliefert.', 502)
   const allowed = new Set(context.evidence.map((e) => e.id))
@@ -88,7 +144,7 @@ export function draftingConfig(env = process.env) {
   const google = ['vertex', 'gemini'].includes(provider)
   const model = env.NEURALDOC_LLM_MODEL || (google ? env.NEURALDOC_GEMINI_MODEL || (provider === 'vertex' ? 'gemini-2.5-flash-lite' : 'gemini-3.5-flash-lite') : DEFAULT_MODELS[provider])
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_./:@-]{0,199}$/.test(model)) throw new DraftError('Ungültiger Modellname.')
-  if (google && !PRICES[model]) throw new DraftError('Für Gemini sind nur Flash-Lite-Modelle freigeschaltet.')
+  if (google && !PRICES[model]) throw new DraftError(`Für Gemini sind nur ${Object.keys(PRICES).join(', ')} freigeschaltet.`)
   const project = env.GOOGLE_CLOUD_PROJECT || ''
   const location = env.GOOGLE_CLOUD_LOCATION || 'global'
   const mode = env.NEURALDOC_VERTEX_MODE || 'express'
@@ -119,7 +175,7 @@ export function draftingStatus(env = process.env) {
     return { ...draftConnection(config), label: PROVIDER_LABELS[config.provider], model: config.model, configured: config.provider === 'local' || !!config.apiKey, verification: 'configuration-only' }
   } catch (error) { return { configured: false, error: error.message } }
 }
-export const draftKey = (context, model, connection) => createHash('sha256').update(JSON.stringify({ version: PROMPT_VERSION, model, connection, context: validateContext(context) })).digest('hex')
+export const draftKey = (context, model, connection) => createHash('sha256').update(JSON.stringify({ version: context?.target?.op === 'patch' ? PATCH_PROMPT_VERSION : PROMPT_VERSION, model, connection, context: validateContext(context) })).digest('hex')
 
 export function draftEndpoint(config, method) {
   if (!['countTokens', 'generateContent'].includes(method)) throw new DraftError('Ungültige Modelloperation.')
@@ -140,29 +196,15 @@ export function generateDraft(input, options = {}) {
   return job
 }
 
-async function run(input, { config = draftingConfig(), fetchImpl = fetch } = {}) {
-  const context = validateContext(input)
-  const google = ['vertex', 'gemini'].includes(config.provider)
-  const basePrice = google ? PRICES[config.model] : { input: config.inputPrice, output: config.outputPrice }
-  if (!basePrice || !Object.hasOwn(PROVIDER_LABELS, config.provider)) throw new DraftError('Modell oder Anbieter nicht freigeschaltet.')
-  const regionalMultiplier = config.provider === 'vertex' && config.location !== 'global' && config.model === 'gemini-3.5-flash-lite' ? 1.1 : 1
-  const price = { ...basePrice, input: basePrice.input === null ? null : basePrice.input * regionalMultiplier, output: basePrice.output === null ? null : basePrice.output * regionalMultiplier }
-  fs.mkdirSync(config.stateDir, { recursive: true })
-  const connection = draftConnection(config)
-  const key = draftKey(context, config.model, connection)
-  const cacheFile = path.join(config.stateDir, `draft-${key}.json`)
-  if (fs.existsSync(cacheFile)) {
-    const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8'))
-    validateDraft(cached.result, context)
-    return { ...cached, cached: true }
-  }
+/** One JSON call to the configured provider: { value, inputTokens, outputTokens, costUsd }. Used for drafts and for check findings. */
+export async function callModel(config, { system, content, schema, fetchImpl = fetch, price = modelPrice(config), temperature = 0.2, outputLimit = OUTPUT_LIMIT }) {
   if (config.provider !== 'local' && !config.apiKey) throw new DraftError('Texterstellung ist noch nicht eingerichtet. API-Key serverseitig setzen.', 503)
-  const label = PROVIDER_LABELS[config.provider]
+  const google = ['vertex', 'gemini'].includes(config.provider), label = PROVIDER_LABELS[config.provider]
   const request = google ? {
-    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-    contents: [{ role: 'user', parts: [{ text: JSON.stringify(context) }] }],
-    generationConfig: { temperature: 0.2, maxOutputTokens: OUTPUT_LIMIT, thinkingConfig: price.thinkingConfig, responseMimeType: 'application/json', responseJsonSchema: responseSchema(context.target.op) },
-  } : providerRequest(config, context, SYSTEM_PROMPT, responseSchema(context.target.op), OUTPUT_LIMIT)
+    systemInstruction: { parts: [{ text: system }] },
+    contents: [{ role: 'user', parts: [{ text: JSON.stringify(content) }] }],
+    generationConfig: { temperature, maxOutputTokens: outputLimit, thinkingConfig: price.thinkingConfig, responseMimeType: 'application/json', responseJsonSchema: schema },
+  } : providerRequest(config, content, system, schema, outputLimit)
   const call = async (method, body) => {
     let response
     try { response = await fetchImpl(google ? draftEndpoint(config, method) : request.url, { method: 'POST', headers: google ? { 'Content-Type': 'application/json', 'x-goog-api-key': config.apiKey } : request.headers, body: JSON.stringify(google ? body : request.body), signal: AbortSignal.timeout(config.provider === 'local' ? 120000 : 45000) }) }
@@ -184,11 +226,36 @@ async function run(input, { config = draftingConfig(), fetchImpl = fetch } = {})
   let value
   try { value = JSON.parse(normalized.text) }
   catch { throw new DraftError(`${label} hat ungültiges JSON geliefert. Der bisherige Vorschlag bleibt erhalten.`, 502) }
-  const result = validateDraft(value, context)
   const outputTokens = Number.isInteger(normalized.outputTokens) && normalized.outputTokens >= 0 ? normalized.outputTokens : 0
-  const actualInput = Number.isInteger(normalized.inputTokens) && normalized.inputTokens >= 0 ? normalized.inputTokens : null
-  const costUsd = config.provider === 'local' ? 0 : normalized.measuredOutput && actualInput !== null && Number.isFinite(price.input) && Number.isFinite(price.output) ? (actualInput * price.input + outputTokens * price.output) / 1e6 : null
-  const draft = { id: `g-${key.slice(0, 20)}`, target: context.target.id, document: context.document.id, change: context.change.id, contextHash: key, connection, model: config.model, promptVersion: PROMPT_VERSION, createdAt: new Date().toISOString(), context, result, usage: { inputTokens: actualInput, outputTokens, costUsd }, cached: false }
+  const inputTokens = Number.isInteger(normalized.inputTokens) && normalized.inputTokens >= 0 ? normalized.inputTokens : null
+  const costUsd = config.provider === 'local' ? 0 : normalized.measuredOutput && inputTokens !== null && Number.isFinite(price.input) && Number.isFinite(price.output) ? (inputTokens * price.input + outputTokens * price.output) / 1e6 : null
+  return { value, inputTokens, outputTokens, costUsd }
+}
+
+export function modelPrice(config) {
+  const basePrice = ['vertex', 'gemini'].includes(config.provider) ? PRICES[config.model] : { input: config.inputPrice, output: config.outputPrice }
+  if (!basePrice || !Object.hasOwn(PROVIDER_LABELS, config.provider)) throw new DraftError('Modell oder Anbieter nicht freigeschaltet.')
+  const regionalMultiplier = config.provider === 'vertex' && config.location !== 'global' && config.model === 'gemini-3.5-flash-lite' ? 1.1 : 1
+  return { ...basePrice, input: basePrice.input === null ? null : basePrice.input * regionalMultiplier, output: basePrice.output === null ? null : basePrice.output * regionalMultiplier }
+}
+
+async function run(input, { config = draftingConfig(), fetchImpl = fetch } = {}) {
+  const context = validateContext(input), price = modelPrice(config)
+  fs.mkdirSync(config.stateDir, { recursive: true })
+  const connection = draftConnection(config)
+  const key = draftKey(context, config.model, connection)
+  const cacheFile = path.join(config.stateDir, `draft-${key}.json`)
+  if (fs.existsSync(cacheFile)) {
+    const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8'))
+    validateDraft(cached.result, context)
+    return { ...cached, cached: true }
+  }
+  const patch = context.target.op === 'patch'
+  // Line edits see the section with line numbers; the cache key stays on the validated context.
+  const content = patch ? { ...context, document: { ...context.document, numbered: numbered(context.document.before) } } : context
+  const { value, inputTokens, outputTokens, costUsd } = await callModel(config, { system: patch ? PATCH_PROMPT : SYSTEM_PROMPT, content, schema: responseSchema(context.target.op), fetchImpl, price, ...(patch ? { outputLimit: 4000 } : {}) })
+  const result = validateDraft(value, context)
+  const draft = { id: `g-${key.slice(0, 20)}`, target: context.target.id, document: context.document.id, change: context.change.id, contextHash: key, connection, model: config.model, promptVersion: patch ? PATCH_PROMPT_VERSION : PROMPT_VERSION, createdAt: new Date().toISOString(), context, result, usage: { inputTokens, outputTokens, costUsd }, cached: false }
   // Rename makes completed caches atomic. Failed and incomplete responses are never reused.
   const temp = `${cacheFile}.${randomUUID()}.tmp`
   fs.writeFileSync(temp, JSON.stringify(draft, null, 2)); fs.renameSync(temp, cacheFile)

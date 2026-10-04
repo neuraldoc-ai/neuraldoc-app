@@ -1,0 +1,162 @@
+{
+  "name": "zx",
+  "language": "TypeScript",
+  "repo": "https://github.com/google/zx",
+  "docs": {
+    "ref": "8.3.0",
+    "commit": "759dcf6f16cc517b5ef3fb41f92374aba5d6f60a",
+    "include": ["README.md", "docs/*.md"],
+    "exclude": []
+  },
+  "code": {
+    "ref": "8.5.0",
+    "commit": "9511ba3291b47392de5383a14a38cade0e6651ec"
+  },
+  "notes": "Ground truth = documentation changes between 8.3.0 and 8.5.0 that the 8.5.0 code supports. docs/v7 (documentation of the old major version) is not uploaded. Left out: heading backticks, distribution channels (jsr, docker, lite), runtime TypeScript support, the injection warning in quotes.md and CI examples, because the code does not decide them. Several items document features that already existed in 8.3.0; they still count, since the old text is incomplete against the current code.",
+  "items": [
+    {
+      "id": "zx-1",
+      "doc": "docs/process-promise.md",
+      "anchor": "Default is `.stdio('inherit', 'pipe', 'pipe')`.",
+      "kind": "contradicts",
+      "level": "must",
+      "what": "The default stdio is 'pipe' for all three streams, not ('inherit', 'pipe', 'pipe'); stdio must be set before the process starts (preset $({stdio}) or halt).",
+      "files": ["src/core.ts"]
+    },
+    {
+      "id": "zx-2",
+      "doc": "docs/cli.md",
+      "anchor": "## --prefer-local, -l",
+      "kind": "contradicts",
+      "level": "should",
+      "what": "The example shows --shell=/bin/bash instead of --prefer-local; the option prefers local packages and binaries and also accepts a path to an external node_modules directory.",
+      "files": ["src/cli.ts"]
+    },
+    {
+      "id": "zx-3",
+      "doc": "docs/cli.md",
+      "anchor": "assumes that it is",
+      "kind": "incomplete",
+      "level": "should",
+      "what": "--ext also applies to scripts with a non-JS extension (zx --ext=mjs script.zx); a script without extension is treated as ESM unless --ext is given.",
+      "files": ["src/cli.ts"]
+    },
+    {
+      "id": "zx-4",
+      "doc": "docs/api.md",
+      "anchor": "The full options list:",
+      "kind": "incomplete",
+      "level": "should",
+      "what": "The Options interface lacks preferLocal, store, killSignal and halt; timeoutSignal is NodeJS.Signals and shell is string | true.",
+      "files": ["src/core.ts"]
+    },
+    {
+      "id": "zx-5",
+      "doc": "docs/api.md",
+      "anchor": "### $({timeout})",
+      "kind": "incomplete",
+      "level": "should",
+      "what": "The nothrow option: errors are suppressed and a ProcessOutput with ok=false, exitCode and message is returned, also when spawning fails.",
+      "files": ["src/core.ts"]
+    },
+    {
+      "id": "zx-6",
+      "doc": "docs/api.md",
+      "anchor": "## fetch()",
+      "kind": "incomplete",
+      "level": "should",
+      "what": "fetch() returns a response with .pipe() to stream the body into a process, e.g. fetch(url).pipe($`cat`).",
+      "files": ["src/goods.ts"]
+    },
+    {
+      "id": "zx-7",
+      "doc": "docs/api.md",
+      "anchor": "## glob()",
+      "kind": "incomplete",
+      "level": "should",
+      "what": "glob.sync() is a synchronous shortcut.",
+      "files": ["src/vendor-extra.ts", "src/goods.ts"]
+    },
+    {
+      "id": "zx-8",
+      "doc": "docs/api.md",
+      "anchor": "## tmpfile()",
+      "kind": "incomplete",
+      "level": "should",
+      "what": "tmpfile(name, data, mode) accepts a file mode, e.g. 0o744 for an executable script.",
+      "files": ["src/util.ts", "src/goods.ts"]
+    },
+    {
+      "id": "zx-9",
+      "doc": "docs/api.md",
+      "anchor": "## yaml",
+      "kind": "incomplete",
+      "level": "should",
+      "what": "dotenv (envapi) is exported: dotenv.parse, dotenv.load and dotenv.config for .env files.",
+      "files": ["src/vendor-extra.ts", "src/globals.ts", "src/index.ts"]
+    },
+    {
+      "id": "zx-10",
+      "doc": "docs/api.md",
+      "anchor": "## yaml",
+      "kind": "incomplete",
+      "level": "should",
+      "what": "Undocumented exports quote(), quotePowerShell(), useBash(), usePowerShell() and usePwsh() switch shell and quoting presets.",
+      "files": ["src/core.ts", "src/util.ts"]
+    },
+    {
+      "id": "zx-11",
+      "doc": "docs/configuration.md",
+      "anchor": "Specifies a [logging function](src/core.ts).",
+      "kind": "contradicts",
+      "level": "should",
+      "what": "The logger lives in src/log.ts; $.log.output sets the output stream (stderr by default) and $.log.formatters customizes how each entry kind is printed.",
+      "files": ["src/log.ts"]
+    },
+    {
+      "id": "zx-12",
+      "doc": "docs/configuration.md",
+      "anchor": "## $.timeout",
+      "kind": "incomplete",
+      "level": "should",
+      "what": "$.defaults holds the default option values (cwd, env, verbose, quiet, sync, shell, prefix, postfix, nothrow, stdio 'pipe', detached, preferLocal, spawn, log, killSignal, timeoutSignal).",
+      "files": ["src/core.ts"]
+    },
+    {
+      "id": "zx-13",
+      "doc": "docs/process-promise.md",
+      "anchor": "The `$` returns a `ProcessPromise` instance.",
+      "kind": "incomplete",
+      "level": "should",
+      "what": "A process can be created halted with $({halt: true}) and started with p.run(); p.stage reports initial, halted, running, fulfilled or rejected.",
+      "files": ["src/core.ts"]
+    },
+    {
+      "id": "zx-14",
+      "doc": "docs/process-promise.md",
+      "anchor": "## `pipe()`",
+      "kind": "incomplete",
+      "level": "should",
+      "what": "ProcessPromise is async iterable over the lines of stdout (for await (const line of p)).",
+      "files": ["src/core.ts"]
+    },
+    {
+      "id": "zx-15",
+      "doc": "docs/process-output.md",
+      "anchor": "interface ProcessOutput {",
+      "kind": "incomplete",
+      "level": "should",
+      "what": "ProcessOutput extends Error and offers buffer(), json(), blob(), text() and lines().",
+      "files": ["src/core.ts"]
+    },
+    {
+      "id": "zx-16",
+      "doc": "docs/markdown-scripts.md",
+      "anchor": "The `__filename` will be pointed to",
+      "kind": "incomplete",
+      "level": "should",
+      "what": "ts/typescript code blocks in markdown scripts are executed as well, not only js blocks.",
+      "files": ["src/md.ts"]
+    }
+  ]
+}

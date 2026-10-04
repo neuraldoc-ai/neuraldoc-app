@@ -1,0 +1,90 @@
+{
+  "name": "httpx",
+  "language": "Python",
+  "repo": "https://github.com/encode/httpx",
+  "docs": {
+    "ref": "0.27.2",
+    "commit": "609df7ecc0f7cb10a1c998aa9c269bba77337c5f",
+    "include": ["README.md", "docs/**/*.md"],
+    "exclude": ["docs/code_of_conduct.md"]
+  },
+  "code": {
+    "ref": "0.28.1",
+    "commit": "26d48e0634e6ee9cdc0533996db289ce4b430177"
+  },
+  "notes": "Ground truth = documentation changes between 0.27.2 and 0.28.1 that follow a code change and hold against the 0.28.1 code. Left out: '$ ' prompt prefixes, sponsor and third-party lists, the request.text typo, and the removal of SSL_CERT_FILE/SSL_CERT_DIR from the docs (0.28.1 still reads both when verify=True and trust_env).",
+  "items": [
+    {
+      "id": "httpx-1",
+      "doc": "docs/advanced/ssl.md",
+      "anchor": "If you'd like to use a custom CA bundle, you can use the `verify` parameter.",
+      "kind": "contradicts",
+      "level": "must",
+      "what": "Passing a file path as verify=\"...\" is deprecated (DeprecationWarning). A custom CA bundle is configured with verify=ssl.create_default_context(cafile=...) or capath=...",
+      "files": ["httpx/_config.py", "httpx/_client.py"]
+    },
+    {
+      "id": "httpx-2",
+      "doc": "docs/advanced/ssl.md",
+      "anchor": "The `create_ssl_context` function accepts the same set of SSL configuration arguments",
+      "kind": "contradicts",
+      "level": "should",
+      "what": "create_ssl_context() no longer accepts http2; its parameters are verify, cert and trust_env, and a verify path is deprecated there as well.",
+      "files": ["httpx/_config.py"]
+    },
+    {
+      "id": "httpx-3",
+      "doc": "docs/advanced/ssl.md",
+      "anchor": "## Client Side Certificates",
+      "kind": "contradicts",
+      "level": "must",
+      "what": "cert=... is deprecated. Client certificates are loaded with SSLContext.load_cert_chain() and the context is passed as verify=<context>.",
+      "files": ["httpx/_config.py", "httpx/_client.py"]
+    },
+    {
+      "id": "httpx-4",
+      "doc": "docs/advanced/ssl.md",
+      "anchor": "client = httpx.Client(verify=\"/tmp/client.pem\")",
+      "kind": "contradicts",
+      "level": "should",
+      "what": "The local HTTPS server example uses the deprecated verify=<path>; it should build an SSL context with cafile=\"client.pem\" and pass it as verify.",
+      "files": ["httpx/_config.py", "httpx/_client.py"]
+    },
+    {
+      "id": "httpx-5",
+      "doc": "docs/environment_variables.md",
+      "anchor": "## `SSLKEYLOGFILE`",
+      "kind": "contradicts",
+      "level": "must",
+      "what": "HTTPX no longer reads SSLKEYLOGFILE; the variable is not supported any more.",
+      "files": ["httpx/_config.py"]
+    },
+    {
+      "id": "httpx-6",
+      "doc": "docs/compatibility.md",
+      "anchor": "When using a `Client` instance, the `trust_env`, `verify`, and `cert` arguments",
+      "kind": "contradicts",
+      "level": "should",
+      "what": "cert is deprecated; SSL configuration (an SSL context passed as verify) belongs on the client instance, not on the request.",
+      "files": ["httpx/_client.py", "httpx/_config.py"]
+    },
+    {
+      "id": "httpx-7",
+      "doc": "docs/contributing.md",
+      "anchor": "verify=\"/path/to/client.pem\"",
+      "kind": "contradicts",
+      "level": "should",
+      "what": "The proxy debugging example uses the deprecated verify=<path>; it should pass an SSL context created with cafile=...",
+      "files": ["httpx/_config.py", "httpx/_client.py"]
+    },
+    {
+      "id": "httpx-8",
+      "doc": "docs/logging.md",
+      "anchor": "httpx - load_ssl_context verify=True",
+      "kind": "contradicts",
+      "level": "should",
+      "what": "The sample debug output shows load_ssl_context and load_verify_locations log lines that 0.28 no longer emits.",
+      "files": ["httpx/_config.py"]
+    }
+  ]
+}

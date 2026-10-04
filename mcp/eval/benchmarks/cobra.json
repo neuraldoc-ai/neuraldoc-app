@@ -1,0 +1,72 @@
+{
+  "name": "cobra",
+  "language": "Go",
+  "repo": "https://github.com/spf13/cobra",
+  "docs": {
+    "ref": "v1.8.1",
+    "commit": "e94f6d0dd9a5e5738dca6bce03c4b1207ffbc0ec",
+    "include": ["README.md", "site/content/**/*.md"],
+    "exclude": []
+  },
+  "code": {
+    "ref": "v1.10.1",
+    "commit": "7da941c3547e93b8c9f70bbd3befca79c6335388"
+  },
+  "notes": "Ground truth = documentation changes between v1.8.1 and v1.10.1 that the v1.10.1 code supports. Left out: logo, sponsor and project lists, console fences, moved links, io/ioutil in generator examples (standard library, not cobra) and a brace typo. cobra.Completion is an alias of string, so the old []string signatures still compile; those items are 'should'.",
+  "items": [
+    {
+      "id": "cobra-1",
+      "doc": "site/content/completions/_index.md",
+      "anchor": "similarly to how it provides the `help` command.",
+      "kind": "incomplete",
+      "level": "should",
+      "what": "If the program has no other subcommands, the default completion command is hidden (only created when it is called) but still works.",
+      "files": ["completions.go"]
+    },
+    {
+      "id": "cobra-2",
+      "doc": "site/content/completions/_index.md",
+      "anchor": "Cobra allows you to add descriptions to your own completions.",
+      "kind": "incomplete",
+      "level": "should",
+      "what": "The helper cobra.CompletionWithDesc(choice, description) creates a completion with a description; completions have the type cobra.Completion.",
+      "files": ["completions.go"]
+    },
+    {
+      "id": "cobra-3",
+      "doc": "site/content/completions/_index.md",
+      "anchor": "Notice that calling `RegisterFlagCompletionFunc()` is done through the `command`",
+      "kind": "incomplete",
+      "level": "should",
+      "what": "CompletionOptions.SetDefaultShellCompDirective() changes the default directive (e.g. ShellCompDirectiveNoFileComp) for a command and its subcommands; cobra.NoFileCompletions and cobra.FixedCompletions are the per-flag helpers.",
+      "files": ["completions.go"]
+    },
+    {
+      "id": "cobra-4",
+      "doc": "site/content/completions/_index.md",
+      "anchor": "ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {",
+      "kind": "contradicts",
+      "level": "should",
+      "what": "Completion functions return []cobra.Completion (type CompletionFunc) instead of []string.",
+      "files": ["completions.go"]
+    },
+    {
+      "id": "cobra-5",
+      "doc": "site/content/active_help.md",
+      "anchor": "ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {",
+      "kind": "contradicts",
+      "level": "should",
+      "what": "Active Help examples: completion functions return []cobra.Completion instead of []string.",
+      "files": ["completions.go", "active_help.go"]
+    },
+    {
+      "id": "cobra-6",
+      "doc": "site/content/user_guide.md",
+      "anchor": "cmd.SetHelpTemplate(s string)",
+      "kind": "incomplete",
+      "level": "should",
+      "what": "Templates set with SetHelpTemplate, SetUsageTemplate or SetVersionTemplate are evaluated with text/template, which increases the size of the compiled executable.",
+      "files": ["command.go", "cobra.go"]
+    }
+  ]
+}
