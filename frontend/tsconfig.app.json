@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "esnext",
+    "types": ["vite/client"],
+    "allowArbitraryExtensions": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": ["./src/dashboard/*"],
+      "@dataset/confluence/*": ["../datasets/mobiq-docs/confluence/*"],
+      "@dataset/dokumente/*": ["../datasets/mobiq-docs/dokumente/*"],
+      "@dataset/postgres/*": ["../datasets/mobiq-db/*"],
+      "@dataset/*": ["../datasets/mobiq/data/*"]
+    },
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "strict": true,
+    "noUncheckedSideEffectImports": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"]
+}

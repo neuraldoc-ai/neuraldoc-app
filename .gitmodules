@@ -1,0 +1,16 @@
+[submodule "datasets/mobiq"]
+	path = datasets/mobiq
+	url = https://github.com/neuraldoc-ai/mobiq.git
+	branch = main
+[submodule "datasets/mobiq-code"]
+	path = datasets/mobiq-code
+	url = https://github.com/neuraldoc-ai/mobiq-code.git
+	branch = release/26.4
+[submodule "datasets/mobiq-docs"]
+	path = datasets/mobiq-docs
+	url = https://github.com/neuraldoc-ai/mobiq-docs.git
+	branch = main
+[submodule "datasets/mobiq-db"]
+	path = datasets/mobiq-db
+	url = https://github.com/neuraldoc-ai/mobiq-db.git
+	branch = main

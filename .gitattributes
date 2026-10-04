@@ -1,0 +1,9 @@
+# One line ending everywhere. The image is built on Linux and the shell scripts in
+# backend/deploy run there, so a CRLF that slipped in on Windows would break the
+# shebang. LF in the repository and in the working tree keeps generated files
+# (routeTree.gen.ts, public/*/index.html) from showing up as changes after a build.
+* text=auto eol=lf
+
+# Windows-only helpers keep their native endings.
+*.bat text eol=crlf
+*.ps1 text eol=crlf

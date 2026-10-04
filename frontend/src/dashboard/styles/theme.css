@@ -1,0 +1,157 @@
+/*
+ * neuraldoc theme — black on white with light blue accents.
+ * Blue marks what is new or active (suggestions, "neu", selection, charts); orange only
+ * where a person has to look (Kurz prüfen, Rückfrage, übersehen).
+ */
+:root {
+  --radius: 0.75rem;
+
+  /* brand scale — light blue accent */
+  --brand-50: #eff6ff;
+  --brand-100: #dbeafe;
+  --brand-200: #bfdbfe;
+  --brand-300: #93c5fd;
+  --brand-400: #60a5fa;
+  --brand-500: #3b82f6;
+  --brand-600: #2563eb;
+  --brand-700: #1d4ed8;
+  --brand-800: #1e40af;
+  --brand-900: #1e3a8a;
+
+  /* status */
+  --ok: #0a0a0a;
+  --ok-soft: #f4f4f5;
+  --open: #a1a1aa;
+  --late: #d9480f;
+  --late-fg: #b93c0b;
+  --late-soft: #fdf1ec;
+
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --card: #ffffff;
+  --card-foreground: #0a0a0a;
+  --popover: #ffffff;
+  --popover-foreground: #0a0a0a;
+  --primary: #0a0a0a;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #0a0a0a;
+  --muted: #f5f5f5;
+  --muted-foreground: #6b6b6b;
+  --accent: #f4f4f5;
+  --accent-foreground: #0a0a0a;
+  --destructive: #d9480f;
+  --border: #ebebeb;
+  --input: #e4e4e7;
+  --ring: #93c5fd;
+  /* charts: blue, light blue, gray — validated, always with a legend and direct labels */
+  --chart-1: #2563eb;
+  --chart-2: #60a5fa;
+  --chart-3: #d4d4d4;
+  --chart-4: #a3a3a3;
+  --chart-5: #525252;
+
+  --sidebar: #fafafa;
+  --sidebar-foreground: #0a0a0a;
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: #eff6ff;
+  --sidebar-accent-foreground: #1d4ed8;
+  --sidebar-border: #ebebeb;
+  --sidebar-ring: var(--ring);
+}
+
+.dark {
+  --background: #0a0a0a;
+  --foreground: #f5f5f5;
+  --card: #141414;
+  --card-foreground: #f5f5f5;
+  --popover: #141414;
+  --popover-foreground: #f5f5f5;
+  --primary: #f5f5f5;
+  --primary-foreground: #0a0a0a;
+  --secondary: #222222;
+  --secondary-foreground: #f5f5f5;
+  --muted: #1c1c1c;
+  --muted-foreground: #a1a1a1;
+  --accent: #222222;
+  --accent-foreground: #f5f5f5;
+  --destructive: #e0561c;
+  --border: rgb(255 255 255 / 9%);
+  --input: rgb(255 255 255 / 14%);
+  --ring: #3b82f6;
+
+  --ok: #f5f5f5;
+  --ok-soft: rgb(255 255 255 / 8%);
+  --open: #71717a;
+  --late: #e0561c;
+  --late-fg: #f08a5d;
+  --late-soft: rgb(224 86 28 / 12%);
+  --chart-1: #60a5fa;
+  --chart-2: #2563eb;
+  --chart-3: #474747;
+
+  --sidebar: #070707;
+  --sidebar-foreground: #f5f5f5;
+  --sidebar-accent: rgb(59 130 246 / 14%);
+  --sidebar-accent-foreground: #bfdbfe;
+  --sidebar-border: rgb(255 255 255 / 7%);
+}
+
+@theme inline {
+  --font-inter: 'Inter', 'sans-serif';
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+  --color-brand-800: var(--brand-800);
+  --color-brand-900: var(--brand-900);
+
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-open: var(--open);
+  --color-late: var(--late);
+  --color-late-fg: var(--late-fg);
+  --color-late-soft: var(--late-soft);
+}

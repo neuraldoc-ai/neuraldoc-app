@@ -1,0 +1,11 @@
+.git
+**/.git
+.agents
+backend
+frontend/node_modules
+frontend/dist
+mcp/state
+bench/runs
+datasets/mobiq-code
+**/.env
+**/.env.*

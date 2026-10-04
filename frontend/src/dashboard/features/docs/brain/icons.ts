@@ -1,0 +1,30 @@
+import {
+  Braces,
+  Building2,
+  Database,
+  FileCode2,
+  FileText,
+  GitCommitHorizontal,
+  Layers,
+  SlidersHorizontal,
+  SquareKanban,
+  Table2,
+  Users,
+} from "lucide-react";
+import type { NodeType } from "./model";
+export const typeIcon: Record<NodeType, typeof Layers> = {
+  feature: Layers,
+  commit: GitCommitHorizontal,
+  ticket: SquareKanban,
+  doc: FileText,
+  module: Layers,
+  department: Building2,
+  database: Database,
+  table: Table2,
+  view: Table2,
+  column: Table2,
+  file: FileCode2,
+  function: Braces,
+  parameter: SlidersHorizontal,
+  person: Users,
+};

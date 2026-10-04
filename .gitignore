@@ -1,0 +1,15 @@
+# Secrets never belong in the repository — both halves also ignore these locally.
+.env
+.env.*
+!.env.example
+!.env.showcase
+
+# Editor and OS noise
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Throwaway artefacts from local tooling
+*.tmp.mjs
+.playwright-mcp/
