@@ -47,7 +47,7 @@ neuraldoc changes neither the repository nor the documentation folder. Only comm
 - Up to 250 code files (100 KB each), 40 documents (8,000 characters each), 100 commits, 8 MB of diffs. Documents: Markdown, MDX, text, RST, HTML (HTML is exported as text).
 - AST analysis for Java, Kotlin, TypeScript/TSX, Pascal and SQL; other languages are imported as sources only. SQL relationships are limited.
 - Jev sees at most six changed files per document, truncated to 3,500 characters. Further files are logged as omitted.
-- A draft replaces the whole document; there is no section mapping. There is no measured accuracy for your own projects.
+- A draft replaces the whole document; there is no section mapping. Drafts are written in German. There is no measured accuracy for your own projects.
 - Jira, Confluence and SharePoint are not connected for your own projects.
 - Meant for local use only: paths can be chosen freely and there is no user management. Write actions require the same origin or the MCP token; the demo token is no access protection for a public network.
 - Concurrent runs are locked per server process, not across processes.
@@ -99,7 +99,7 @@ The showcase uses the fictional evaluation dataset MOBIQ from four repositories,
 | Submodule | Contents |
 | --- | --- |
 | [`mobiq`](https://github.com/neuraldoc-ai/mobiq) | Generator, GitLab and Jira API responses, solution (`ground-truth.json`) |
-| [`mobiq-code`](https://github.com/neuraldoc-ai/mobiq-code) | The code repository with branches, merges and a tag (pinned to `release/26.4`) |
+| [`mobiq-code`](https://github.com/neuraldoc-ai/mobiq-code) | The code repository with branches, merges and a tag (pinned to the dataset state `df9f414` on `release/26.4`) |
 | [`mobiq-docs`](https://github.com/neuraldoc-ai/mobiq-docs) | Confluence pages and SharePoint files |
 | [`mobiq-db`](https://github.com/neuraldoc-ai/mobiq-db) | PostgreSQL scripts and `docker compose` |
 

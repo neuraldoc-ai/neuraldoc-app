@@ -38,9 +38,9 @@ Cache and approvable texts live in the ignored state folder or in `NEURALDOC_STA
 
 ## Clear prompt and validation
 
-The complete system prompt is in [draft-prompt.mjs](draft-prompt.mjs). It separates product evidence from existing documentation and the writing task. Ticket requirements must not be described as implemented without matching code evidence. Numbers and dialog names must not be invented. Source data are never instructions to the model. The prompt follows the requested German style and the audience of each document.
+The complete system prompt is in [draft-prompt.mjs](draft-prompt.mjs). It separates product evidence from existing documentation and the writing task. Ticket requirements must not be described as implemented without matching code evidence. Numbers and dialog names must not be invented. Source data are never instructions to the model. The prompt currently asks for German documentation text, written for the audience of each document.
 
-The model returns structured JSON. The server checks the schema, referenced evidence IDs, table width, required headings and complete responses. This validation covers form and references, not general factual truth. All generated texts are marked `Kurz prüfen` (quick review) and excluded from the demo accuracy statistics. Approval stores the wording actually accepted. Decided passages are never regenerated. A question or an error leaves the previous text in place.
+The model returns structured JSON. The server checks the schema, referenced evidence IDs, table width, required headings and complete responses. This validation covers form and references, not general factual truth. All generated texts are marked for a quick review (`Kurz prüfen` in the German interface) and excluded from the demo accuracy statistics. Approval stores the wording actually accepted. Decided passages are never regenerated. A question or an error leaves the previous text in place.
 
 Approval writes only to the local decision log (showcase) or the project state (own project). Confluence/SharePoint write-back is simulated; own projects are exported as a ZIP.
 
@@ -52,16 +52,16 @@ A project-neutral context for the command line:
 
 ```json
 {
-  "change": {"id":"export-date", "title":"Exportdatum im Lagerbericht"},
+  "change": {"id":"export-date", "title":"Export date in the warehouse report"},
   "document": {
-    "id":"warehouse-manual", "title":"Lagerberichte",
-    "type":"Nutzerhandbuch", "audience":"Lagerleitung", "section":"Export",
-    "before":"Der Export verwendet das Tagesdatum.",
-    "surrounding":"Klicken Sie auf Exportieren."
+    "id":"warehouse-manual", "title":"Warehouse reports",
+    "type":"User manual", "audience":"Warehouse management", "section":"Export",
+    "before":"The export uses the current date.",
+    "surrounding":"Click Export."
   },
   "target": {
     "id":"export-date-text", "op":"replace",
-    "instruction":"Beschreibe das belegte Exportdatum."
+    "instruction":"Describe the export date shown by the evidence."
   },
   "evidence": [{
     "id":"code:export", "source":"warehouse/export.ts (commit abcdef1)",
