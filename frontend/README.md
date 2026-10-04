@@ -1,4 +1,4 @@
-# neuraldoc dashboard frontend
+# neuraldoc app: frontend
 
 Use Node.js 24 and npm:
 
@@ -7,9 +7,9 @@ npm ci
 npm run dev
 ```
 
-Dashboard: http://localhost:5174/app/ (`/` redirects there). Vite also serves the MCP endpoint at `/mcp`.
+App: http://localhost:5174/app/ (`/` redirects there). Vite also serves the MCP endpoint at `/mcp`.
 
-`npm run build` produces `dist/app/index.html` and the assets. The production server is `../mcp/serve.mjs`, which serves the MCP endpoint as well.
+`npm run build` produces `dist/app/index.html` and the assets. The production server is `../mcp/serve.mjs`, which serves the MCP endpoint as well; the `Dockerfile` in the repository root packages both.
 
 The sample data come from the submodules in `../datasets/` (`mobiq`, `mobiq-code`, `mobiq-docs`, `mobiq-db`). The alias `@/` points to `src/dashboard/`; `@dataset/` uses the original dataset layout (`gitlab/…`, `confluence/…`, `postgres/…`) and is mapped to the matching repository in `vite.config.ts`, like `mcp/dataset.mjs` on the server. The TanStack router uses `/app` as its base path.
 

@@ -10,7 +10,7 @@ Three tools for the development team's coding agent (Claude Code, Cursor, VS Cod
 | `ask` | for a domain question | short quotes with sources, each marked "correct", "outdated" (with what the code does), "incomplete" or "updated" |
 | `check_change` | when the feature is done (MR, branch, ticket or commits) | the complete list of sources found with original names, locations and required change, plus prepared drafts, questions, manual work and **one link** to review and approve |
 
-For an imported project of your own, the same three tools search the imported Git snapshot and documents instead; see the dashboard README.
+For an imported project of your own, the same three tools search the imported Git snapshot and documents instead; see the main README.
 
 ## Completeness before brevity
 
@@ -45,11 +45,14 @@ This follows [Executor's principle of targeted discovery and retrieval](https://
 
 | Start | Endpoint |
 |---|---|
-| `npm run dev` in `frontend/` | `http://localhost:5174/mcp` (runs inside the Vite server, dashboard at `/app/mcp`) |
+| `docker run -p 8080:8080 neuraldoc` | `http://localhost:8080/mcp` (same server as the app) |
+| `npm run dev` in `frontend/` | `http://localhost:5174/mcp` (runs inside the Vite server, app page at `/app/mcp`) |
 | `npm run mcp` in `frontend/` | `http://localhost:8787/mcp` (standalone) |
 | `node mcp/stdio.mjs` | stdio, for clients that start the server themselves |
 
 Token: `Authorization: Bearer nd_demo_mobiq_2b7f9c41e8` (or set `NEURALDOC_MCP_TOKEN`). Links point to the host of the request; with stdio to `NEURALDOC_APP_URL` (default `http://localhost:5174`).
+
+With Docker, use port 8080 instead of 5174.
 
 ```
 claude mcp add --transport http neuraldoc http://localhost:5174/mcp --header "Authorization: Bearer nd_demo_mobiq_2b7f9c41e8"
@@ -76,6 +79,6 @@ References: [Claude Code MCP prompts](https://code.claude.com/docs/en/mcp#use-mc
 - `sources.mjs`: GitLab, Jira, Confluence and SharePoint from the sample dataset (submodules in `datasets/`, paths via `dataset.mjs`), plus BM25 search and where each document lives. Real connections need API loaders as well as suitable domain rules and validation for the product at hand; the demo rules do not cover that in general.
 - `impact.mjs`: original sources, rule-based findings and code evidence; no dependency on the ground truth. `impact.test.mjs` checks completeness, new sources, changed parameters and on-demand loading.
 - `projects.mjs`, `project-import.mjs`, `project-mcp.mjs`: import and review of your own Git repository and documents.
-- Changes, documents, drafts and the audience filter come from `frontend/src/dashboard/features/docs/data.ts` and `logic.ts`, exactly what the dashboard shows. Node 24 loads the `.ts` files directly.
+- Changes, documents, drafts and the audience filter come from `frontend/src/dashboard/features/docs/showcase-data.ts` (through `data.ts`) and `logic.ts`, exactly what the app shows. Node 24 loads the `.ts` files directly.
 - `handler.mjs`: MCP over JSON-RPC 2.0, Streamable HTTP with JSON responses (no SSE), session ID via `Mcp-Session-Id`; plus `/api/mcp/*` for the dashboard. Decisions in the dashboard go to `/api/mcp/decisions` so the agent sees the current state.
-- State (rules, decisions, write-backs, MR comments, log, imported projects) lives in `mcp/state/`. Deleting it resets everything.
+- State (rules, decisions, write-backs, MR comments, log, imported projects) lives in `mcp/state/`, or in Docker in the volume `neuraldoc-data` (`/data`). Deleting it resets everything.

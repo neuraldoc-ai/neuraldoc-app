@@ -8,7 +8,7 @@ Up to four different texts are requested in parallel; identical concurrent reque
 
 ## Setup
 
-For `npm run dev`, set in `frontend/.env.local` and restart Vite (Vertex example; other providers are listed in the main README):
+With Docker, put these into the file passed with `--env-file` and start the container again; with `npm run dev`, set them in `frontend/.env.local` and restart Vite (Vertex example; other providers are listed in the main README):
 
 ```dotenv
 NEURALDOC_DRAFT_PROVIDER=vertex
@@ -20,7 +20,7 @@ VERTEX_API_KEY=your-existing-vertex-key
 NEURALDOC_GEMINI_MODEL=gemini-2.5-flash-lite
 ```
 
-The key comes from your own Google Cloud project and must be allowed to call Vertex AI. The adapter uses the [Vertex express endpoint](https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/express-mode/api-reference) at `aiplatform.googleapis.com`, where the key determines the project for billing and access. Keep the key only in the ignored `frontend/.env.local` or in a server environment variable.
+The key comes from your own Google Cloud project and must be allowed to call Vertex AI. The adapter uses the [Vertex express endpoint](https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/express-mode/api-reference) at `aiplatform.googleapis.com`, where the key determines the project for billing and access. Keep the key only in the env file / ignored `frontend/.env.local` or in a server environment variable.
 
 The key is read only by the Node server. Never use a `VITE_` variable for credentials. The standalone MCP server can load the same values from a local file:
 
@@ -34,7 +34,7 @@ Alternatively `gemini-3.5-flash-lite` with minimal thinking is enabled: globally
 
 Generated texts are stored permanently together with their writing context. With unchanged sources, model and prompt, exactly the same text is reused without a model call, also after restarts. Changed evidence produces a new cache key. There is no daily limit, no cost reservation and no extra countTokens call. Token counts reported by the model are kept in the draft. Failed or incomplete responses are never cached, and there are no automatic retries.
 
-Cache and approvable texts live in the ignored state folder or in `NEURALDOC_STATE_DIR`; in a container this folder belongs in a persistent volume. Identical requests are serialised within one server process. Browser requests must come from the same origin.
+Cache and approvable texts live in the ignored state folder or in `NEURALDOC_STATE_DIR`; in Docker it is the volume `neuraldoc-data`. Identical requests are serialised within one server process. Browser requests must come from the same origin.
 
 ## Clear prompt and validation
 

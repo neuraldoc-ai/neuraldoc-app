@@ -68,7 +68,8 @@ const providers: Record<
     label: "Lokales LLM",
     model: "qwen2.5:7b",
     lines: [
-      "NEURALDOC_LLM_BASE_URL=http://127.0.0.1:11434/v1",
+      "# Docker: host.docker.internal statt 127.0.0.1",
+      "NEURALDOC_LLM_BASE_URL=http://host.docker.internal:11434/v1",
       "# Nur setzen, wenn dein lokaler Server einen Key verlangt:",
       "NEURALDOC_LLM_API_KEY=",
     ],
@@ -138,7 +139,7 @@ export function ArchitecturePage() {
   });
   const setup = query.data;
   const template = [
-    "# In frontend/.env.local ergänzen; vorhandenen Jev-Key behalten.",
+    "# In .env ergänzen (ohne Docker: frontend/.env.local); vorhandenen Jev-Key behalten.",
     "TYPESAFE_API_KEY=dein-jev-key",
     "NEURALDOC_JEV_BUDGET_USD=0.25",
     "",
@@ -308,13 +309,14 @@ export function ArchitecturePage() {
                       1. Projekt vorbereiten
                     </CardTitle>
                     <CardDescription>
-                      Node.js 24 und npm installieren. Im Dashboard-Repository:
+                      Nur Git und Docker nötig. Repository klonen, Image bauen,
+                      .env.example nach .env kopieren:
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <Code
                       text={
-                        "cd neuraldoc-dashboard/frontend\nnpm ci\n# Nur beim ersten Einrichten (Windows):\nCopy-Item .env.example .env.local\n# macOS/Linux:\ncp .env.example .env.local"
+                        "git clone --recursive https://github.com/neuraldoc-ai/neuraldoc-app.git\ncd neuraldoc-app\ndocker build -t neuraldoc .\ncp .env.example .env   # Windows: Copy-Item .env.example .env"
                       }
                     />
                   </CardContent>
@@ -325,13 +327,18 @@ export function ArchitecturePage() {
                       3. Starten & eigene Daten prüfen
                     </CardTitle>
                     <CardDescription>
-                      Nach dem Speichern der Konfiguration:
+                      Git-Repository und Doku-Ordner in den Ordner projects
+                      legen, dann:
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="grid gap-3">
-                    <Code text={"npm run dev"} />
+                    <Code
+                      text={
+                        'docker run -d --name neuraldoc -p 8080:8080 --env-file .env -v neuraldoc-data:/data -v "$(pwd)/projects:/projects:ro" neuraldoc'
+                      }
+                    />
                     <ol className="grid list-decimal gap-1 pl-4 text-xs text-muted-foreground">
-                      <li>Übersicht → „Eigenes Projekt“: Git-Repository und Doku-Ordner angeben.</li>
+                      <li>Übersicht → „Eigenes Projekt“: /projects/… angeben.</li>
                       <li>„Mit Jev zuordnen“: Jev findet die betroffenen Dokumente.</li>
                       <li>„Starten“: dein LLM formuliert die Entwürfe.</li>
                       <li>Prüfen, übernehmen, „Freigaben exportieren“.</li>
@@ -339,10 +346,11 @@ export function ArchitecturePage() {
                     <p className="text-xs text-muted-foreground">
                       Öffnen:{" "}
                       <a className="underline underline-offset-4" href="/app/">
-                        http://localhost:5174/app/
+                        http://localhost:8080/app/
                       </a>
-                      . Bei geänderten Keys oder Modellen den Server neu
-                      starten.
+                      . Bei geänderten Keys oder Modellen den Container mit
+                      docker rm -f neuraldoc entfernen und neu starten; die
+                      Daten bleiben im Volume.
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Kosten entstehen nur bei „Mit Jev zuordnen“ und beim
@@ -359,8 +367,8 @@ export function ArchitecturePage() {
                     2. Jev + ein LLM einrichten
                   </CardTitle>
                   <CardDescription>
-                    Zeilen in frontend/.env.local ergänzen oder ersetzen.
-                    Schlüssel bleiben auf dem Node-Server.
+                    Zeilen in .env ergänzen oder ersetzen. Schlüssel bleiben
+                    auf dem Server.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-4">

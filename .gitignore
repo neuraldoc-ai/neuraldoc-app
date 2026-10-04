@@ -13,3 +13,7 @@
 # Throwaway artefacts from local tooling
 *.tmp.mjs
 .playwright-mcp/
+
+
+# Your own projects, mounted into the container as /projects
+/projects/
