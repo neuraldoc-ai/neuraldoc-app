@@ -327,19 +327,18 @@ export function ArchitecturePage() {
                       3. Starten & eigene Daten prüfen
                     </CardTitle>
                     <CardDescription>
-                      Git-Repository und Doku-Ordner in den Ordner projects
-                      legen, dann:
+                      Nach dem Speichern der Keys:
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="grid gap-3">
                     <Code
                       text={
-                        'docker run -d --name neuraldoc -p 8080:8080 --env-file .env -v neuraldoc-data:/data -v "$(pwd)/projects:/projects:ro" neuraldoc'
+                        "docker run -d --name neuraldoc -p 8080:8080 --env-file .env -v neuraldoc-data:/data neuraldoc"
                       }
                     />
                     <ol className="grid list-decimal gap-1 pl-4 text-xs text-muted-foreground">
-                      <li>Übersicht → „Eigenes Projekt“: /projects/… angeben.</li>
-                      <li>„Mit Jev zuordnen“: Jev findet die betroffenen Dokumente.</li>
+                      <li>Übersicht → „Eigenes Projekt“: Repository und Doku hineinziehen oder GitHub-URL angeben.</li>
+                      <li>„Erstprüfung starten“: Jev findet jede Stelle, an der die Doku nicht zum Code passt.</li>
                       <li>„Starten“: dein LLM formuliert die Entwürfe.</li>
                       <li>Prüfen, übernehmen, „Freigaben exportieren“.</li>
                     </ol>
@@ -353,7 +352,7 @@ export function ArchitecturePage() {
                       Daten bleiben im Volume.
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Kosten entstehen nur bei „Mit Jev zuordnen“ und beim
+                      Kosten entstehen nur bei der Erstprüfung und beim
                       Formulieren. Seitenaufrufe und der Showcase rufen kein
                       Modell auf. Nur Showcase ohne Import:
                       NEURALDOC_MODE=showcase.

@@ -2,7 +2,7 @@
 
 The generator writes replacement texts, new paragraphs with headings and table rows from a writing context. It needs the original text, the audience, the target location and evidence. It never selects documents and never approves a change. If information is missing, it returns a question instead of a text.
 
-**Where it runs.** In the showcase, "Starten" loads prepared MOBIQ examples; no model is called and free writing contexts are refused (HTTP 403). For an imported project of your own, "Starten" and "Formulieren" draft one text per document that Jev mapped to the changed code, from the document and the diffs of the mapped files. The command-line tool below works independently of the dashboard.
+**Where it runs.** In the showcase, "Starten" loads prepared MOBIQ examples; no model is called and free writing contexts are refused (HTTP 403). For an imported project of your own, "Starten" and "Formulieren" draft one correction per documentation section that the initial check found to contradict the current code, from the section and the matching code excerpts. The model may also answer that the text is right (`no_change`); such a proposal cannot be approved, only rejected. The command-line tool below works independently of the dashboard.
 
 Up to four different texts are requested in parallel; identical concurrent requests share one model call. Matching texts come from the persistent cache. Decided passages and manual tasks on images or files are skipped. On errors or missing context, finished texts stay stored and the failed passages can be retried.
 

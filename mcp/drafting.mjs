@@ -49,13 +49,16 @@ export function validateContext(input) {
 }
 
 export function validateDraft(value, context) {
-  if (!value || !['draft', 'needs_context'].includes(value.status) || typeof value.text !== 'string' || !Array.isArray(value.blocks) || !Array.isArray(value.rows) || typeof value.question !== 'string' || typeof value.reason !== 'string' || !Array.isArray(value.evidenceIds)) throw new DraftError('Das Modell hat keinen gültigen Entwurf geliefert.', 502)
+  if (!value || !['draft', 'needs_context', 'no_change'].includes(value.status) || typeof value.text !== 'string' || !Array.isArray(value.blocks) || !Array.isArray(value.rows) || typeof value.question !== 'string' || typeof value.reason !== 'string' || !Array.isArray(value.evidenceIds)) throw new DraftError('Das Modell hat keinen gültigen Entwurf geliefert.', 502)
   if (JSON.stringify(value).length > 16000 || value.blocks.some((b) => !b || !['h', 'p'].includes(b.kind) || typeof b.text !== 'string' || !b.text.trim()) || value.rows.some((r) => !Array.isArray(r) || r.some((s) => typeof s !== 'string'))) throw new DraftError('Das Modell hat ungültige Textblöcke geliefert.', 502)
   const allowed = new Set(context.evidence.map((e) => e.id))
   if (value.evidenceIds.some((id) => !allowed.has(id))) throw new DraftError('Der Entwurf verweist auf unbekannte Belege.', 502)
   const { op, columns, heading } = context.target
   if (value.status === 'needs_context') {
     if (!value.question.trim() || value.text || value.blocks.length || value.rows.length) throw new DraftError('Eine Rückfrage darf keinen ungesicherten Entwurf enthalten.', 502)
+  } else if (value.status === 'no_change') {
+    if (!/status=no_change/.test(context.target.instruction)) throw new DraftError('Für diese Textstelle ist „keine Änderung“ nicht vorgesehen.', 502)
+    if (!value.reason.trim() || value.text || value.blocks.length || value.rows.length) throw new DraftError('„Keine Änderung“ braucht eine Begründung und keinen Text.', 502)
   } else {
     if (!value.evidenceIds.length || !value.reason.trim()) throw new DraftError('Belegverweise oder Begründung fehlen.', 502)
     if (op === 'replace' && (!value.text.trim() || value.blocks.length || value.rows.length) || op === 'insert' && (!value.blocks.length || value.text || value.rows.length) || op === 'rows' && (!value.rows.length || value.rows.some((r) => r.length !== columns.length) || value.text || value.blocks.length)) throw new DraftError('Der Entwurf passt nicht zur ausgewählten Textstelle.', 502)

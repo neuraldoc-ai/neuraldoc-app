@@ -24,7 +24,7 @@ export function DatasetPage({ tab, onTab }: { tab: DataTab; onTab: (tab: DataTab
   const withCode = data.issues.filter((i) => i.hasCode).length
   const kinds = [...new Set(data.files.map((f) => ({ pdf: 'PDF', docx: 'Word', xlsx: 'Excel' })[f.kind]))].join(', ')
   const active = tab === 'doku-arten' ? 'dokumente' : tab
-  if (datasetMode === 'working') return <Frame title='Daten' lead='Dein Git-Vergleich und deine importierte Dokumentation.'><ProjectControls /><div className='flex gap-2'><button className='rounded-lg border px-3 py-2 text-sm hover:border-brand-300' onClick={() => onTab('gitlab')}>Code</button><button className='rounded-lg border px-3 py-2 text-sm hover:border-brand-300' onClick={() => onTab('dokumente')}>Dokumente</button></div><ImportedSources tab={tab} /></Frame>
+  if (datasetMode === 'working') return <Frame title='Daten' lead='Dein hochgeladener Code und deine Dokumentation.'><ProjectControls /><div className='flex gap-2'><button className='rounded-lg border px-3 py-2 text-sm hover:border-brand-300' onClick={() => onTab('gitlab')}>Code</button><button className='rounded-lg border px-3 py-2 text-sm hover:border-brand-300' onClick={() => onTab('dokumente')}>Dokumente</button></div><ImportedSources tab={tab} /></Frame>
   return (
     <Frame title='Daten' lead={`Beispieldatensatz MOBIQ ${data.release}. Karte anklicken, um den Inhalt zu sehen.`} actions={<AboutMobiq />}>
       <ProjectControls />

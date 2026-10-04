@@ -15,7 +15,7 @@ Include what you found, how to reproduce it and what an attacker could do with i
 neuraldoc is built to run locally for one person or a small team:
 
 - There is no user management. The MCP demo token is not an access control for a public network.
-- Paths in the import dialog can be chosen freely inside the mounted folder.
+- Uploads and GitHub URLs are processed in a temporary folder inside the container and deleted after the import. Only https URLs are cloned.
 - Write requests require the same origin or the MCP token; read endpoints have no further protection.
 
-Do not expose the app on a public network. Reports that only restate these documented limits are not vulnerabilities, but reports that break them in a local setup are, for example reading files outside the mounted folder, leaking keys into responses, caches or exports, or writing to an imported repository.
+Do not expose the app on a public network. Reports that only restate these documented limits are not vulnerabilities, but reports that break them in a local setup are, for example reading or writing files outside the upload folder, leaking keys into responses, caches or exports, or writing to an imported repository.

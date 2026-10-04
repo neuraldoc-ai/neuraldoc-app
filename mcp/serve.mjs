@@ -3,10 +3,17 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { middleware } from './handler.mjs'
+import { setupStatus } from './setup.mjs'
+import { log, logError } from './log.mjs'
+
+process.on('unhandledRejection', (error) => logError('process', error))
+process.on('uncaughtException', (error) => { logError('process', error); process.exit(1) })
+for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => { log.info('server', `${signal} empfangen, beende`); process.exit(0) })
 
 const root = fileURLToPath(new URL('../frontend/dist/', import.meta.url))
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.pdf': 'application/pdf', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.png': 'image/png', '.jpg': 'image/jpeg' }
-http.createServer((req, res) => {
+const port = Number(process.env.PORT ?? 8080)
+const server = http.createServer((req, res) => {
   Promise.resolve(middleware(req, res, () => {
     if (!['GET', 'HEAD'].includes(req.method)) { res.writeHead(405); res.end(); return }
     let pathname
@@ -19,5 +26,12 @@ http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': types[path.extname(file)] ?? 'application/octet-stream', 'Cache-Control': pathname.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache' })
     if (req.method === 'HEAD') res.end()
     else fs.createReadStream(file).pipe(res)
-  })).catch((error) => { console.error(error); if (!res.headersSent) res.writeHead(500); res.end() })
-}).listen(Number(process.env.PORT ?? 8080), '0.0.0.0')
+  })).catch((error) => { logError('http', error, { method: req.method, url: req.url }); if (!res.headersSent) res.writeHead(500); res.end() })
+})
+server.on('error', (error) => { logError('server', error, { port }); process.exit(1) })
+server.listen(port, '0.0.0.0', () => {
+  const setup = setupStatus(), mode = process.env.NEURALDOC_MODE === 'showcase' ? 'showcase' : 'showcase + eigene Projekte'
+  log.info('server', `neuraldoc läuft auf http://localhost:${port}/app/`, { mode, state: process.env.NEURALDOC_STATE_DIR || 'mcp/state' })
+  if (!fs.existsSync(path.join(root, 'app', 'index.html'))) log.error('server', 'Oberfläche fehlt: frontend/dist wurde nicht gebaut (npm run build).')
+  log.info('server', 'Konfiguration', { jev: setup.jev.configured ? 'Key gesetzt' : 'Key fehlt', llm: setup.drafting.configured ? `${setup.drafting.label} ${setup.drafting.model}` : `nicht eingerichtet (${setup.drafting.error || 'Key fehlt'})` })
+})

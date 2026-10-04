@@ -9,4 +9,3 @@ bench/runs
 datasets/mobiq-code
 **/.env
 **/.env.*
-projects

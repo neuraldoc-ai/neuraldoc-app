@@ -26,10 +26,10 @@
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
-Code changes every sprint, the manual, the dialog descriptions and the parameter lists do not. neuraldoc reads a code change, works out which documents now describe the wrong behaviour, and proposes the exact text change with the code that proves it.
+Code changes every sprint, the manual, the dialog descriptions and the parameter lists do not. Drop in your repository and your documents: neuraldoc compares every section with the current code, shows each place where they disagree, and proposes the exact text change with the code that proves it.
 
-- **Runs on your machine.** One Docker container: interface, API and MCP server. Your repository is mounted read-only and never modified.
-- **Every proposal has evidence.** Each text change links to the commit and the code lines it is based on. If the evidence is missing, neuraldoc asks a question instead of guessing.
+- **Runs on your machine.** One Docker container: interface, API and MCP server. Your files are never modified.
+- **Every proposal has evidence.** Each text change links to the code lines it is based on. If the evidence is missing, neuraldoc asks a question instead of guessing.
 - **A person decides.** Nothing is published automatically. You accept, edit or reject each proposal and export the approved texts.
 - **Bring your own model.** OpenAI, Claude, Gemini, Vertex AI or a local LLM via any OpenAI-compatible server.
 
@@ -62,21 +62,21 @@ Open **http://localhost:8080/app/**. You see the showcase: a fictional ERP vendo
 ```bash
 cp .env.example .env              # Windows: Copy-Item .env.example .env
 # put your keys into .env (see Configuration)
-mkdir projects                    # put your Git repository and docs folder in here
-
-docker run -p 8080:8080 --env-file .env \
-  -v neuraldoc-data:/data \
-  -v "$(pwd)/projects:/projects:ro" \
-  neuraldoc
+docker run -p 8080:8080 --env-file .env -v neuraldoc-data:/data neuraldoc
 ```
 
-In the app: **Übersicht → Eigenes Projekt**, enter `/projects/<your-repo>` and `/projects/<your-docs>`. Then:
+In the app, **Übersicht → Eigenes Projekt**:
 
-1. **Mit Jev zuordnen** maps every document to the changed code files.
-2. **Starten** lets your LLM draft one update per affected document.
-3. Review, accept or edit, then **Freigaben exportieren** downloads a ZIP with the approved documents.
+| | How | Required |
+|---|---|---|
+| **Repository** | Drag the folder in, pick a folder or ZIP, or paste a GitHub URL | yes |
+| **Documentation** | Drop PDFs, Word, Excel, PowerPoint, Markdown, text or HTML, or paste a GitHub URL | no |
 
-On Windows PowerShell write `-v "${PWD}/projects:/projects:ro"`, or any absolute folder such as `-v C:\Projekte:/projects:ro`.
+Without separate documentation, neuraldoc checks the READMEs, the `docs/` folder and the PDF and Office files inside the repository. `node_modules`, build output and `.env` files are filtered out in the browser before anything is uploaded.
+
+1. **Erstprüfung starten** compares every documentation section with the current code, as if the last release had just shipped, and lists each mismatch.
+2. **Starten** lets your LLM write the correction for each mismatch.
+3. Review, accept or edit, then **Freigaben exportieren** downloads a ZIP with the corrected documents.
 
 ---
 
@@ -106,18 +106,18 @@ On Windows PowerShell write `-v "${PWD}/projects:/projects:ro"`, or any absolute
 ## How it works
 
 ```
-your Git repo ──► code graph ──► Jev mapping ──► LLM draft ──► your review ──► ZIP export
- (read-only)      tree-sitter     which docs     text change    accept/edit     approved
-                  + SQL AST       are affected   + evidence     /reject         documents
+repo + docs ──► code graph ──► initial check ──► LLM draft ──► your review ──► ZIP export
+ (upload or      tree-sitter    Jev: which        correction    accept/edit     corrected
+  GitHub URL)    + SQL AST      sections disagree + evidence    /reject         documents
 ```
 
 | Step | What happens | Cost |
 |---|---|---|
-| **Import** | Reads the committed files of two Git revisions (default `HEAD~1` → `HEAD`) and your documentation folder. | free, local |
+| **Import** | Reads the code and the documents. PDF, Word, Excel and PowerPoint become text; long documents are split into sections. | free, local |
 | **Code graph** | Parses Java, Kotlin, TypeScript/TSX, Pascal (tree-sitter) and SQL (PostgreSQL parser) into files, functions, calls and tables. | free, local |
-| **Mapping** | [Jev](https://docs.typesafe.ai/api) rates each document against the changed code. Only confident links are accepted; uncertain ones stay open. | paid, capped by budget |
-| **Drafting** | Your LLM rewrites each affected document from the diffs. The response is validated against a JSON contract and its evidence IDs. | paid or local |
-| **Review & export** | You decide. The export contains the approved texts plus the SHA-256 of every original. | free, local |
+| **Initial check** | For every section, BM25 finds up to six matching places in the current code. [Jev](https://docs.typesafe.ai/api) rates each pair as *contradicts*, *consistent* or *unrelated*. Only confident contradictions become proposals. | paid, capped by budget |
+| **Drafting** | Your LLM corrects each mismatching section from those code places. It can also answer that the text is right, or ask a question. The response is validated against a JSON contract and its evidence IDs. | paid or local |
+| **Review & export** | You decide. Approved sections are merged back into their documents; PDF and Office files come back as Markdown. The export lists the SHA-256 of every original. | free, local |
 
 Every link in the graph is marked as **proven** (read from the code) or **derived** (from a model), so you always know what was found and what was guessed. Details: [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -140,8 +140,9 @@ All settings are environment variables, passed with `--env-file .env`. The templ
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `TYPESAFE_API_KEY` | Jev, maps documents to code. Required for your own projects. | none |
-| `NEURALDOC_JEV_BUDGET_USD` | Spending cap per mapping run (max 1 USD) | `0.25` |
+| `TYPESAFE_API_KEY` | Jev, checks documents against the code. Required for your own projects. | none |
+| `NEURALDOC_JEV_BUDGET_USD` | Spending cap per initial check (max 1 USD) | `0.25` |
+| `NEURALDOC_GIT_TOKEN` | GitHub token, only for importing private repositories by URL | none |
 | `NEURALDOC_DRAFT_PROVIDER` | `openai`, `anthropic`, `gemini`, `vertex` or `local` | none |
 | `NEURALDOC_LLM_MODEL` | Model used for drafting | provider default |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | Key for the chosen provider | none |
@@ -164,8 +165,8 @@ A local LLM on the same computer is reached from the container at `http://host.d
 
 ## Privacy
 
-- **Your repository stays where it is.** It is mounted read-only; neuraldoc reads committed files and writes nothing back.
-- **What leaves your machine:** document text and code excerpts go to Jev (TypeSafe API) when you click *Mit Jev zuordnen*, and to your LLM provider when you draft. With a local LLM, only the Jev request leaves your machine.
+- **Your files stay unchanged.** The upload goes only to your own container; the temporary copy is deleted after the import. Secrets such as `.env` files and private keys are filtered out in the browser and again on the server.
+- **What leaves your machine:** document text and code excerpts go to Jev (TypeSafe API) when you start the initial check, and to your LLM provider when you draft. With a local LLM, only the Jev request leaves your machine. A GitHub URL is cloned directly from GitHub.
 - **Showcase mode** makes no external calls at all.
 - **No telemetry**, no analytics, no tracking. Keys are read at runtime and never written to the image, the caches or the export.
 - Projects, decisions and caches live in the Docker volume `neuraldoc-data`. `docker volume rm neuraldoc-data` deletes everything.
@@ -178,11 +179,11 @@ neuraldoc is built for local use by one person or a small team. There is no user
 
 This is an early release. Known limits:
 
-- Up to 250 code files (100 KB each), 40 documents (8,000 characters each), 100 commits and 8 MB of diffs per import.
-- Documents: Markdown, MDX, plain text, RST and HTML (HTML is exported as text).
-- Deep analysis for Java, Kotlin, TypeScript/TSX, Pascal and SQL; other languages are imported as plain sources.
-- A draft replaces a whole document; there is no section-level mapping yet. Drafts are written in German.
-- Jev sees at most six changed files per document. There is no measured accuracy for your own projects yet.
+- Up to 1,500 code files (100 KB each), 400 documentation sections of about 6,000 characters, 200 MB per upload and 30 MB per document.
+- Scanned PDFs without a text layer cannot be read. Images and diagrams in documents are not checked.
+- Deep analysis for Java, Kotlin, TypeScript/TSX, Pascal and SQL; other languages are compared as plain text.
+- Code places are found by shared terms (BM25). A section that uses entirely different words than the code can be missed.
+- Drafts are written in German. There is no measured accuracy for your own projects yet.
 - Jira, Confluence and SharePoint are connected only in the showcase, not for your own projects.
 
 ---
@@ -196,9 +197,21 @@ The sample data are Git submodules. Run `git submodule update --init` in the clo
 </details>
 
 <details>
-<summary><b>Import says the path is not a Git repository</b></summary>
+<summary><b>Something fails and the app only shows a short message</b></summary>
 
-Inside Docker the paths start with `/projects/`, not with your local path. Enter the root folder of the repository (the one containing `.git`), and make sure it has at least two commits.
+Every start, import, check, draft and error is written to the container log, with the cause:
+
+```bash
+docker logs -f <container>        # or: Docker Desktop → Containers → neuraldoc → Logs
+```
+
+The first lines show whether the Jev key and the LLM provider are configured.
+</details>
+
+<details>
+<summary><b>Import finds no code or no documents</b></summary>
+
+Pick the top folder of the repository, the one with the source files. Without separate documentation, the repository needs a README, a `docs/` folder or PDF/Office files. A GitHub URL must be public, or set `NEURALDOC_GIT_TOKEN` for private repositories.
 </details>
 
 <details>

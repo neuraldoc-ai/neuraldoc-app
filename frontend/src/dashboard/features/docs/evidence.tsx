@@ -43,12 +43,11 @@ function checksFor(p: LiveProposal): Check[] {
         : { label: "Textstelle im Dokument", detail: "Der Text wurde nicht wörtlich gefunden.", state: "no" }
       : { label: "Einfügestelle im Dokument", detail: `Nach „${locationOf(p)}“.`, state: "ok" };
   if (datasetMode === "working") {
-    const links = jevLinks(p);
+    const against = jevLinks(p).filter((e) => e.evidence.decision?.verdict !== "consistent");
     return [
       place,
-      { label: "Änderung im Code", detail: `${found} von ${p.commits.length} Commits gefunden.`, state: found === p.commits.length && found > 0 ? "ok" : "no" },
-      { label: "Von Jev zugeordnet", detail: links.length ? `${links.length} geänderte ${links.length === 1 ? "Datei" : "Dateien"} betreffen dieses Dokument.` : "Keine belegte Zuordnung.", state: links.length ? "ok" : "no" },
-      { label: "Textentwurf aus Belegen", detail: p.generation?.status === "draft" ? `Mit ${p.generation.model} erzeugt.` : "Noch nicht erzeugt.", state: p.generation?.status === "draft" ? "ok" : "no" },
+      { label: "Widerspruch zum aktuellen Code", detail: against.length ? `Laut Jev passt der Text nicht zu ${against.map((e) => e.target.slice(5)).join(", ")}.` : "Kein belegter Widerspruch.", state: against.length ? "ok" : "no" },
+      { label: "Korrektur aus Belegen", detail: p.generation?.status === "draft" ? `Mit ${p.generation.model} formuliert.` : p.generation?.status === "no_change" ? "Laut Modell stimmt der Text." : "Noch nicht formuliert.", state: p.generation?.status === "draft" ? "ok" : "no" },
       { label: "Keine offene Frage", detail: p.question || "Fachliche Prüfung des Texts steht aus.", state: p.question ? "no" : "na" },
     ];
   }
@@ -190,11 +189,11 @@ function JevFiles({ p }: { p: LiveProposal }) {
   if (!links.length) return null;
   return (
     <div className="grid gap-1.5">
-      <span className="text-xs text-muted-foreground">Von Jev zugeordnete Code-Dateien</span>
+      <span className="text-xs text-muted-foreground">Codestellen laut Jev</span>
       {links.map((e) => (
         <span key={e.id} className="flex items-baseline justify-between gap-3 text-xs">
           <span className="break-all">{e.target.slice(5)}</span>
-          {e.evidence.decision && <span className="shrink-0 tabular-nums text-muted-foreground">{pct(e.evidence.decision.probability)}</span>}
+          {e.evidence.decision && <span className="shrink-0 tabular-nums text-muted-foreground">{e.evidence.decision.verdict === "consistent" ? "passt" : "widerspricht"} · {pct(e.evidence.decision.probability)}</span>}
         </span>
       ))}
     </div>
@@ -204,9 +203,9 @@ function JevFiles({ p }: { p: LiveProposal }) {
 function ProjectMethod() {
   return (
     <div className="grid gap-3 text-xs text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground">
-      <p><strong>Zuordnung.</strong> Jev vergleicht jedes Dokument mit bis zu sechs geänderten Code-Dateien. Eine Verbindung zählt nur ab 90 % Wahrscheinlichkeit und 80 % Sicherheit. Unsichere Dokumente bleiben unverändert.</p>
-      <p><strong>Textentwurf.</strong> Das Sprachmodell erhält das Dokument und die Diffs der zugeordneten Dateien. Es muss auf diese Belege verweisen oder eine Rückfrage stellen.</p>
-      <p><strong>Grenzen.</strong> Für eigene Projekte gibt es noch keine gemessene Trefferquote. Belege können gekürzt sein. Der Entwurf ersetzt das ganze Dokument und muss fachlich geprüft werden.</p>
+      <p><strong>Erstprüfung.</strong> Jev vergleicht jeden Doku-Abschnitt mit bis zu sechs passenden Stellen im aktuellen Code. Ein Widerspruch zählt nur ab 90 % Wahrscheinlichkeit und 80 % Sicherheit. Unsichere Abschnitte bleiben unverändert.</p>
+      <p><strong>Korrektur.</strong> Das Sprachmodell erhält den Abschnitt und diese Codestellen. Es muss auf die Belege verweisen, eine Rückfrage stellen oder bestätigen, dass der Text stimmt.</p>
+      <p><strong>Grenzen.</strong> Für eigene Projekte gibt es noch keine gemessene Trefferquote. Codestellen werden über gemeinsame Begriffe gefunden; was anders heißt, kann fehlen. Jede Korrektur muss fachlich geprüft werden.</p>
     </div>
   );
 }
@@ -362,7 +361,7 @@ export function EvidenceCard({ p }: { p?: LiveProposal }) {
             <CardContent className="grid gap-4">
               <span className="flex flex-wrap items-center gap-1.5">
                 <ConfidenceBadge confidence={p.confidence} />
-                <Button
+                {p.commits.length > 0 && <Button
                   variant="outline"
                   size="sm"
                   className="h-auto px-2 py-0.5 text-xs font-normal text-muted-foreground hover:text-foreground"
@@ -372,7 +371,7 @@ export function EvidenceCard({ p }: { p?: LiveProposal }) {
                   onClick={(event) => showCommits(p.commits[0], p.commits, event.currentTarget)}
                 >
                   {p.commits.length} {p.commits.length === 1 ? "Commit" : "Commits"}
-                </Button>
+                </Button>}
               </span>
               <Tabs defaultValue="belege" className="gap-4">
                 <TabsList className="w-full">

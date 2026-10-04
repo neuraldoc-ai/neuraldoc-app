@@ -15,5 +15,3 @@
 .playwright-mcp/
 
 
-# Your own projects, mounted into the container as /projects
-/projects/

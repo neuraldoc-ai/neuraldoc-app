@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { Proposal } from './data'
 
 export type Generation = {
-  status?: "draft" | "needs_context"
+  status?: "draft" | "needs_context" | "no_change"
   recommendation?: string
   answer?: string
   id: string
@@ -23,7 +23,7 @@ export async function refreshGenerated() {
 export async function generateProposal(id: string, answer?: string) {
   try {
   const response = await fetch('/api/mcp/drafts/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, answer }) })
-  const result = await response.json() as { error?: string; result: { status: 'draft' | 'needs_context'; question: string }; proposal?: GeneratedPatch }
+  const result = await response.json() as { error?: string; result: { status: 'draft' | 'needs_context' | 'no_change'; question: string }; proposal?: GeneratedPatch }
   if (!response.ok) {
     const message = result.error || 'Texterstellung fehlgeschlagen.'
     useGenerated.setState((s) => ({ errors: { ...s.errors, [id]: message } }))

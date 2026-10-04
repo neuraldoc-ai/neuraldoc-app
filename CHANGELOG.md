@@ -7,7 +7,11 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Added
 
 - Docker image with healthcheck, non-root user and volume `/data`; start with `docker build -t neuraldoc .` and `docker run`.
-- Import of your own projects from a read-only folder `/projects` inside the container.
+- Import of your own projects in the browser: drag and drop a folder or ZIP, or paste a GitHub URL. Documentation is optional; without it, READMEs, `docs/` and PDF/Office files in the repository are checked.
+- PDF, Word, Excel and PowerPoint documents; long documents are split into sections.
+- Initial check: every documentation section against the current code, as if the last release had just shipped. Confident contradictions become proposals.
+- Drafts can answer "no change needed".
+- Container logs for start, configuration, imports, checks, drafts and every error (`docker logs`).
 - CI for tests, build, lint and a Docker smoke test.
 - `ARCHITECTURE.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, guides under `docs/`.
 
@@ -15,6 +19,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - Repository renamed from `neuraldoc-dashboard` to `neuraldoc-app`.
 - README rewritten around the Docker start.
+- The import no longer takes local paths, Git revisions or component JSON, and no longer compares two commits.
 
 ## [0.1.0] - 2026-10-04
 

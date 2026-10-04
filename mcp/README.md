@@ -10,7 +10,7 @@ Three tools for the development team's coding agent (Claude Code, Cursor, VS Cod
 | `ask` | for a domain question | short quotes with sources, each marked "correct", "outdated" (with what the code does), "incomplete" or "updated" |
 | `check_change` | when the feature is done (MR, branch, ticket or commits) | the complete list of sources found with original names, locations and required change, plus prepared drafts, questions, manual work and **one link** to review and approve |
 
-For an imported project of your own, the same three tools search the imported Git snapshot and documents instead; see the main README.
+For an imported project of your own, `ask` and `ticket_context` search the uploaded code and documents, and `check_change` returns the result of the initial check; see the main README.
 
 ## Completeness before brevity
 
@@ -78,7 +78,8 @@ References: [Claude Code MCP prompts](https://code.claude.com/docs/en/mcp#use-mc
 - `core.mjs`: the three tools, approval rules, decisions, write-back, and a log with tokens (answer versus the raw data neuraldoc read for it; four characters per token).
 - `sources.mjs`: GitLab, Jira, Confluence and SharePoint from the sample dataset (submodules in `datasets/`, paths via `dataset.mjs`), plus BM25 search and where each document lives. Real connections need API loaders as well as suitable domain rules and validation for the product at hand; the demo rules do not cover that in general.
 - `impact.mjs`: original sources, rule-based findings and code evidence; no dependency on the ground truth. `impact.test.mjs` checks completeness, new sources, changed parameters and on-demand loading.
-- `projects.mjs`, `project-import.mjs`, `project-mcp.mjs`: import and review of your own Git repository and documents.
+- `project-upload.mjs`, `project-import.mjs`, `doc-text.mjs`, `projects.mjs`, `project-mcp.mjs`: upload or clone, text extraction, initial check and review of your own repository and documents.
+- `log.mjs`: one log line per event on stdout/stderr (`docker logs`).
 - Changes, documents, drafts and the audience filter come from `frontend/src/dashboard/features/docs/showcase-data.ts` (through `data.ts`) and `logic.ts`, exactly what the app shows. Node 24 loads the `.ts` files directly.
 - `handler.mjs`: MCP over JSON-RPC 2.0, Streamable HTTP with JSON responses (no SSE), session ID via `Mcp-Session-Id`; plus `/api/mcp/*` for the dashboard. Decisions in the dashboard go to `/api/mcp/decisions` so the agent sees the current state.
 - State (rules, decisions, write-backs, MR comments, log, imported projects) lives in `mcp/state/`, or in Docker in the volume `neuraldoc-data` (`/data`). Deleting it resets everything.

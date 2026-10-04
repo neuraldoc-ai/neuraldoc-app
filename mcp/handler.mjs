@@ -8,7 +8,9 @@ import { getPrompt, promptList } from './prompts.mjs'
 import { usage } from './usage.mjs'
 import { DraftError } from './drafting.mjs'
 import { setupStatus } from './setup.mjs'
-import { activeProject, addProject, activateProject, projectList, projectPayload, mapProject, projectDraft, projectDecisions, resetProjectDecisions, exportProject, showcaseOnly } from './projects.mjs'
+import { activeProject, addProject, activateProject, projectList, projectPayload, checkProject, projectDraft, projectDecisions, resetProjectDecisions, exportProject, showcaseOnly } from './projects.mjs'
+import { LIMITS } from '../frontend/src/dashboard/features/docs/import-rules.mjs'
+import { log, logError } from './log.mjs'
 import { proposals as exampleProposals } from '../frontend/src/dashboard/features/docs/showcase-data.ts'
 import { projectTools, projectTool } from './project-mcp.mjs'
 import { projectUsage } from './project-usage.mjs'
@@ -41,7 +43,7 @@ export async function handleMessage(msg, ctx = {}) {
         protocolVersion: SUPPORTED.includes(requested) ? requested : SUPPORTED[0],
         capabilities: { tools: { listChanged: false }, prompts: { listChanged: false } },
         serverInfo: SERVER_INFO,
-        instructions: activeProject() ? 'neuraldoc liest den importierten Git-Snapshot und lokale Dokumente. Fundstellen sind keine Bestätigung der Dokumentrichtigkeit. Freigabe und Export erfolgen im Dashboard.' : INSTRUCTIONS,
+        instructions: activeProject() ? 'neuraldoc liest den hochgeladenen Code-Stand und die Dokumente. Fundstellen sind keine Bestätigung der Dokumentrichtigkeit. Freigabe und Export erfolgen im Dashboard.' : INSTRUCTIONS,
       })
     }
     case 'notifications/initialized':
@@ -63,6 +65,7 @@ export async function handleMessage(msg, ctx = {}) {
       }
     case 'tools/call': {
       const { name, arguments: args } = msg.params ?? {}
+      log.info('mcp', `Werkzeug ${name}`, { client: ctx.client })
       if (activeProject()) return reply(await projectTool(name, args ?? {}))
       if (name === 'check_change' && args?.draft_id) return reply({ content: [{ type: 'text', text: 'Der Showcase verwendet vorbereitete Entwürfe. Eigene Daten unter Daten → Eigenes Projekt importieren.' }], isError: true })
       return reply(await callTool(name, args ?? {}, { client: ctx.client ?? 'unbekannt', origin: ctx.origin }))
@@ -76,18 +79,19 @@ export async function handleMessage(msg, ctx = {}) {
 /* HTTP                                                                */
 /* ------------------------------------------------------------------ */
 
-const readBody = (req, limit = 1048576) =>
+const readRaw = (req, limit = 1048576) =>
   new Promise((resolve, reject) => {
     const chunks = []
     let size = 0
     req.on('data', (c) => {
       size += c.length
-      if (size > limit) { reject(new DraftError('Anfrage zu groß.', 413)); return }
+      if (size > limit) { reject(new DraftError(`Anfrage zu groß (über ${Math.round(limit / 1e6)} MB).`, 413)); req.destroy(); return }
       chunks.push(c)
     })
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    req.on('end', () => resolve(Buffer.concat(chunks)))
     req.on('error', reject)
   })
+const readBody = async (req, limit) => (await readRaw(req, limit)).toString('utf8')
 const readJsonBody = async (req, limit) => JSON.parse((await readBody(req, limit)) || '{}')
 
 const send = (res, status, body, headers = {}) => {
@@ -140,21 +144,15 @@ async function api(req, res, path) {
     if (req.method === 'GET' && path === '/api/mcp/project') return send(res, 200, { ...projectPayload(), projects: projectList() }, { 'Cache-Control': 'no-store' })
     if (path.startsWith('/api/mcp/project/') && req.method === 'POST') {
       localMutation()
-      if (path === '/api/mcp/project/import') return send(res, 200, await addProject(await readJsonBody(req, 65536)))
+      if (path === '/api/mcp/project/import') return send(res, 200, await addProject(await readRaw(req, LIMITS.uploadBytes)))
       if (path === '/api/mcp/project/activate') return send(res, 200, activateProject((await readJsonBody(req)).id))
-      if (path === '/api/mcp/project/map') return send(res, 200, await mapProject())
+      if (path === '/api/mcp/project/check') return send(res, 200, await checkProject())
     }
     if (req.method === 'GET' && path === '/api/mcp/project/export') {
       return send(res, 200, exportProject(), { 'Content-Disposition': 'attachment; filename="neuraldoc-dokumentaenderungen.json"', 'Cache-Control': 'no-store' })
     }
     const project = activeProject()
     if (project) {
-      if (req.method === 'GET' && path === '/api/mcp/project/commit') {
-        const sha = new URL(req.url, 'http://localhost').searchParams.get('sha'), commit = project.dataset.bundles.flatMap((b) => b.commits).find((c) => c.hash === sha)
-        if (!commit) throw new Error('Importierter Commit nicht gefunden.')
-        const files = project.commitDiffs?.[sha] || []
-        return send(res, 200, { commit: { id: commit.hash, title: commit.message, message: commit.message, author_name: commit.author, committed_date: commit.date, stats: { additions: files.reduce((n, f) => n + f.diff.split('\n').filter((line) => line.startsWith('+') && !line.startsWith('+++')).length, 0), deletions: files.reduce((n, f) => n + f.diff.split('\n').filter((line) => line.startsWith('-') && !line.startsWith('---')).length, 0) } }, files })
-      }
       if (req.method === 'GET' && path === '/api/mcp/usage') return send(res, 200, projectUsage(new URL(req.url, 'http://localhost').searchParams))
       if (req.method === 'GET' && path === '/api/mcp/drafts') return send(res, 200, project.generated)
       if (req.method === 'POST' && path === '/api/mcp/drafts/generate') { localMutation(); const body = await readJsonBody(req); return send(res, 200, await projectDraft(body.id, body.answer)) }
@@ -164,7 +162,7 @@ async function api(req, res, path) {
       if (req.method === 'GET' && /^\/api\/mcp\/changes\//.test(path)) return send(res, 200, { checks: [], mrComment: null, approvers: Object.fromEntries(['nutzer','dialog','parameter','technik','installation','architektur'].map((id) => [id, { id: 'local', name: 'Lokaler Nutzer', role: 'Prüfung & Freigabe', self: true }])), writeBack: false, writebacks: [], targets: {} })
       if (req.method === 'GET' && path === '/api/mcp/activity') return send(res, 200, { log: [], checks: [], questions: [], writebacks: [], mrComments: [], stats: { calls: 0, answer: 0, raw: 0, perTool: {} } })
       if (req.method === 'POST' && path === '/api/mcp/rules') throw new DraftError('Lokale Projekte verwenden persönliche Freigaben und Dokumentexport.', 400)
-      if (req.method === 'GET' && path === '/api/mcp/info') return send(res, 200, { server: SERVER_INFO, token: TOKEN, protocol: SUPPORTED[0], ...info(), tools: projectTools, people: [{ id: 'local', name: 'Lokaler Nutzer', role: 'Prüfung & Freigabe' }], rules: { writeBack: false, mrComment: false, approvers: Object.fromEntries(['nutzer','dialog','parameter','technik','installation','architektur'].map((id) => [id, 'local'])) }, sources: [{ id: 'git', name: 'Git', items: `${project.files.length} Dateien · ${project.name}` }, { id: 'documents', name: 'Dokumente', items: `${project.docFiles.length} lokale Dokumente` }] })
+      if (req.method === 'GET' && path === '/api/mcp/info') return send(res, 200, { server: SERVER_INFO, token: TOKEN, protocol: SUPPORTED[0], ...info(), tools: projectTools, people: [{ id: 'local', name: 'Lokaler Nutzer', role: 'Prüfung & Freigabe' }], rules: { writeBack: false, mrComment: false, approvers: Object.fromEntries(['nutzer','dialog','parameter','technik','installation','architektur'].map((id) => [id, 'local'])) }, sources: [{ id: 'git', name: 'Repository', items: `${project.files.length} Code-Dateien · ${project.name}` }, { id: 'documents', name: 'Dokumente', items: `${project.docSources.length} Dokumente · ${project.docFiles.length} Abschnitte` }] })
     }
     if (!project && req.method === 'POST' && path === '/api/mcp/drafts/generate') {
       // The showcase never calls a paid model: prepared examples only, free contexts are refused.
@@ -197,14 +195,20 @@ async function api(req, res, path) {
     if (req.method === 'GET' && change) return send(res, 200, changeStatus(change[1]))
     return send(res, 404, { error: 'Nicht gefunden' })
   } catch (e) {
-    return send(res, e instanceof DraftError ? e.status : 400, { error: e.message })
+    const status = e instanceof DraftError ? e.status : 400
+    logError('api', e, { method: req.method, path, status })
+    if (!res.headersSent) return send(res, status, { error: e.message })
+    res.end()
   }
 }
 
 /** Connect-style middleware: handles /mcp and /api/mcp/*, passes everything else on. */
 export function middleware(req, res, next) {
   const path = (req.url ?? '/').split('?')[0]
-  if (path === '/mcp') return void mcpEndpoint(req, res)
-  if (path.startsWith('/api/mcp/')) return void api(req, res, path)
-  return next?.()
+  if (path !== '/mcp' && !path.startsWith('/api/mcp/')) return next?.()
+  // Changes and failures appear in the container log; successful reads stay quiet.
+  const started = Date.now()
+  res.on('finish', () => { if (req.method !== 'GET' || res.statusCode >= 400) log[res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info']('http', `${req.method} ${path} ${res.statusCode}`, { ms: Date.now() - started }) })
+  if (path === '/mcp') return void mcpEndpoint(req, res).catch((e) => { logError('mcp', e); if (!res.headersSent) send(res, 500, { error: 'Interner Fehler' }) })
+  return void api(req, res, path)
 }

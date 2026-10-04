@@ -79,7 +79,7 @@ export function createJevClient({ key, cachePath, budget = 0.25, fetchImpl = fet
       // Network/time-out failures are not retried: the provider may already have billed them.
       const res = await fetchImpl('https://api.typesafe.ai/v1/systemone', { method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, body: payload, signal: AbortSignal.timeout(90000) })
       if ([429, 529].includes(res.status) && attempt < 2) { await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt)); continue }
-      if (!res.ok) throw new Error(`Jev HTTP ${res.status}`)
+      if (!res.ok) throw new Error([401, 403].includes(res.status) ? `Jev lehnt den Key ab (HTTP ${res.status}). TYPESAFE_API_KEY prüfen.` : `Jev HTTP ${res.status}`)
       const data = validateResponse(await res.json(), request)
       response = { response: data, elapsedMs: Date.now() - started, createdAt: new Date().toISOString(), fingerprint }
       usage.requests++; usage.inputTokens += data.usage.input_tokens; usage.outputTokens += data.usage.output_tokens

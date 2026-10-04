@@ -39,7 +39,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { datasetMode, docs, release, type DocTypeId } from './data'
+import { datasetMode, docs, type DocTypeId } from './data'
 import { blueSoft, typeIcon } from './overview-icons'
 import { Frame } from './ui'
 import { UsageSection } from './usage'
@@ -129,7 +129,7 @@ const toolLook: Record<ToolName, { icon: typeof Ticket; when: string; input: str
 const projectLook: Record<ToolName, { input: string; returns: string[] }> = {
   ticket_context: { input: 'Aufgabe', returns: ['Fundstellen in Code und Doku'] },
   ask: { input: 'Frage', returns: ['Fundstellen mit Quelle'] },
-  check_change: { input: 'Git-Vergleich', returns: ['Betroffene Doku', 'Entwürfe', 'Link zum Freigeben'] },
+  check_change: { input: 'Erstprüfung', returns: ['Abweichende Doku', 'Entwürfe', 'Link zum Freigeben'] },
 }
 const ORDER: ToolName[] = ['ticket_context', 'ask', 'check_change']
 
@@ -373,7 +373,7 @@ type InputSpec = { key: string; label: string; placeholder: string; examples: st
 const projectInputs = (): Record<ToolName, InputSpec> => {
   const titles = docs.slice(0, 3).map((d) => d.title)
   return {
-    check_change: { key: 'ref', label: 'Git-Stand', placeholder: release.id, examples: [release.id] },
+    check_change: { key: 'ref', label: 'Prüfung', placeholder: 'Erstprüfung', examples: ['Erstprüfung'] },
     ask: { key: 'question', label: 'Frage', placeholder: titles[0] ?? 'Wonach suchst du?', examples: titles },
     ticket_context: { key: 'ticket', label: 'Aufgabe oder Frage', placeholder: titles[0] ?? 'Was willst du ändern?', examples: titles },
   }

@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { docTypes, release, datasetMode } from "./data";
-import { ProjectControls } from "./project-controls";
+import { ProjectControls, StartCheck } from "./project-controls";
 import { projectState } from "./project";
 import {
   docOf,
@@ -49,13 +49,16 @@ export function OverviewPage() {
   // Own projects: report what was imported and checked, never showcase routing numbers.
   const project = datasetMode === "working" ? projectState.project : null;
   const unmapped = !!project && !project.mapping;
+  const documentCount = project ? new Set(project.documents.map((d) => d.path)).size : 0;
+  const mismatches = project?.mapping?.mismatches ?? 0;
   const checked = project
     ? [
-        `${plural(project.files.filter((f) => f.changed).length, "geänderte Code-Datei", "geänderte Code-Dateien")} aus ${plural(sum.commits, "Commit", "Commits")} importiert`,
-        project.mapping
-          ? `${plural(project.mapping.subjects, "Dokument", "Dokumente")} mit Jev gegen die Änderungen geprüft`
-          : "Jev-Zuordnung steht noch aus",
-        ...(project.mapping ? [`${plural(project.mapping.deferred.length, "Dokument", "Dokumente")} ohne belegte Verbindung, bleiben unverändert`] : []),
+        `${plural(project.files.length, "Code-Datei", "Code-Dateien")} und ${plural(documentCount, "Dokument", "Dokumente")} importiert`,
+        ...(project.mapping ? [
+          `${plural(project.mapping.subjects, "Doku-Abschnitt", "Doku-Abschnitte")} mit Jev gegen den aktuellen Code geprüft`,
+          `${plural(project.mapping.consistent, "Abschnitt passt", "Abschnitte passen")} nachweislich zum Code`,
+          `${plural(project.mapping.deferred.length - project.mapping.consistent, "Abschnitt", "Abschnitte")} ohne erkennbaren Bezug zum Code, bleiben unverändert`,
+        ] : []),
       ]
     : null;
 
@@ -75,15 +78,17 @@ export function OverviewPage() {
             </span>
             <div className="grid gap-2">
               <span className="text-xs font-medium tracking-wide text-emerald-700 uppercase dark:text-emerald-300">
-                Release {release.id} · Prüfung abgeschlossen
+                {project ? "Eigenes Projekt" : `Release ${release.id}`} · Prüfung abgeschlossen
               </span>
               <p className="text-[26px] leading-tight font-medium tracking-tight">
-                Alle {plural(sum.total, "Vorschlag", "Vorschläge")} sind entschieden.
+                {sum.total === 1 ? "Der Vorschlag ist entschieden." : `Alle ${sum.total} Vorschläge sind entschieden.`}
               </p>
               <p className="max-w-[64ch] text-sm text-muted-foreground">
-                Die Vorschläge für {plural(sum.docsTouched, "Dokument", "Dokumente")}{" "}
-                sind übernommen oder verworfen. Für einen neuen Demo-Durchlauf
-                kannst du die Entscheidungen oben rechts zurücksetzen.
+                {project
+                  ? "„Freigaben exportieren“ lädt die korrigierten Dokumente als ZIP herunter. Deine Originaldateien bleiben unverändert."
+                  : <>Die Vorschläge für {plural(sum.docsTouched, "Dokument", "Dokumente")}{" "}
+                    sind übernommen oder verworfen. Für einen neuen Demo-Durchlauf
+                    kannst du die Entscheidungen oben rechts zurücksetzen.</>}
               </p>
             </div>
           </div>
@@ -91,20 +96,24 @@ export function OverviewPage() {
           <div className="grid gap-6 bg-brand-50/60 p-6 md:grid-cols-[1fr_auto] md:items-center dark:bg-brand-500/10">
             <div className="grid gap-2">
               <span className="text-xs font-medium tracking-wide text-brand-700 uppercase dark:text-brand-300">
-                {datasetMode === 'working' ? `Git-Stand ${release.id}` : `Release ${release.id} · Code-Freeze am ${fmtDate(release.freeze)}`}
+                {datasetMode === 'working' ? `Eigenes Projekt · importiert am ${fmtDate(release.freeze)}` : `Release ${release.id} · Code-Freeze am ${fmtDate(release.freeze)}`}
               </span>
               <p className="text-[26px] leading-tight font-medium tracking-tight">
-                {unmapped ? "Dokumente noch nicht zugeordnet." : <>Für {plural(sum.withDocs, "Feature", "Features")} liegen Doku-Änderungen vor.</>}
+                {project ? (unmapped ? "Doku noch nicht geprüft." : mismatches ? `${plural(mismatches, "Doku-Abschnitt weicht", "Doku-Abschnitte weichen")} vom Code ab.` : "Keine Abweichung gefunden.") : <>Für {plural(sum.withDocs, "Feature", "Features")} liegen Doku-Änderungen vor.</>}
               </p>
               <p className="max-w-[64ch] text-sm text-muted-foreground">
-                {unmapped
-                  ? `${plural(project.documents.length, "Dokument", "Dokumente")} importiert. „Mit Jev zuordnen“ prüft, welche davon die Code-Änderungen betreffen.`
+                {project
+                  ? unmapped
+                    ? "Die Erstprüfung vergleicht jedes Dokument mit dem aktuellen Code, als wäre das letzte Release gerade fertig, und zeigt jede Abweichung."
+                    : mismatches
+                      ? "„Starten“ formuliert die Korrekturen aus dem Code. Du prüfst jede Stelle und gibst sie frei."
+                      : "Jev hat keinen Widerspruch zwischen Doku und Code gefunden."
                   : <>neuraldoc hat {plural(sum.commits, "Commit", "Commits")} zu{" "}
                     {plural(sum.bundles, "Feature", "Features")} gebündelt. Beim Start werden die
                     Textvorschläge für die betroffenen Dokumente vorbereitet.</>}
               </p>
             </div>
-            <div className="grid justify-items-start gap-3 md:justify-items-end">
+            {unmapped ? <StartCheck /> : <div className="grid justify-items-start gap-3 md:justify-items-end">
               <span className="flex items-baseline gap-2">
                 <strong className="text-5xl font-medium tracking-tight tabular-nums">
                   {sum.open}
@@ -114,7 +123,7 @@ export function OverviewPage() {
                 </span>
               </span>
               <StartReview proposals={ps} first={first} label='Starten' />
-            </div>
+            </div>}
           </div>
         )}
       </Card>
@@ -126,10 +135,17 @@ export function OverviewPage() {
             <CardDescription>
               {allDone
                 ? "Zu diesen Features sind alle Vorschläge entschieden."
-                : "Features mit den meisten offenen Vorschlägen zuerst."}
+                : project
+                  ? "Abweichungen zwischen Doku und aktuellem Code."
+                  : "Features mit den meisten offenen Vorschlägen zuerst."}
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
+            {project && !allDone && open.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                {unmapped ? "Nach der Erstprüfung stehen hier die Abweichungen." : "Keine offenen Abweichungen."}
+              </p>
+            )}
             {allDone && (
               <ul className="grid gap-2 text-sm">
                 {bundles

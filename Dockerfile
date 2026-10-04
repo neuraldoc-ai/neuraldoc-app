@@ -2,8 +2,9 @@
 #
 # Build:  docker build -t neuraldoc .
 # Run:    docker run -p 8080:8080 -v neuraldoc-data:/data neuraldoc
-# Own:    docker run -p 8080:8080 --env-file .env -v neuraldoc-data:/data \
-#             -v "$(pwd)/projects:/projects:ro" neuraldoc
+# Keys:   docker run -p 8080:8080 --env-file .env -v neuraldoc-data:/data neuraldoc
+#         Own projects are uploaded in the browser: folder, ZIP or GitHub URL.
+# Logs:   docker logs -f <container>   (start, configuration, imports, checks, errors)
 #
 # Clone with --recursive: the MOBIQ showcase comes from the submodules in datasets/.
 # Keys are passed at runtime (--env-file) and never baked into the image.
@@ -28,9 +29,8 @@ LABEL org.opencontainers.image.title="neuraldoc-app" \
       org.opencontainers.image.description="neuraldoc: find outdated documentation after a code change and draft evidence-backed updates" \
       org.opencontainers.image.source="https://github.com/neuraldoc-ai/neuraldoc-app" \
       org.opencontainers.image.licenses="MIT"
-# The project import reads local Git repositories and parses them at runtime.
-# Mounted repositories belong to the host user; the import only reads them.
-RUN apk add --no-cache git && git config --system safe.directory '*'
+# Git clones repositories given by URL in the import dialog.
+RUN apk add --no-cache git
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
@@ -38,12 +38,13 @@ WORKDIR /app
 COPY --from=build /app/frontend/dist ./frontend/dist
 # The server shares the data contract and showcase fixtures with the UI.
 COPY frontend/src/dashboard/features/docs/ ./frontend/src/dashboard/features/docs/
+COPY frontend/server-deps.mjs ./frontend/
 COPY mcp/ ./mcp/
 COPY datasets/mobiq/data/ ./datasets/mobiq/data/
 COPY datasets/mobiq-docs/ ./datasets/mobiq-docs/
 COPY datasets/mobiq-db/ ./datasets/mobiq-db/
 # Projects, decisions and caches survive restarts in this volume.
-RUN mkdir -p /data /projects && chown node:node /data
+RUN mkdir -p /data && chown node:node /data
 ENV PORT=8080 NEURALDOC_APP_URL=http://localhost:8080 NEURALDOC_STATE_DIR=/data
 VOLUME /data
 USER node
