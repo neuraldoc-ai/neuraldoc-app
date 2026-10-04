@@ -116,3 +116,7 @@ Jev ergänzt fachliche Restzuordnungen und bewertet Dokument-Code-Paare für Dok
 Im Ordner `frontend`: `npm run brain:index` baut den Graphen offline. `npm run brain:map` ruft Jev ausdrücklich auf, unveränderte Requests kommen aus dem lokalen Cache. Der serverseitige Key heißt `TYPESAFE_API_KEY` in `frontend/.env.local`; kein `VITE_`-Präfix. Standardbudget: 0,25 USD pro Mapping-Lauf, mit `NEURALDOC_JEV_BUDGET_USD` konfigurierbar (höchstens 1 USD). Cache/Rohberichte unter `mcp/state/` sind ignoriert; veraltete Ergebnisse werden bei geändertem Eingabekontext nicht geladen. Ohne passende lokale Ergebnisse bleibt der Graph technisch nutzbar.
 
 `npm run brain:test` testet ohne Modellkosten. `npm run brain:evaluate` prüft 13 manuell beschriftete Paare mit Jev. `npm run brain:report` schreibt den [Testbericht](MAPPING_REPORT.md). Die [TypeSafe API](https://docs.typesafe.ai/api) wird mit dem festen Modell `jev-1.13.0` verwendet. Normale Seitenaufrufe und Frontend-Builds lösen keine Modellkosten aus.
+
+## Lizenz
+
+MIT, siehe [LICENSE](LICENSE). Die Oberfläche baut auf einer MIT-lizenzierten Vorlage auf; deren Hinweis steht in [frontend/LICENSE-DASHBOARD](frontend/LICENSE-DASHBOARD).
