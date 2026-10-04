@@ -12,9 +12,9 @@ export type SourceCommit = {
 
 // These demo summaries differ from the original GitLab commit titles.
 const sourceIds: Record<string, string> = {
-  '0d4e8f3': 'bce67ee918b392058d8c0fcc3db772596e699bd4',
-  '4a7e912': '6977c6cd54f01797f41b0a24e407517d2a402d6d',
-  'f0b8d31': '8b55cef67c9ab04bbe198c49d32d9af4665fc1dd',
+  '0d4e8f3': '4073737ff604d69589eeddf024efc77a4ac7ea77',
+  '4a7e912': 'ccbc28e3799931c623c8ebaf310a90a9ba61f1a5',
+  'f0b8d31': '3938d39a05bc35f55fefd352ad17372c4b5dea2e',
 }
 
 /** Resolve the demo's evidence IDs to their original GitLab commits, without fuzzy matching. */

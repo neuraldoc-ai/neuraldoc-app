@@ -99,7 +99,7 @@ The showcase uses the fictional evaluation dataset MOBIQ from four repositories,
 | Submodule | Contents |
 | --- | --- |
 | [`mobiq`](https://github.com/neuraldoc-ai/mobiq) | Generator, GitLab and Jira API responses, solution (`ground-truth.json`) |
-| [`mobiq-code`](https://github.com/neuraldoc-ai/mobiq-code) | The code repository with branches, merges and a tag (pinned to the dataset state `df9f414` on `release/26.4`) |
+| [`mobiq-code`](https://github.com/neuraldoc-ai/mobiq-code) | The code repository with branches, merges and a tag (pinned to the dataset state `ad176b2` on `release/26.4`) |
 | [`mobiq-docs`](https://github.com/neuraldoc-ai/mobiq-docs) | Confluence pages and SharePoint files |
 | [`mobiq-db`](https://github.com/neuraldoc-ai/mobiq-db) | PostgreSQL scripts and `docker compose` |
 
