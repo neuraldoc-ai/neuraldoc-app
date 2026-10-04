@@ -1,5 +1,5 @@
 // Retrieval only, no model calls: does a section's candidate list contain the code files its expected changes depend on?
-//   node --use-system-ca mcp/eval/retrieval.mjs [--bench mobiq,httpx,zx,cobra] [--strategies bm25,hybrid,graph]
+//   node --use-system-ca mcp/eval/retrieval.mjs [--bench mobiq,httpx,zx,cobra] [--strategies cap,nocap]  (BM25 with or without the test/script cap)
 import fs from 'node:fs'
 import path from 'node:path'
 import { evalDir, loadBenchmark, sectionsOf, BENCHMARKS } from './benchmarks.mjs'
@@ -15,7 +15,7 @@ export async function scoreRetrieval(name, strategies) {
   await projects.addProject(bench.upload)
   const p = projects.activeProject(), rows = []
   for (const strategy of strategies) {
-    const retriever = createRetriever(p.files, p.graph, { strategy })
+    const retriever = createRetriever(p.files), tests = strategy === 'nocap' ? Infinity : 1
     let hit6 = 0, hit12 = 0, rr = 0
     const misses = []
     for (const item of bench.items) {
@@ -25,8 +25,8 @@ export async function scoreRetrieval(name, strategies) {
         const ranked = retriever.rank(s, 48)
         const rel = (c) => item.files.some((f) => c.path === f || c.path.endsWith(`/${f}`))
         const at = ranked.findIndex(rel); if (at >= 0) best = Math.min(best, at + 1)
-        if (pick(ranked, 6).some(rel)) in6 = true
-        if (pick(ranked, 12).some(rel)) in12 = true
+        if (pick(ranked, 6, 2, tests).some(rel)) in6 = true
+        if (pick(ranked, 12, 2, tests).some(rel)) in12 = true
       }
       hit6 += in6; hit12 += in12; rr += Number.isFinite(best) ? 1 / best : 0
       if (!in6) misses.push(`${item.id}${sections.length ? '' : ' (Abschnitt fehlt)'}`)
@@ -38,7 +38,7 @@ export async function scoreRetrieval(name, strategies) {
 }
 
 if (import.meta.url === `file://${process.argv[1].replaceAll('\\', '/').replace(/^(?=[A-Z]:)/, '/')}`) {
-  const benches = arg('--bench', BENCHMARKS.join(',')).split(','), strategies = arg('--strategies', 'bm25,hybrid,graph').split(',')
+  const benches = arg('--bench', BENCHMARKS.join(',')).split(','), strategies = arg('--strategies', 'cap,nocap').split(',')
   const all = []
   for (const name of benches) all.push(...await scoreRetrieval(name, strategies))
   for (const r of all) console.log(`${r.bench.padEnd(6)} ${r.strategy.padEnd(14)} n=${String(r.items).padEnd(3)} recall@6 ${(r.recall6 * 100).toFixed(0).padStart(3)} %  recall@12 ${(r.recall12 * 100).toFixed(0).padStart(3)} %  MRR ${r.mrr.toFixed(2)}  verpasst@6: ${r.misses.join(' ')}`)

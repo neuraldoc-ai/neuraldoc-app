@@ -1,31 +1,29 @@
 // End-to-end evaluation of the initial check: import → Jev check → (drafts) → (judge). Jev, the drafting model and the
 // judge are called for real; identical requests come from the caches below mcp/state/eval (git-ignored).
 //
-//   node --use-system-ca --env-file=frontend/.env.local mcp/eval/run.mjs --bench mobiq,httpx,zx,cobra
-//        [--retrieval bm25|hybrid|graph] [--k 6] [--check jev|jev+llm|llm] [--check-model gemini-2.5-flash] [--drafts full|patch] [--draft-model gemini-2.5-flash-lite] [--judge] [--label name]
+//   node --use-system-ca --env-file=frontend/.env.local mcp/eval/run.mjs [--bench mobiq,httpx,zx,cobra] [--k 6]
+//        [--drafts] [--draft-model gemini-3.5-flash-lite] [--judge] [--label name]
+// The variants compared in mcp/eval/README.md (hybrid/graph retrieval, model findings, full-text drafts) live in commit be7355f.
 import fs from 'node:fs'
 import path from 'node:path'
 import { evalDir, loadBenchmark, sectionsOf, BENCHMARKS } from './benchmarks.mjs'
 import { judge, JUDGE_MODEL } from './judge.mjs'
 
 const arg = (name, fallback) => process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : fallback
-const benches = arg('--bench', BENCHMARKS.join(',')).split(','), retrieval = arg('--retrieval', 'hybrid'), k = Number(arg('--k', 6)), check = arg('--check', 'jev')
-const checkModel = arg('--check-model', null), drafts = arg('--drafts', null), draftModel = arg('--draft-model', null), withJudge = process.argv.includes('--judge')
-const label = arg('--label', `${check}${checkModel ? `(${checkModel})` : ''}-${retrieval}-k${k}${drafts ? `-${drafts}` : ''}${draftModel ? `-${draftModel}` : ''}`)
+const benches = arg('--bench', BENCHMARKS.join(',')).split(','), k = Number(arg('--k', 6))
+const drafts = process.argv.includes('--drafts'), draftModel = arg('--draft-model', null), withJudge = process.argv.includes('--judge')
+const label = arg('--label', `jev-bm25-k${k}${drafts ? '-patch2' : ''}${draftModel ? `-${draftModel}` : ''}`)
 process.env.NEURALDOC_STATE_DIR = evalDir
 delete process.env.NEURALDOC_MODE
 if (draftModel) process.env.NEURALDOC_GEMINI_MODEL = draftModel
-if (checkModel) process.env.NEURALDOC_CHECK_MODEL = checkModel
 const projects = await import('../projects.mjs')
 const { INPUT_USD_PER_MILLION } = await import('../semantic-mapping.mjs')
-// Cost of all findings calls of this check, cached or not (what a fresh run would cost).
-const llmCost = (p) => p.mapping.records.reduce((s, r) => s + (r.findingsUsage?.costUsd || 0), 0)
 const pct = (v) => v === null || Number.isNaN(v) ? '–' : `${(v * 100).toFixed(0)} %`
 
 async function evaluate(name) {
   const started = Date.now(), bench = loadBenchmark(name)
   await projects.addProject(bench.upload)
-  const checked = await projects.checkProject({ retrieval, k, judge: check }), p = projects.activeProject()
+  const checked = await projects.checkProject({ k }), p = projects.activeProject()
   const docs = p.docFiles.filter((d) => d.origin === 'docs'), sectionOf = new Map(p.docFiles.map((d) => [d.id, d]))
   const flaggedSections = new Set(checked.dataset.proposals.map((x) => x.doc).filter((id) => sectionOf.get(id)?.origin === 'docs'))
   const itemSections = new Map(bench.items.map((i) => [i.id, sectionsOf(i, p.docFiles, bench.keyOf)]))
@@ -42,12 +40,11 @@ async function evaluate(name) {
   const sectionsWithItems = new Set(bench.items.flatMap((i) => itemSections.get(i.id).map((s) => s.id)))
   const records = p.mapping.records.filter((r) => r.response)
   const result = {
-    bench: name, label, retrieval, k, check, at: new Date().toISOString(), documents: docKeys.length, sections: docs.length, codeFiles: p.files.length, items: bench.items.length, unmapped,
+    bench: name, label, retrieval: 'bm25', k, check: 'jev', at: new Date().toISOString(), documents: docKeys.length, sections: docs.length, codeFiles: p.files.length, items: bench.items.length, unmapped,
     doc: { recallMust: mustDocs.filter((key) => flaggedDocs.has(key)).length / (mustDocs.length || NaN), recallAny: anyDocs.filter((key) => flaggedDocs.has(key)).length / anyDocs.length, precision: flaggedDocs.size ? [...flaggedDocs].filter((key) => level.has(key)).length / flaggedDocs.size : null, flagged: flaggedDocs.size },
     item: { recallMust: must.length ? must.filter(found).length / must.length : null, recallAny: bench.items.filter(found).length / bench.items.length },
     section: { flagged: flaggedSections.size, precision: flaggedSections.size ? [...flaggedSections].filter((id) => sectionsWithItems.has(id)).length / flaggedSections.size : null },
     jev: { requests: records.length, inputTokens: records.reduce((s, r) => s + r.response.usage.input_tokens, 0), usd: records.reduce((s, r) => s + r.response.usage.input_tokens, 0) * INPUT_USD_PER_MILLION / 1e6, seconds: records.reduce((s, r) => s + (r.elapsedMs || 0), 0) / 1000, freshUsd: p.mapping.usage.estimatedUsd },
-    llm: p.mapping.llmUsage ? { model: p.mapping.llmModel, ...p.mapping.llmUsage, usdAll: llmCost(p) } : null,
     missedItems: bench.items.filter((i) => !found(i)).map((i) => `${i.id} (${i.level})`),
     falseSections: [...flaggedSections].filter((id) => !sectionsWithItems.has(id)).map((id) => sectionOf.get(id).title),
   }
@@ -57,7 +54,7 @@ async function evaluate(name) {
       const section = sectionOf.get(proposal.doc), items = bench.items.filter((i) => itemSections.get(i.id).some((s) => s.id === section.id))
       const row = { section: section.title, items: items.map((i) => i.id) }
       try {
-        const d = await projects.projectDraft(proposal.id, undefined, { mode: drafts })
+        const d = await projects.projectDraft(proposal.id)
         Object.assign(row, { status: d.result.status, reason: d.result.reason, text: d.result.text, usd: d.usage?.costUsd ?? null, model: d.model })
         if (withJudge && d.result.status === 'draft') row.judge = (await judge({ section, draft: d.result, items, evidence: d.context.evidence }, { cacheDir: path.join(evalDir, 'judge'), usage })).verdict
       } catch (error) { Object.assign(row, { status: 'rejected', reason: error.message }) }
@@ -68,7 +65,7 @@ async function evaluate(name) {
     for (const row of rows) for (const id of row.items) coverage.set(id, Math.max(coverage.get(id) || 0, score(row, id)))
     const correct = (row) => row.items.length ? row.status === 'draft' && row.judge && row.judge.items.some((v) => v.verdict === 'covered') && !row.judge.false_statements.length : row.status === 'no_change'
     result.drafts = {
-      variant: drafts, model: rows.find((r) => r.model)?.model || draftModel, total: rows.length,
+      variant: 'patch', model: rows.find((r) => r.model)?.model || draftModel, total: rows.length,
       status: Object.fromEntries(['draft', 'no_change', 'needs_context', 'rejected'].map((s) => [s, rows.filter((r) => r.status === s).length])),
       correct: withJudge ? rows.filter(correct).length : null,
       withFalse: withJudge ? rows.filter((r) => r.judge?.false_statements.length).length : null,
@@ -89,7 +86,6 @@ for (const name of benches) {
   console.log(`  Dokument: Recall must ${pct(r.doc.recallMust)} · alle ${pct(r.doc.recallAny)} · Precision ${pct(r.doc.precision)} (${r.doc.flagged} gemeldet)`)
   console.log(`  Item: Recall must ${pct(r.item.recallMust)} · alle ${pct(r.item.recallAny)} · Abschnitts-Precision ${pct(r.section.precision)} (${r.section.flagged} Abschnitte)`)
   console.log(`  Jev: ${r.jev.requests} Anfragen, ${r.jev.inputTokens} Tokens, ${r.jev.usd.toFixed(4)} USD (neu ${r.jev.freshUsd.toFixed(4)}), ${r.jev.seconds.toFixed(0)} s Modellzeit`)
-  if (r.llm) console.log(`  Befunde (${r.llm.model}): ${r.llm.requests} neu, ${r.llm.cached} Cache, ${r.llm.rejected} Befunde ohne gültiges Zitat verworfen, ${r.llm.usdAll.toFixed(4)} USD (neu ${r.llm.costUsd.toFixed(4)})`)
   console.log(`  Verpasst: ${r.missedItems.join(' ') || '–'}`)
   console.log(`  Ohne erwartete Änderung gemeldet: ${r.falseSections.join(' | ') || '–'}`)
   if (r.drafts) {

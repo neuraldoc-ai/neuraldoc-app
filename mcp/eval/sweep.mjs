@@ -12,7 +12,7 @@ const grid = [[0.6, 0.6], [0.6, 0.7], [0.6, 0.75], [0.6, 0.8], [0.6, 0.85], [0.6
 for (const name of arg('--bench', BENCHMARKS.join(',')).split(',')) {
   const bench = loadBenchmark(name), p = latest(name)
   const itemSections = bench.items.map((i) => sectionsOf(i, p.docFiles, bench.keyOf).map((s) => s.id)), withItems = new Set(itemSections.flat())
-  console.log(`\n${name} (${p.mapping.retrieval}, k=${p.mapping.candidates ?? 6})`)
+  console.log(`\n${name} (k=${p.mapping.candidates ?? 6})`)
   for (const [c, i] of grid) {
     const flag = rule(c, i), flagged = new Set(p.mapping.records.filter((r) => Object.entries(r.response?.answers || {}).some(([q, a]) => q.startsWith('code_') && a.confidence >= 0.5 && flag(a))).map((r) => r.doc).filter((id) => p.docFiles.find((d) => d.id === id)?.origin === 'docs'))
     const recall = itemSections.filter((ids) => ids.some((id) => flagged.has(id))).length / itemSections.length

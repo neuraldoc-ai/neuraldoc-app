@@ -155,8 +155,8 @@ All settings are environment variables, passed with `--env-file .env`. The templ
 |---|---|---|
 | OpenAI | `openai` | `gpt-4.1-mini` |
 | Claude | `anthropic` | `claude-haiku-4-5` |
-| Gemini | `gemini` | `gemini-2.5-flash-lite` |
-| Vertex AI | `vertex` | `gemini-2.5-flash-lite` |
+| Gemini | `gemini` | `gemini-3.5-flash-lite` |
+| Vertex AI | `vertex` | `gemini-3.5-flash-lite` |
 | Local | `local` | `qwen2.5:7b` |
 
 A local LLM on the same computer is reached from the container at `http://host.docker.internal:11434/v1` (Ollama), not `127.0.0.1`. On Linux add `--add-host host.docker.internal:host-gateway`. Provider details, cost rates and validation: [docs/llm-providers.md](docs/llm-providers.md).
@@ -183,7 +183,9 @@ This is an early release. Known limits:
 - Scanned PDFs without a text layer cannot be read. Images and diagrams in documents are not checked.
 - Deep analysis for Java, Kotlin, TypeScript/TSX, Pascal and SQL; other languages are compared as plain text.
 - Code places are found by shared terms (BM25). A section that uses entirely different words than the code can be missed.
-- Drafts are written in German. There is no measured accuracy for your own projects yet.
+- Measured on four projects ([mcp/eval/README.md](mcp/eval/README.md)): on the MOBIQ sample the check finds 89 % of the expected changes with 96 % precision. On real open-source projects (httpx, zx, cobra) it finds 75 to 100 % but reports two to five times more sections than the maintainers changed; most of those get a "no change" draft, the reviewer still sees them.
+- Drafts fix contradictions far more reliably than they add missing features: in the open-source projects only up to 13 % of the expected additions were drafted. Every draft names its evidence and needs your approval.
+- Drafts keep the language of the section (German and English are checked).
 - Jira, Confluence and SharePoint are connected only in the showcase, not for your own projects.
 
 ---

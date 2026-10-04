@@ -17,7 +17,7 @@ GOOGLE_CLOUD_LOCATION=global
 NEURALDOC_VERTEX_AUTH=api-key
 NEURALDOC_VERTEX_MODE=express
 VERTEX_API_KEY=your-existing-vertex-key
-NEURALDOC_GEMINI_MODEL=gemini-2.5-flash-lite
+NEURALDOC_GEMINI_MODEL=gemini-3.5-flash-lite
 ```
 
 The key comes from your own Google Cloud project and must be allowed to call Vertex AI. The adapter uses the [Vertex express endpoint](https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/express-mode/api-reference) at `aiplatform.googleapis.com`, where the key determines the project for billing and access. Keep the key only in the env file / ignored `frontend/.env.local` or in a server environment variable.
@@ -28,9 +28,9 @@ The key is read only by the Node server. Never use a `VITE_` variable for creden
 node --env-file=frontend/.env.local mcp/http.mjs
 ```
 
-The Vertex default is `gemini-2.5-flash-lite` with thinking explicitly off (`thinkingBudget: 0`) and at most 1,800 output tokens; the writing context is limited to 40,000 bytes. According to the [Vertex price list](https://cloud.google.com/vertex-ai/generative-ai/pricing), text costs $0.10 per million input tokens and $0.40 per million output tokens. Example: 4,000 input and 400 output tokens cost about $0.00056 (a calculation). A real single test on 3 October 2026 reported 4,059 input and 154 output tokens, i.e. $0.0004675 at these list prices, with thinking off, in an isolated temporary state.
+The default is `gemini-3.5-flash-lite` with minimal thinking: globally $0.30 input and $2.50 output per million tokens, 10 % more at non-global Vertex endpoints. In the evaluation ([eval/README.md](eval/README.md)) it wrote the fewest false statements and the most correct drafts at about $0.002 per draft. The writing context is limited to 40,000 bytes; full-section drafts get at most 1,800 output tokens, line edits 4,000.
 
-Alternatively `gemini-3.5-flash-lite` with minimal thinking is enabled: globally $0.30 input and $2.50 output per million tokens, 10 % more at non-global Vertex endpoints. There is no automatic fallback; other Gemini models are blocked. Prices as of 3 October 2026; the constants in `drafting.mjs` must be updated when prices change. The Gemini Developer API is used only with an explicit `NEURALDOC_DRAFT_PROVIDER=gemini` and `GEMINI_API_KEY`; Vertex requests never use that key.
+Alternatively `gemini-2.5-flash-lite` with thinking explicitly off (`thinkingBudget: 0`) is enabled: $0.10 per million input tokens and $0.40 per million output tokens according to the [Vertex price list](https://cloud.google.com/vertex-ai/generative-ai/pricing), about $0.0005 per draft, but with clearly more false statements in the evaluation. There is no automatic fallback; other Gemini models are blocked. Prices as of 3 October 2026; the constants in `drafting.mjs` must be updated when prices change. The Gemini Developer API is used only with an explicit `NEURALDOC_DRAFT_PROVIDER=gemini` and `GEMINI_API_KEY`; Vertex requests never use that key.
 
 Generated texts are stored permanently together with their writing context. With unchanged sources, model and prompt, exactly the same text is reused without a model call, also after restarts. Changed evidence produces a new cache key. There is no daily limit, no cost reservation and no extra countTokens call. Token counts reported by the model are kept in the draft. Failed or incomplete responses are never cached, and there are no automatic retries.
 
@@ -38,11 +38,20 @@ Cache and approvable texts live in the ignored state folder or in `NEURALDOC_STA
 
 ## Clear prompt and validation
 
-The complete system prompt is in [draft-prompt.mjs](draft-prompt.mjs). It separates product evidence from existing documentation and the writing task. Ticket requirements must not be described as implemented without matching code evidence. Numbers and dialog names must not be invented. Source data are never instructions to the model. The prompt currently asks for German documentation text, written for the audience of each document.
+The complete system prompt is in [draft-prompt.mjs](draft-prompt.mjs). It separates product evidence from existing documentation and the writing task. Ticket requirements must not be described as implemented without matching code evidence. Numbers and dialog names must not be invented. Source data are never instructions to the model. The full-text prompt (showcase) asks for German documentation text, written for the audience of each document; line edits for your own project keep the language of the section.
 
 The model returns structured JSON. The server checks the schema, referenced evidence IDs, table width, required headings and complete responses. This validation covers form and references, not general factual truth. All generated texts are marked for a quick review (`Kurz prüfen` in the German interface) and excluded from the demo accuracy statistics. Approval stores the wording actually accepted. Decided passages are never regenerated. A question or an error leaves the previous text in place.
 
 Approval writes only to the local decision log (showcase) or the project state (own project). Confluence/SharePoint write-back is simulated; own projects are exported as a ZIP.
+
+### Line edits for your own project (`target.op: "patch"`)
+
+For your own project the model does not rewrite the section. It gets the section with line numbers and the prompt `PATCH_PROMPT` (version `documentation-patch-v2`) and answers in two steps:
+
+1. `findings`: each with `doc_quote` (literal from the section), `evidence_id` and `code_quote` (literal from that code excerpt) and a short `problem`.
+2. `edits`: `replace` lines start to end, `insert_after` a line (0 = before the first) or `delete`, at most 20.
+
+The server accepts a draft only with at least one finding whose two quotes it finds (ignoring Markdown emphasis, quote styles and whitespace), applies the edits bottom-up to the exact section and rejects overlapping or out-of-range edits, a result identical to the original, more than 40 % changed lines, two or more lines copied from the code evidence, and new lines in another language than the section (German/English by function words). Verified findings are stored with the draft and shown as its evidence. The written text follows the language of the section; `reason` and `question` stay German for the interface.
 
 ## MCP and your own writing context
 

@@ -10,7 +10,6 @@ const DEFAULT_STATE = fileURLToPath(new URL('./state/', import.meta.url))
 const PRICES = {
   'gemini-3.5-flash-lite': { input: 0.30, output: 2.50, thinkingConfig: { thinkingLevel: 'minimal' } },
   'gemini-2.5-flash-lite': { input: 0.10, output: 0.40, thinkingConfig: { thinkingBudget: 0 } },
-  'gemini-2.5-flash': { input: 0.30, output: 2.50, thinkingConfig: { thinkingBudget: 0 } },
 }
 const OUTPUT_LIMIT = 1800
 export class DraftError extends Error {
@@ -142,7 +141,7 @@ export function draftingConfig(env = process.env) {
   const provider = env.NEURALDOC_DRAFT_PROVIDER === 'claude' ? 'anthropic' : env.NEURALDOC_DRAFT_PROVIDER || 'vertex'
   if (!Object.hasOwn(PROVIDER_LABELS, provider)) throw new DraftError('Anbieter muss vertex, gemini, openai, anthropic oder local sein.')
   const google = ['vertex', 'gemini'].includes(provider)
-  const model = env.NEURALDOC_LLM_MODEL || (google ? env.NEURALDOC_GEMINI_MODEL || (provider === 'vertex' ? 'gemini-2.5-flash-lite' : 'gemini-3.5-flash-lite') : DEFAULT_MODELS[provider])
+  const model = env.NEURALDOC_LLM_MODEL || (google ? env.NEURALDOC_GEMINI_MODEL || 'gemini-3.5-flash-lite' : DEFAULT_MODELS[provider])
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_./:@-]{0,199}$/.test(model)) throw new DraftError('Ungültiger Modellname.')
   if (google && !PRICES[model]) throw new DraftError(`Für Gemini sind nur ${Object.keys(PRICES).join(', ')} freigeschaltet.`)
   const project = env.GOOGLE_CLOUD_PROJECT || ''

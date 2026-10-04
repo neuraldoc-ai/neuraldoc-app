@@ -14,8 +14,8 @@ Set the variables in `.env` and pass it with `docker run --env-file .env`, or pu
 | OpenAI | `openai` | `OPENAI_API_KEY` | `gpt-4.1-mini` |
 | Claude | `anthropic` (alias `claude`) | `ANTHROPIC_API_KEY` | `claude-haiku-4-5` |
 | Local | `local` | `NEURALDOC_LLM_BASE_URL`, optionally `NEURALDOC_LLM_API_KEY` | `qwen2.5:7b` |
-| Gemini | `gemini` | `GEMINI_API_KEY` | `gemini-2.5-flash-lite` |
-| Vertex AI | `vertex` | `VERTEX_API_KEY`, `GOOGLE_CLOUD_PROJECT`, location and mode | `gemini-2.5-flash-lite` |
+| Gemini | `gemini` | `GEMINI_API_KEY` | `gemini-3.5-flash-lite` |
+| Vertex AI | `vertex` | `VERTEX_API_KEY`, `GOOGLE_CLOUD_PROJECT`, location and mode | `gemini-3.5-flash-lite` |
 
 `NEURALDOC_LLM_MODEL` selects the model. The older Gemini setting `NEURALDOC_GEMINI_MODEL` still works. For Google, the Flash-Lite models are enabled; for OpenAI and Claude the chosen model must support structured JSON output. There is no automatic fallback to another provider. The full Vertex setup is described in [mcp/DRAFTING.md](../mcp/DRAFTING.md).
 

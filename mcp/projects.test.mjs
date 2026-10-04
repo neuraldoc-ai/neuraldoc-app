@@ -90,9 +90,11 @@ const llm = (reply) => ({ generate: (context, options) => generateDraft(context,
   const sent = JSON.parse(JSON.parse(request.body).messages[1].content)
   return { ok: true, status: 200, json: async () => ({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(reply(sent)) } }], usage: { prompt_tokens: 500, completion_tokens: 80 } }) }
 } }) })
-const draftReply = (sent) => ({ status: 'draft', text: '# Rabatt\n\nAb 1.000 EUR Auftragswert beträgt der Rabatt 15 Prozent, darunter 10 Prozent.\n', blocks: [], rows: [], reason: 'discount() staffelt ab 1000.', question: '', evidenceIds: [sent.evidence[0].id] })
-const questionReply = () => ({ status: 'needs_context', text: '', blocks: [], rows: [], reason: 'Gilt die Grenze brutto oder netto?', question: 'Ist der Auftragswert brutto oder netto?', evidenceIds: [] })
-const noChangeReply = (sent) => ({ status: 'no_change', text: '', blocks: [], rows: [], reason: 'Der Code bestätigt den Text.', question: '', evidenceIds: [sent.evidence[0].id] })
+// Own-project drafts are line edits (target.op patch) with findings quoted from the section and the code.
+const finding = (sent) => ({ doc_quote: 'Der Rabatt beträgt immer 10 Prozent', evidence_id: sent.evidence[0].id, code_quote: 'total >= 1000 ? total * 0.15', problem: 'Ab 1000 gilt 15 Prozent.' })
+const draftReply = (sent) => ({ status: 'draft', findings: [finding(sent)], edits: [{ op: 'replace', start: 3, end: 3, text: 'Ab 1.000 EUR Auftragswert beträgt der Rabatt 15 Prozent, darunter 10 Prozent.' }], reason: 'discount() staffelt ab 1000.', question: '', evidenceIds: [sent.evidence[0].id] })
+const questionReply = () => ({ status: 'needs_context', findings: [], edits: [], reason: 'Gilt die Grenze brutto oder netto?', question: 'Ist der Auftragswert brutto oder netto?', evidenceIds: [] })
+const noChangeReply = (sent) => ({ status: 'no_change', findings: [], edits: [], reason: 'Der Code bestätigt den Text.', question: '', evidenceIds: [sent.evidence[0].id] })
 
 test('import rules: repository documents, ignored folders, secrets and URLs', () => {
   assert.equal(classify('README.md', 'repo'), 'doc')
@@ -222,18 +224,36 @@ test('drafts: question, "no change" and a validated correction from the current 
   assert.match(same.proposal.question, /verwerfen/)
   assert.throws(() => projects.projectDecisions({ id: proposal.id, decision: { state: 'uebernommen' } }), /Textentwurf/)
   await assert.rejects(projects.projectDraft(proposal.id, 'Brutto.', llm(() => draftReply({ evidence: [{ id: 'invented' }] }))), /unbekannte Belege/)
+  await assert.rejects(projects.projectDraft(proposal.id, 'Ohne Beleg.', llm((sent) => ({ ...draftReply(sent), findings: [{ ...finding(sent), code_quote: 'total * 0.20' }] }))), /Kein Befund/)
   const draft = await projects.projectDraft(proposal.id, 'Netto.', llm(draftReply))
   assert.equal(draft.result.status, 'draft')
+  assert.equal(draft.result.text, '# Rabatt\n\nAb 1.000 EUR Auftragswert beträgt der Rabatt 15 Prozent, darunter 10 Prozent.\n', 'edits applied to the exact section')
+  assert.equal(draft.proposal.generation.findings[0].problem, 'Ab 1000 gilt 15 Prozent.')
+  assert.match(draft.context.evidence[0].source, /Prüfung: widerspricht dem Abschnitt/)
   assert.ok(draft.context.evidence.some((e) => e.id.startsWith('code:') && e.text.includes('0.15') && /src\/pricing\.ts, Zeilen 1-/.test(e.source)))
   assert.ok(Buffer.byteLength(JSON.stringify(draft.context)) <= 40000)
-  assert.equal(llmCalls, 4)
+  assert.equal(llmCalls, 5)
   const cached = await projects.projectDraft(proposal.id, 'Netto.', llm(() => { throw new Error('must use cache') }))
   assert.equal(cached.cached, true)
 })
 
 test('"no change" is only valid where the task allows it', async () => {
   const context = { change: { id: 'c', title: 'c' }, document: { id: 'd', title: 'd', type: 't', audience: 'a', section: 's', before: 'Alt', surrounding: '' }, target: { id: 't', op: 'replace', instruction: 'Formuliere neu.' }, evidence: [{ id: 'e', source: 's', text: 'x' }] }
-  await assert.rejects(llm(noChangeReply).generate(context, { config: { ...(await import('./drafting.mjs')).draftingConfig({ ...process.env, NEURALDOC_STATE_DIR: path.join(root, 'nc') }) } }), /nicht vorgesehen/)
+  const noChangeFull = (sent) => ({ status: 'no_change', text: '', blocks: [], rows: [], reason: 'Der Code bestätigt den Text.', question: '', evidenceIds: [sent.evidence[0].id] })
+  await assert.rejects(llm(noChangeFull).generate(context, { config: { ...(await import('./drafting.mjs')).draftingConfig({ ...process.env, NEURALDOC_STATE_DIR: path.join(root, 'nc') }) } }), /nicht vorgesehen/)
+})
+
+test('one malformed Jev answer is retried once, then only its section is skipped', async () => {
+  let calls = 0
+  const flaky = async (url, options) => {
+    if (JSON.parse(options.body).state.document.path.endsWith('export.pdf')) { calls++; return { ok: true, status: 200, json: async () => ({ model: MODEL, answers: {}, usage: { input_tokens: 1, output_tokens: 1 } }) } }
+    return jevFetch(decide)(url, options)
+  }
+  const payload = await projects.checkProject({ createClient: (options) => createJevClient({ ...options, cachePath: path.join(root, 'flaky-cache.json'), fetchImpl: flaky }) })
+  assert.equal(calls, 2, 'one retry')
+  const p = projects.activeProject(), pdf = p.docFiles.find((d) => d.path.endsWith('export.pdf'))
+  assert.equal(p.mapping.records.find((r) => r.doc === pdf.id).skipped, 'Jev-Antwort ungültig.')
+  assert.ok(payload.dataset.proposals.some((x) => x.id === proposal.id), 'the other sections are still checked')
 })
 
 test('approval, edit, revoke and export: approved text merged into its document', async () => {

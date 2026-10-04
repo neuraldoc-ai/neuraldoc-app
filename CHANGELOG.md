@@ -15,8 +15,13 @@ All notable changes to this project are documented here. The format follows [Kee
 - Container logs for start, configuration, imports, checks, drafts and every error (`docker logs`).
 - CI for tests, build, lint and a Docker smoke test.
 - `ARCHITECTURE.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, guides under `docs/`.
+- Evaluation of the initial check in `mcp/eval`: MOBIQ plus three open-source benchmarks from real project history (httpx, zx, cobra), item-level scoring, a calibrated LLM judge for drafts, cost and time per variant.
 
 ### Changed
+
+- Drafts for your own project are line edits on the numbered section with quoted findings. A draft needs at least one finding whose quotes appear in the section and in a code excerpt; untouched lines cannot be lost, and a draft that switches the section's language (German/English) is rejected.
+- Default Gemini model for drafts is `gemini-3.5-flash-lite` (fewest false statements in the evaluation, about 0.002 USD per draft).
+- The initial check passes at most one excerpt from tests or build scripts per section to Jev, retries a malformed Jev answer once and then skips only that section instead of failing the whole check.
 
 - Repository renamed from `neuraldoc-dashboard` to `neuraldoc-app`.
 - README rewritten around the Docker start.

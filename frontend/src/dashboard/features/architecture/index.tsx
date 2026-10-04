@@ -76,12 +76,12 @@ const providers: Record<
   },
   gemini: {
     label: "Gemini",
-    model: "gemini-2.5-flash-lite",
+    model: "gemini-3.5-flash-lite",
     lines: ["GEMINI_API_KEY=dein-gemini-key"],
   },
   vertex: {
     label: "Gemini · Vertex AI",
-    model: "gemini-2.5-flash-lite",
+    model: "gemini-3.5-flash-lite",
     lines: [
       "GOOGLE_CLOUD_PROJECT=deine-projekt-id",
       "GOOGLE_CLOUD_LOCATION=global",

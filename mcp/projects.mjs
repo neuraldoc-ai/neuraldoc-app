@@ -6,7 +6,6 @@ import { withUpload } from './project-upload.mjs'
 import { createJevClient, MODEL } from './semantic-mapping.mjs'
 import { codeChunks, createRetriever, pick } from './retrieval.mjs'
 import { DraftError, draftingConfig, generateDraft } from './drafting.mjs'
-import { absentNames, findDiscrepancies } from './findings.mjs'
 import { log } from './log.mjs'
 
 export const projectsDir = path.join(process.env.NEURALDOC_STATE_DIR || fileURLToPath(new URL('./state/', import.meta.url)), 'projects')
@@ -79,16 +78,13 @@ const CRITERIA = {
 /**
  * Initial check: every document section against the best-matching excerpts of the current code,
  * as if the last release had just shipped. Every confident contradiction becomes a proposal.
- * judge: 'jev' (pair verdicts), 'jev+llm' (Jev screens, the drafting model confirms with quoted findings) or 'llm' (findings only).
  */
-export async function checkProject({ createClient = createJevClient, retrieval = process.env.NEURALDOC_RETRIEVAL || 'hybrid', k = 6, judge = process.env.NEURALDOC_JUDGE || 'jev', modelFetch = fetch } = {}) {
-  if (!['jev', 'jev+llm', 'llm'].includes(judge)) throw new Error('NEURALDOC_JUDGE muss jev, jev+llm oder llm sein.')
+export async function checkProject({ createClient = createJevClient, k = 6 } = {}) {
   return exclusive(async () => {
     const p = requireProject(), started = Date.now()
-    const llm = judge === 'jev' ? null : draftingConfig({ ...process.env, NEURALDOC_STATE_DIR: path.join(projectsDir, p.id), ...(process.env.NEURALDOC_CHECK_MODEL ? { NEURALDOC_LLM_MODEL: process.env.NEURALDOC_CHECK_MODEL } : {}) }), llmUsage = { requests: 0, cached: 0, rejected: 0, costUsd: 0 }
-    const client = judge === 'llm' ? { usage: { requests: 0, cached: 0, inputTokens: 0, outputTokens: 0, estimatedUsd: 0 } } : createClient({ key: key(), cachePath: path.join(projectsDir, p.id, 'jev-cache.json'), budget: Number(process.env.NEURALDOC_JEV_BUDGET_USD || .25) })
-    const retriever = createRetriever(p.files, p.graph, { strategy: retrieval }), chunks = retriever.chunks, records = []
-    log.info('check', 'Erstprüfung gestartet', { project: p.name, sections: p.docFiles.length, excerpts: chunks.length, retrieval })
+    const client = createClient({ key: key(), cachePath: path.join(projectsDir, p.id, 'jev-cache.json'), budget: Number(process.env.NEURALDOC_JEV_BUDGET_USD || .25) })
+    const retriever = createRetriever(p.files), chunks = retriever.chunks, records = []
+    log.info('check', 'Erstprüfung gestartet', { project: p.name, sections: p.docFiles.length, excerpts: chunks.length })
     for (const [n, doc] of p.docFiles.entries()) {
       const candidates = pick(retriever.rank(doc, 48), k)
       if (!candidates.length) { records.push({ doc: doc.id, candidates: [], contradicts: [], consistent: [], verdicts: {}, skipped: 'Kein Code mit gemeinsamen Begriffen gefunden.' }); continue }
@@ -99,25 +95,13 @@ export async function checkProject({ createClient = createJevClient, retrieval =
       }
       // One malformed provider answer must not end the whole check: retry once, then skip only this section.
       const ask = () => client.evaluate(state, questions)
-      const result = judge === 'llm' ? {} : await ask().catch((error) => /^Ungültige Jev-Antwort/.test(error.message) ? ask() : Promise.reject(error)).catch((error) => /^Ungültige Jev-Antwort/.test(error.message) ? null : Promise.reject(error))
+      const invalid = (error) => /^Ungültige Jev-Antwort/.test(error.message)
+      const result = await ask().catch((error) => invalid(error) ? ask() : Promise.reject(error)).catch((error) => invalid(error) ? null : Promise.reject(error))
       if (!result) { log.warn('check', 'Jev-Antwort ungültig, Abschnitt übersprungen', { doc: doc.path }); records.push({ doc: doc.id, candidates: candidates.map((c) => c.id), contradicts: [], consistent: [], verdicts: {}, skipped: 'Jev-Antwort ungültig.' }); continue }
-      const verdicts = judge === 'llm' ? {} : Object.fromEntries(candidates.map((c, i) => [c.id, result.response.answers[`code_${i}`]]).filter(([, a]) => [...MISMATCH, 'consistent'].some((v) => flags(a, v))).map(([id, a]) => [id, a.choice]))
+      const verdicts = Object.fromEntries(candidates.map((c, i) => [c.id, result.response.answers[`code_${i}`]]).filter(([, a]) => [...MISMATCH, 'consistent'].some((v) => flags(a, v))).map(([id, a]) => [id, a.choice]))
       const of = (...choices) => candidates.map((c) => c.id).filter((id) => choices.includes(verdicts[id]))
-      let contradicts = of(...MISMATCH), consistent = of('consistent'), findings, findingsUsage
-      // Model findings must quote the section and the proving excerpt; only verified quotes count.
-      if (judge === 'llm' || contradicts.length) if (llm) {
-        // A failed confirmation keeps Jev's verdict: the section stays a proposal instead of silently disappearing.
-        const checked = await findDiscrepancies({ section: doc, excerpts: candidates, absent: absentNames(doc.text, p.files) }, { config: llm, cacheDir: path.join(projectsDir, p.id, 'findings'), fetchImpl: modelFetch }).catch((error) => { llmUsage.failed = (llmUsage.failed || 0) + 1; log.warn('check', 'Befundprüfung fehlgeschlagen, Jev-Urteil bleibt', { doc: doc.path, error: error.message }); return null })
-        if (checked) {
-          llmUsage[checked.cached ? 'cached' : 'requests']++; llmUsage.rejected += checked.rejected.length; if (!checked.cached) llmUsage.costUsd += checked.usage?.costUsd || 0
-          findings = checked.findings; findingsUsage = checked.usage
-          const cited = [...new Set(findings.map((f) => f.excerpt).filter(Boolean))]
-          contradicts = findings.length ? (cited.length ? cited : candidates.slice(0, 2).map((c) => c.id)) : []
-          consistent = candidates.map((c) => c.id).filter((id) => !contradicts.includes(id))
-        }
-      }
-      records.push({ doc: doc.id, candidates: candidates.map((c) => c.id), contradicts, consistent, verdicts, ...(findings ? { findings, findingsUsage } : {}), ...result })
-      if ((n + 1) % 10 === 0) log.info('check', `${n + 1}/${p.docFiles.length} Abschnitte geprüft`, { usd: (client.usage.estimatedUsd + llmUsage.costUsd).toFixed(4) })
+      records.push({ doc: doc.id, candidates: candidates.map((c) => c.id), contradicts: of(...MISMATCH), consistent: of('consistent'), verdicts, ...result })
+      if ((n + 1) % 10 === 0) log.info('check', `${n + 1}/${p.docFiles.length} Abschnitte geprüft`, { usd: client.usage.estimatedUsd?.toFixed?.(4) })
     }
     // Install a complete run atomically; a failed run only keeps the provider cache.
     const previous = new Map(p.dataset.proposals.map((proposal) => [proposal.id, proposal]))
@@ -130,34 +114,29 @@ export async function checkProject({ createClient = createJevClient, retrieval =
       doc.modules = passes(component, component?.choice) && component.choice !== 'unknown' ? [component.choice] : []
       if (doc.modules.length) p.graph.edges.push({ id: `jev:${doc.id}:m:${component.choice}`, source: `doc:${doc.id}`, target: `m:${component.choice}`, kind: 'semantic', certainty: 'abgeleitet', evidence: { source: 'Jev · Komponente', text: `${section.path} → ${p.dataset.modules[component.choice]}`, method: 'Jev', decision: { model: MODEL, probability: component.probabilities[component.choice], confidence: component.confidence, createdAt: record.createdAt, fingerprint: record.fingerprint, question: 'component', alternatives: component.probabilities } } })
       for (const id of [...record.contradicts, ...record.consistent]) {
-        const chunk = chunkOf.get(id), index = record.candidates.indexOf(id), answer = record.response?.answers[`code_${index}`], verdict = record.verdicts[id]
+        const chunk = chunkOf.get(id), index = record.candidates.indexOf(id), answer = record.response.answers[`code_${index}`], verdict = record.verdicts[id]
         if (p.graph.edges.some((e) => e.id === `jev:${doc.id}:${chunk.file}`)) continue
-        if (!answer || !verdict) {
-          const finding = record.findings?.find((f) => f.excerpt === id)
-          if (finding) p.graph.edges.push({ id: `jev:${doc.id}:${chunk.file}`, source: `doc:${doc.id}`, target: chunk.file, kind: 'semantic', certainty: 'abgeleitet', evidence: { source: 'Erstprüfung · Befund', text: finding.explanation, method: 'Sprachmodell mit geprüften Zitaten' } })
-          continue
-        }
         p.graph.edges.push({ id: `jev:${doc.id}:${chunk.file}`, source: `doc:${doc.id}`, target: chunk.file, kind: 'semantic', certainty: 'abgeleitet', evidence: { source: 'Jev · Erstprüfung', text: `${section.path} ${{ contradicts: 'widerspricht', incomplete: 'beschreibt unvollständig', consistent: 'passt zu' }[verdict]} ${chunk.path}, Zeilen ${chunk.start}-${chunk.end}.`, method: 'Jev', decision: { model: MODEL, verdict, probability: answer.probabilities[verdict], confidence: answer.confidence, createdAt: record.createdAt, fingerprint: record.fingerprint, question: `code_${index}`, alternatives: answer.probabilities } } })
       }
       if (!record.contradicts.length) { deferred.push(`doc:${doc.id}`); continue }
       const places = [...new Set(record.contradicts.map((id) => chunkOf.get(id).path))]
       p.graph.edges.push({ id: `jev:f:${doc.id}`, source: `f:${BUNDLE_ID}`, target: `doc:${doc.id}`, kind: 'documents', certainty: 'abgeleitet', evidence: { source: 'Jev · Erstprüfung', text: `${section.path} weicht von ${places.join(', ')} ab.`, method: 'Jev' } })
-      const proposal = { id: `proposal-${digest(`${p.id}:${doc.id}:${record.fingerprint || JSON.stringify(record.findings)}`).slice(0, 16)}`, bundle: BUNDLE_ID, doc: doc.id, at: 0, op: 'replace', find: section.text, text: section.text, size: 'absatz', title: `${doc.title}: weicht vom Code ab`, why: record.findings?.length ? record.findings.map((f) => f.explanation).join(' ') : `Jev: Der Abschnitt passt nicht zu ${places.join(', ')}. Die Korrektur wird aus diesen Codestellen formuliert.`, confidence: 'pruefen', commits: [], question: 'Korrektur noch nicht formuliert. Mit „Starten“ aus dem Code formulieren lassen.' }
+      const proposal = { id: `proposal-${digest(`${p.id}:${doc.id}:${record.fingerprint}`).slice(0, 16)}`, bundle: BUNDLE_ID, doc: doc.id, at: 0, op: 'replace', find: section.text, text: section.text, size: 'absatz', title: `${doc.title}: weicht vom Code ab`, why: `Jev: Der Abschnitt passt nicht zu ${places.join(', ')}. Die Korrektur wird aus diesen Codestellen formuliert.`, confidence: 'pruefen', commits: [], question: 'Korrektur noch nicht formuliert. Mit „Starten“ aus dem Code formulieren lassen.' }
       p.dataset.proposals.push(previous.get(proposal.id) || proposal)
     }
     const count = (key) => records.filter((r) => r[key]?.length).length
-    p.mapping = { model: MODEL, kind: 'baseline', retrieval, candidates: k, judge, llmModel: llm?.model, llmUsage, createdAt: new Date().toISOString(), subjects: records.length, mismatches: count('contradicts'), consistent: records.filter((r) => !r.contradicts.length && r.consistent.length).length, usage: client.usage, deferred, records }
+    p.mapping = { model: MODEL, kind: 'baseline', candidates: k, createdAt: new Date().toISOString(), subjects: records.length, mismatches: count('contradicts'), consistent: records.filter((r) => !r.contradicts.length && r.consistent.length).length, usage: client.usage, deferred, records }
     p.graph.metadata.semantic = { status: 'ready', model: MODEL, createdAt: p.mapping.createdAt, subjects: records.length, edges: p.graph.edges.filter((e) => e.id.startsWith('jev:')).length, deferred, usage: client.usage }
     p.events.push({ at: p.mapping.createdAt, kind: 'mapping', title: `Erstprüfung: ${records.length} Abschnitte, ${p.mapping.mismatches} mit Abweichung` }); save(p)
-    log.info('check', 'Erstprüfung fertig', { sections: records.length, mismatches: p.mapping.mismatches, consistent: p.mapping.consistent, requests: client.usage.requests, cached: client.usage.cached, usd: client.usage.estimatedUsd?.toFixed?.(4), judge, llmUsd: judge === 'jev' ? undefined : llmUsage.costUsd.toFixed(4), ms: Date.now() - started })
+    log.info('check', 'Erstprüfung fertig', { sections: records.length, mismatches: p.mapping.mismatches, consistent: p.mapping.consistent, requests: client.usage.requests, cached: client.usage.cached, usd: client.usage.estimatedUsd?.toFixed?.(4), ms: Date.now() - started })
     return projectPayload(p)
   })
 }
 
 const TYPE_LABELS = { nutzer: 'Nutzerhandbuch', dialog: 'Dialogbeschreibung', parameter: 'Parametertabelle', technik: 'Technische Dokumentation', installation: 'Installationsanleitung', architektur: 'Architekturbeschreibung' }
 const VERDICT_LABELS = { contradicts: 'widerspricht dem Abschnitt', incomplete: 'fehlt im Abschnitt', consistent: 'passt zum Abschnitt' }
-/** mode 'patch': line edits plus the check's findings; 'full': the whole corrected section (prompt v7). */
-export async function projectDraft(id, answer, { generate = generateDraft, mode = process.env.NEURALDOC_DRAFT_MODE || 'full' } = {}) {
+/** Line edits with quoted findings (target.op patch); the approved text is the section with the edits applied. */
+export async function projectDraft(id, answer, { generate = generateDraft } = {}) {
   return exclusive(async () => {
     const p = requireProject(), proposal = p.dataset.proposals.find((x) => x.id === id)
     if (!proposal) throw new Error('Unbekannter Entwurf.')
@@ -165,12 +144,11 @@ export async function projectDraft(id, answer, { generate = generateDraft, mode 
     if (answer !== undefined && (typeof answer !== 'string' || !answer.trim() || answer.length > 2000)) throw new Error('Antwort muss 1 bis 2.000 Zeichen enthalten.')
     const doc = p.docFiles.find((d) => d.id === proposal.doc), record = p.mapping.records.find((r) => r.doc === doc.id)
     const chunks = new Map(codeChunks(p.files).map((c) => [c.id, c]))
-    // The contradicting excerpts first; the whole context must stay below the 40 KB drafting limit.
-    const asPatch = mode === 'patch', finding = (cid) => record.findings?.some((f) => f.excerpt === cid) ? 'Befund der Prüfung' : VERDICT_LABELS[record.verdicts?.[cid]]
-    const candidates = [...record.contradicts, ...record.consistent].map((cid) => chunks.get(cid)).filter(Boolean).map((c) => ({ id: `code:${digest(c.id).slice(0, 12)}`, source: `${c.path}, Zeilen ${c.start}-${c.end} (aktueller Stand${asPatch && finding(c.id) ? `; Prüfung: ${finding(c.id)}` : ''})`, text: c.text }))
-    const notes = asPatch && record.findings?.length ? { id: 'befunde', source: 'Befunde der Erstprüfung (Hinweis, kein Codebeleg)', text: record.findings.map((f) => `- ${f.kind}: Abschnitt „${f.docQuote}“${f.excerpt ? ` · Code ${chunks.get(f.excerpt)?.path}: „${f.codeQuote}“` : ''} · ${f.explanation}`).join('\n') } : null
-    let room = 36000 - Buffer.byteLength(JSON.stringify(doc.text)) - (answer ? Buffer.byteLength(JSON.stringify(answer)) : 0) - (notes ? Buffer.byteLength(JSON.stringify(notes)) : 0) - (asPatch ? Buffer.byteLength(JSON.stringify(doc.text)) / 2 : 0)
-    const evidence = notes ? [notes] : []
+    // The contradicting excerpts first, labelled with Jev's verdict; the whole context (the model also gets the section
+    // with line numbers) must stay below the 40 KB drafting limit.
+    const candidates = [...record.contradicts, ...record.consistent].map((cid) => chunks.get(cid)).filter(Boolean).map((c) => ({ id: `code:${digest(c.id).slice(0, 12)}`, source: `${c.path}, Zeilen ${c.start}-${c.end} (aktueller Stand${VERDICT_LABELS[record.verdicts?.[c.id]] ? `; Prüfung: ${VERDICT_LABELS[record.verdicts[c.id]]}` : ''})`, text: c.text }))
+    let room = 36000 - Buffer.byteLength(JSON.stringify(doc.text)) * 1.5 - (answer ? Buffer.byteLength(JSON.stringify(answer)) : 0)
+    const evidence = []
     for (const item of candidates.slice(0, 8)) {
       const size = Buffer.byteLength(JSON.stringify(item))
       if (size > room) { if (room > 1500 && !evidence.some((e) => e.id.startsWith('code:'))) evidence.push({ ...item, text: item.text.slice(0, Math.floor(room / 3)) }); break }
@@ -178,11 +156,11 @@ export async function projectDraft(id, answer, { generate = generateDraft, mode 
     }
     if (!evidence.some((e) => e.id.startsWith('code:'))) throw new DraftError('Abschnitt zu groß für einen belegten Entwurf.', 413)
     if (answer) evidence.push({ id: 'editorial-answer', source: 'Antwort der prüfenden Person (kein Codebeleg)', text: answer })
-    const context = { change: { id: BUNDLE_ID, title: 'Erstprüfung gegen den aktuellen Code' }, document: { id: doc.id, title: doc.title, type: TYPE_LABELS[doc.type] || 'Dokumentation', audience: 'Leser dieser Dokumentation', section: doc.title, before: doc.text, surrounding: '' }, target: { id, op: asPatch ? 'patch' : 'replace', preserve: true, instruction: 'Dieser Abschnitt widerspricht laut Prüfung dem aktuellen Code oder lässt aus, was der Code heute tut. Korrigiere nur die Aussagen, die die Codebelege widerlegen, ergänze nur belegte fehlende Angaben und lass alles andere wortgleich. Behalte Aufbau, Sprache und Format bei. Zeigen die Belege keinen Widerspruch: status=no_change. Bei unzureichendem Beleg Rückfrage statt Vermutung.' }, evidence }
+    const context = { change: { id: BUNDLE_ID, title: 'Erstprüfung gegen den aktuellen Code' }, document: { id: doc.id, title: doc.title, type: TYPE_LABELS[doc.type] || 'Dokumentation', audience: 'Leser dieser Dokumentation', section: doc.title, before: doc.text, surrounding: '' }, target: { id, op: 'patch', preserve: true, instruction: 'Dieser Abschnitt widerspricht laut Prüfung dem aktuellen Code oder lässt aus, was der Code heute tut. Korrigiere nur die Aussagen, die die Codebelege widerlegen, ergänze nur belegte fehlende Angaben und lass alles andere wortgleich. Behalte Aufbau, Sprache und Format bei. Zeigen die Belege keinen Widerspruch: status=no_change. Bei unzureichendem Beleg Rückfrage statt Vermutung.' }, evidence }
     const started = Date.now()
     const draft = await generate(context, { config: draftingConfig({ ...process.env, NEURALDOC_STATE_DIR: path.join(projectsDir, p.id) }) })
     const status = draft.result.status
-    const patch = { ...(status === 'draft' ? { text: draft.result.text } : {}), why: draft.result.reason, confidence: 'pruefen', question: status === 'no_change' ? 'Laut Modell stimmt der Abschnitt mit dem Code überein. Vorschlag verwerfen?' : draft.result.question || '', generation: { status, recommendation: draft.result.reason, answer, id: draft.id, model: draft.model, createdAt: draft.createdAt, evidenceIds: draft.result.evidenceIds, usage: draft.usage } }
+    const patch = { ...(status === 'draft' ? { text: draft.result.text } : {}), why: draft.result.reason, confidence: 'pruefen', question: status === 'no_change' ? 'Laut Modell stimmt der Abschnitt mit dem Code überein. Vorschlag verwerfen?' : draft.result.question || '', generation: { status, recommendation: draft.result.reason, answer, id: draft.id, model: draft.model, createdAt: draft.createdAt, evidenceIds: draft.result.evidenceIds, findings: draft.result.findings, usage: draft.usage } }
     p.generated[id] = patch; p.events.push({ at: new Date().toISOString(), kind: 'draft', title: doc.title, usage: draft.usage }); save(p)
     log.info('draft', 'Entwurf erstellt', { doc: doc.path, status, model: draft.model, cached: draft.cached || undefined, ms: Date.now() - started })
     return { ...draft, proposal: patch }

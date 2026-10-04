@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import http from 'node:http'
-import { generateDraft, draftingConfig, draftEndpoint, validateContext, validateDraft } from './drafting.mjs'
+import { applyEdits, generateDraft, draftingConfig, draftEndpoint, language, validateContext, validateDraft } from './drafting.mjs'
 import { responseSchema } from './draft-prompt.mjs'
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'neuraldoc-drafting-test-'))
@@ -124,7 +124,7 @@ test('persisted cache works after a process restart even without credentials', a
 test('missing key and expensive models fail without any provider request', async () => {
   await assert.rejects(generateDraft(context(), { config: config('no-key', { apiKey: '' }), fetchImpl: () => assert.fail('No request allowed') }), /API-Key/)
   assert.throws(() => draftingConfig({ NEURALDOC_GEMINI_MODEL: 'gemini-pro' }), /freigeschaltet/)
-  assert.deepEqual(draftingConfig({ GOOGLE_CLOUD_PROJECT: 'test-project' }).model, 'gemini-2.5-flash-lite')
+  assert.deepEqual(draftingConfig({ GOOGLE_CLOUD_PROJECT: 'test-project' }).model, 'gemini-3.5-flash-lite')
   assert.equal(draftingConfig({ GOOGLE_CLOUD_PROJECT: 'test-project', GEMINI_API_KEY: 'developer-key' }).apiKey, undefined)
 })
 
@@ -269,4 +269,34 @@ test('block question persists, cannot be approved, and editorial answer produces
     globalThis.fetch = oldFetch
     if (oldKey === undefined) delete process.env.VERTEX_API_KEY; else process.env.VERTEX_API_KEY = oldKey
   }
+})
+
+test('line edits: replace, insert and delete apply bottom-up; overlaps and out-of-range edits fail', () => {
+  const before = 'a\nb\nc\nd'
+  assert.equal(applyEdits(before, [{ op: 'replace', start: 2, end: 3, text: 'B\nC' }, { op: 'insert_after', start: 0, end: 0, text: '#' }, { op: 'delete', start: 4, end: 4, text: '' }]), '#\na\nB\nC')
+  assert.equal(applyEdits(before, [{ op: 'insert_after', start: 4, end: 4, text: 'e\n' }]), 'a\nb\nc\nd\ne')
+  assert.throws(() => applyEdits(before, [{ op: 'replace', start: 1, end: 2, text: 'x' }, { op: 'replace', start: 2, end: 3, text: 'y' }]), /überschneiden/)
+  assert.throws(() => applyEdits(before, [{ op: 'replace', start: 4, end: 5, text: 'x' }]), /außerhalb/)
+  assert.throws(() => applyEdits(before, [{ op: 'replace', start: 1, end: 1, text: ' ' }]), /keinen Text/)
+  assert.equal(language('Der Export wird mit dem Datum erzeugt, und die Datei ist für alle sichtbar.'), 'de')
+  assert.equal(language('The export is created with the date and the file is visible to all users.'), 'en')
+  assert.equal(language('Rabatt 10 %'), null)
+})
+
+test('patch drafts need a finding quoted from the section and a code excerpt, and keep the language', () => {
+  const before = '# Export\n\nThe export uses the current date of the day.\nIt is written to the folder of the report.\nThe file name is the name of the report.\nThe export runs when the user clicks Export.\n'
+  const patch = { ...context(), document: { ...context().document, before }, target: { id: 't', op: 'patch', preserve: true, instruction: 'Korrigiere. Sonst status=no_change.' } }
+  const found = { doc_quote: 'The export uses the current date', evidence_id: 'code:export', code_quote: 'const exportedAt = report.createdAt', problem: 'Datum kommt aus createdAt.' }
+  const draft = (extra = {}) => ({ status: 'draft', findings: [found], edits: [{ op: 'replace', start: 3, end: 3, text: 'The export uses the date on which the report was created.' }], reason: 'createdAt.', question: '', evidenceIds: ['code:export'], ...extra })
+  const ok = validateDraft(draft(), patch)
+  assert.equal(ok.text, before.replace('the current date of the day', 'the date on which the report was created'))
+  assert.deepEqual(ok.findings, [found])
+  assert.throws(() => validateDraft(draft({ findings: [{ ...found, code_quote: 'report.updatedAt' }] }), patch), /Kein Befund/)
+  assert.throws(() => validateDraft(draft({ findings: [{ ...found, doc_quote: 'The export uses yesterday' }] }), patch), /Kein Befund/)
+  assert.throws(() => validateDraft(draft({ edits: [{ op: 'replace', start: 3, end: 3, text: 'Der Export verwendet das Datum, an dem der Bericht erstellt wurde, und nicht das Tagesdatum.' }] }), patch), /Sprache/)
+  assert.throws(() => validateDraft(draft({ edits: [{ op: 'replace', start: 3, end: 6, text: 'Rewritten.' }] }), patch), /unveränderten Zeilen/)
+  assert.throws(() => validateDraft(draft({ edits: [] }), patch), /1 bis 20/)
+  assert.equal(validateDraft({ status: 'no_change', findings: [], edits: [], reason: 'Stimmt.', question: '', evidenceIds: [] }, patch).status, 'no_change')
+  assert.throws(() => validateDraft({ status: 'no_change', findings: [], edits: draft().edits, reason: 'Stimmt.', question: '', evidenceIds: [] }, patch), /keine Zeilenänderung/)
+  assert.equal(responseSchema('patch').properties.edits.maxItems, 20)
 })
