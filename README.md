@@ -1,122 +1,120 @@
 # neuraldoc Dashboard
 
-Ein Dashboard, zwei Betriebsarten:
+One dashboard, two modes:
 
-- **Showcase**: vorbereitete MOBIQ-Beispieldaten (erfunden). Keine Keys, keine Modellaufrufe, Entscheidungen bleiben im Browser-Tab.
-- **Eigenes Projekt**: ein lokales Git-Repository und einen Doku-Ordner importieren. Jev findet die betroffenen Dokumente, ein austauschbares LLM formuliert Entwürfe, du gibst frei und lädst die freigegebenen Texte als ZIP herunter.
+- **Showcase**: prepared MOBIQ sample data (fictional). No keys, no model calls; decisions stay in the browser tab.
+- **Your own project**: import a local Git repository and a documentation folder. Jev finds the affected documents, an LLM of your choice drafts the changes, you approve them and download the approved texts as a ZIP.
 
-Beide nutzen dieselbe Oberfläche. Ohne importiertes Projekt startet das Dashboard im Showcase.
+Both use the same interface. Without an imported project the dashboard starts in showcase mode. The user interface is in German.
 
-## Schnellstart
+## Quick start
 
-Node.js 24 und Git installieren. Die MOBIQ-Beispieldaten sind Git-Submodule, deshalb mit `--recursive` klonen (Windows: ohne Zeilenende-Umwandlung, sonst weichen Code-Dateien vom Datensatz ab):
+Install Node.js 24 and Git. The MOBIQ sample data are Git submodules, so clone with `--recursive` (on Windows without line-ending conversion, otherwise code files differ from the dataset):
 
 ```powershell
 git -c core.autocrlf=false clone --recursive https://github.com/neuraldoc-ai/neuraldoc-dashboard.git
-# bereits geklont: git submodule update --init
+# already cloned: git submodule update --init
 ```
 
-Im Ordner `frontend`:
+In the `frontend` folder:
 
 ```powershell
 npm ci
-npm run dev            # Showcase + Import eigener Projekte
-npm run dev:showcase   # nur Showcase, Import ausgeschaltet
+npm run dev            # showcase + import of your own projects
+npm run dev:showcase   # showcase only, import disabled
 ```
 
 Dashboard: http://localhost:5174/app/ · MCP: http://localhost:5174/mcp
 
-Für eigene Projekte zusätzlich Keys einrichten (einmalig):
+For your own projects, set up keys once:
 
 ```powershell
 Copy-Item .env.example .env.local   # macOS/Linux: cp .env.example .env.local
-# .env.local bearbeiten: TYPESAFE_API_KEY (Jev) + einen LLM-Anbieter setzen, dann neu starten.
+# Edit .env.local: set TYPESAFE_API_KEY (Jev) and one LLM provider, then restart.
 ```
 
-## Eigenes Projekt prüfen
+## Check your own project
 
-1. Übersicht → **Eigenes Projekt**: absoluten Pfad zum Git-Stammordner und zum Doku-Ordner angeben. Verglichen wird standardmäßig `HEAD~1` → `HEAD`; andere Stände sind einstellbar. Der Import ist lokal und kostenlos.
-2. **Mit Jev zuordnen**: Jev prüft jedes Dokument gegen die geänderten Code-Dateien (kostenpflichtig, Budget `NEURALDOC_JEV_BUDGET_USD`, Standard 0,25 USD).
-3. **Starten** bzw. **Formulieren**: das LLM schreibt pro betroffenem Dokument einen Entwurf aus den Diffs (kostenpflichtig). Fehlen Belege, stellt es eine Rückfrage.
-4. Prüfen, übernehmen oder verwerfen. **Freigaben exportieren** lädt ein ZIP mit den freigegebenen Dokumenten und einer `neuraldoc-export.json` (mit SHA-256 des Originals).
+1. Overview → **Eigenes Projekt** (own project): enter the absolute path to the Git root folder and to the documentation folder. By default `HEAD~1` → `HEAD` is compared; other revisions can be set. The import is local and free.
+2. **Mit Jev zuordnen** (map with Jev): Jev checks every document against the changed code files (paid; budget `NEURALDOC_JEV_BUDGET_USD`, default 0.25 USD).
+3. **Starten** / **Formulieren** (start / draft): the LLM writes one draft per affected document from the diffs (paid). If evidence is missing, it asks a question instead.
+4. Review, accept or reject. **Freigaben exportieren** (export approvals) downloads a ZIP with the approved documents and a `neuraldoc-export.json` (including the SHA-256 of each original).
 
-neuraldoc verändert weder Repository noch Doku-Ordner. Gelesen werden nur committete Dateien des gewählten Git-Stands. Projekte, Entscheidungen und Caches liegen unter `mcp/state/projects/` (bzw. `NEURALDOC_STATE_DIR`) und sind Git-ignoriert.
+neuraldoc changes neither the repository nor the documentation folder. Only committed files of the selected revision are read. Projects, decisions and caches are stored in `mcp/state/projects/` (or `NEURALDOC_STATE_DIR`) and ignored by Git.
 
-**Grenzen dieser Version**
+**Limits of this version**
 
-- Bis 250 Code-Dateien (je 100 KB), 40 Dokumente (je 8.000 Zeichen), 100 Commits, 8 MB Diffs. Dokumente: Markdown, MDX, Text, RST, HTML (HTML wird als Text exportiert).
-- AST-Analyse für Java, Kotlin, TypeScript/TSX, Pascal und SQL; andere Sprachen nur als Quelle. SQL-Beziehungen sind begrenzt.
-- Jev sieht je Dokument höchstens sechs geänderte Dateien, gekürzt auf 3.500 Zeichen. Weitere Dateien werden als ausgelassen protokolliert.
-- Ein Entwurf ersetzt das ganze Dokument; kein Abschnitts-Mapping. Für eigene Projekte gibt es keine gemessene Trefferquote.
-- Jira, Confluence und SharePoint sind für eigene Projekte nicht angebunden.
-- Nur für lokale Nutzung gedacht: Pfade sind frei wählbar, es gibt keine Benutzerverwaltung. Schreibaktionen verlangen dieselbe Herkunft oder den MCP-Token; der Demo-Token ist kein Zugriffsschutz für ein öffentliches Netz.
-- Gleichzeitige Läufe sind pro Serverprozess gesperrt, nicht prozessübergreifend.
+- Up to 250 code files (100 KB each), 40 documents (8,000 characters each), 100 commits, 8 MB of diffs. Documents: Markdown, MDX, text, RST, HTML (HTML is exported as text).
+- AST analysis for Java, Kotlin, TypeScript/TSX, Pascal and SQL; other languages are imported as sources only. SQL relationships are limited.
+- Jev sees at most six changed files per document, truncated to 3,500 characters. Further files are logged as omitted.
+- A draft replaces the whole document; there is no section mapping. There is no measured accuracy for your own projects.
+- Jira, Confluence and SharePoint are not connected for your own projects.
+- Meant for local use only: paths can be chosen freely and there is no user management. Write actions require the same origin or the MCP token; the demo token is no access protection for a public network.
+- Concurrent runs are locked per server process, not across processes.
 
 ## Tests
 
-`npm test` im Ordner `frontend` führt alle Backend-Tests aus. Jev und LLM sind dabei gemockt (über die echten Clients und Validatoren); es wird nichts bezahlt. Die Projekttests legen ein temporäres Git-Repository an. `npm run build` prüft Typen und baut die Oberfläche.
+`npm test` in the `frontend` folder runs all backend tests. Jev and the LLM are mocked (through the real clients and validators); nothing is billed. The project tests create a temporary Git repository. `npm run build` checks types and builds the interface.
 
-## Produktion und Docker
+## Production and Docker
 
-Lokal: `npm run build; npm run start` (Port 8080, lädt `.env.local`), nur Showcase: `npm run start:showcase`.
+Locally: `npm run build; npm run start` (port 8080, loads `.env.local`); showcase only: `npm run start:showcase`.
 
 ```powershell
 docker build -t neuraldoc-dashboard .
 # Showcase:
 docker run -p 8080:8080 -e NEURALDOC_MODE=showcase neuraldoc-dashboard
-# Eigenes Projekt: Keys zur Laufzeit, State im Volume, Quellen schreibgeschützt eingebunden.
-docker run -p 8080:8080 --env-file frontend/.env.local -v neuraldoc-data:/data -v C:Projekteshop:/import/shop:ro -v C:Projekteshop-docs:/import/docs:ro neuraldoc-dashboard
+# Your own project: keys at runtime, state in a volume, sources mounted read-only.
+docker run -p 8080:8080 --env-file frontend/.env.local -v neuraldoc-data:/data -v C:\Projects\shop:/import/shop:ro -v C:\Projects\shop-docs:/import/docs:ro neuraldoc-dashboard
 ```
 
-Im Container im Importdialog die Pfade `/import/shop` und `/import/docs` angeben. Keys werden nicht ins Image kopiert. `VITE_LANDING_URL` setzt beim Build den Link zur Website.
+Inside the container, enter the paths `/import/shop` and `/import/docs` in the import dialog. Keys are never copied into the image. `VITE_LANDING_URL` sets the website link at build time.
 
-Kein Remote und keine automatische Veröffentlichung sind eingerichtet.
+## Architecture and LLM providers
 
-## Architektur und LLM-Anbieter
+The **Architektur** page explains the flow and, under **Lokal starten**, shows whether Jev and the LLM provider are configured (configuration only, no paid connection test). Jev (`TYPESAFE_API_KEY`) is required for your own projects and remains an external API even with a local LLM.
 
-Die Seite **Architektur** erklärt den Ablauf und zeigt unter **Lokal starten**, ob Jev und der LLM-Anbieter eingerichtet sind (nur Konfiguration, kein bezahlter Verbindungstest). Jev (`TYPESAFE_API_KEY`) ist für eigene Projekte Pflicht und bleibt auch mit lokalem LLM eine externe API.
-
-| Anbieter | NEURALDOC_DRAFT_PROVIDER | Schlüssel / Server | Beispielmodell |
+| Provider | NEURALDOC_DRAFT_PROVIDER | Key / server | Example model |
 | --- | --- | --- | --- |
 | OpenAI | `openai` | `OPENAI_API_KEY` | `gpt-4.1-mini` |
-| Claude | `anthropic` (Alias `claude`) | `ANTHROPIC_API_KEY` | `claude-haiku-4-5` |
-| Lokal | `local` | `NEURALDOC_LLM_BASE_URL`, optional `NEURALDOC_LLM_API_KEY` | `qwen2.5:7b` |
+| Claude | `anthropic` (alias `claude`) | `ANTHROPIC_API_KEY` | `claude-haiku-4-5` |
+| Local | `local` | `NEURALDOC_LLM_BASE_URL`, optionally `NEURALDOC_LLM_API_KEY` | `qwen2.5:7b` |
 | Gemini | `gemini` | `GEMINI_API_KEY` | `gemini-2.5-flash-lite` |
-| Vertex AI | `vertex` | `VERTEX_API_KEY`, `GOOGLE_CLOUD_PROJECT`, Standort und Modus | `gemini-2.5-flash-lite` |
+| Vertex AI | `vertex` | `VERTEX_API_KEY`, `GOOGLE_CLOUD_PROJECT`, location and mode | `gemini-2.5-flash-lite` |
 
-`NEURALDOC_LLM_MODEL` wählt das Modell. Die bestehende Gemini-Konfiguration mit `NEURALDOC_GEMINI_MODEL` funktioniert weiterhin. Für Google bleiben die bisherigen Flash-Lite-Modelle freigeschaltet; für OpenAI/Claude muss das gewählte Modell den verwendeten JSON-Schema-Vertrag unterstützen. Alle Antworten werden zusätzlich lokal auf Textoperation und gültige Belegverweise geprüft. Abgebrochene, abgelehnte oder ungültige Antworten werden nicht als Entwurf gespeichert. Kein automatischer Anbieterwechsel.
+`NEURALDOC_LLM_MODEL` selects the model. The existing Gemini setting `NEURALDOC_GEMINI_MODEL` still works. For Google, the Flash-Lite models remain enabled; for OpenAI/Claude the chosen model must support the JSON schema contract. Every response is additionally validated locally for the text operation and valid evidence references. Aborted, refused or invalid responses are never stored as drafts. There is no automatic provider fallback.
 
-Für lokale Modelle dient eine OpenAI-kompatible `/v1`-URL, beispielsweise `http://127.0.0.1:11434/v1` (Ollama) oder `http://127.0.0.1:1234/v1` (LM Studio). Das Modell muss vorher auf dem jeweiligen Server geladen sein. Bei fehlender JSON-Schema-Unterstützung ausdrücklich `NEURALDOC_LLM_FORMAT=json_object` setzen. Modellqualität und Ausgabezuverlässigkeit sind separat mit eigenen Quellen zu prüfen.
+Local models use an OpenAI-compatible `/v1` URL, for example `http://127.0.0.1:11434/v1` (Ollama) or `http://127.0.0.1:1234/v1` (LM Studio). The model must be loaded on that server first. If JSON schema is not supported, set `NEURALDOC_LLM_FORMAT=json_object` explicitly. Model quality and output reliability need to be checked separately with your own sources.
 
-API-Verträge: [OpenAI Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs), [Claude Structured Outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs), [Ollama-Kompatibilität](https://docs.ollama.com/api/openai-compatibility).
+API contracts: [OpenAI Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs), [Claude Structured Outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs), [Ollama compatibility](https://docs.ollama.com/api/openai-compatibility).
 
-Keys ausschließlich in `.env.local` oder Server-Umgebungsvariablen setzen, ohne `VITE_`-Präfix. Die neue Status-API `/api/mcp/setup` gibt nur die Anwesenheit der Schlüssel zurück. Nach Konfigurationsänderungen den Node-Server neu starten. Provider, Modell und lokaler Endpoint bestimmen die Cache-Identität; Keys werden nicht in Entwurfcaches gespeichert.
+Set keys only in `.env.local` or server environment variables, never with a `VITE_` prefix. The status API `/api/mcp/setup` only reports whether keys are present. Restart the Node server after configuration changes. Provider, model and local endpoint determine the cache identity; keys are never stored in draft caches.
 
-Kosten neuer Cloud-Anbieter bleiben ohne konfigurierte Tarife unbekannt. Optional `NEURALDOC_LLM_INPUT_USD_PER_MILLION` und `NEURALDOC_LLM_OUTPUT_USD_PER_MILLION` setzen. Beim lokalen LLM werden nur die API-Gebühren mit 0 USD angegeben, Strom-/Hardwarekosten sind nicht enthalten.
+Costs of new cloud providers stay unknown without configured rates. Optionally set `NEURALDOC_LLM_INPUT_USD_PER_MILLION` and `NEURALDOC_LLM_OUTPUT_USD_PER_MILLION`. For a local LLM only API fees are reported (0 USD); power and hardware costs are not included.
 
-## MOBIQ-Datensatz
+## MOBIQ dataset
 
-Der Showcase nutzt den erfundenen Evaluationsdatensatz MOBIQ aus vier Repositories, eingebunden unter `datasets/`:
+The showcase uses the fictional evaluation dataset MOBIQ from four repositories, included under `datasets/`:
 
-| Submodul | Inhalt |
+| Submodule | Contents |
 | --- | --- |
-| `mobiq` | Generator, GitLab- und Jira-API-Antworten, Lösung (`ground-truth.json`) |
-| `mobiq-code` | Das Code-Repository mit Branches, Merges und Tag (gepinnt auf `release/26.4`) |
-| `mobiq-docs` | Confluence-Seiten und SharePoint-Dateien |
-| `mobiq-db` | PostgreSQL-Skripte und `docker compose` |
+| [`mobiq`](https://github.com/neuraldoc-ai/mobiq) | Generator, GitLab and Jira API responses, solution (`ground-truth.json`) |
+| [`mobiq-code`](https://github.com/neuraldoc-ai/mobiq-code) | The code repository with branches, merges and a tag (pinned to `release/26.4`) |
+| [`mobiq-docs`](https://github.com/neuraldoc-ai/mobiq-docs) | Confluence pages and SharePoint files |
+| [`mobiq-db`](https://github.com/neuraldoc-ai/mobiq-db) | PostgreSQL scripts and `docker compose` |
 
-Code liest die Daten im ursprünglichen Layout (`gitlab/…`, `repo/…`, `postgres/…`); `mcp/dataset.mjs` und `vite.config.ts` bilden das auf die Repositories ab. Neu erzeugen im Repository `mobiq`: `node generate.mjs && node publish.mjs`.
+Code reads the data in the original layout (`gitlab/…`, `repo/…`, `postgres/…`); `mcp/dataset.mjs` and `vite.config.ts` map it to the repositories. To regenerate, run `node generate.mjs && node publish.mjs` in the `mobiq` repository.
 
-## MOBIQ-Showcase pflegen
+## Maintaining the MOBIQ showcase
 
-Der Company Brain indexiert Java, Kotlin, TypeScript/TSX und Pascal mit Tree-sitter sowie SQL mit dem PostgreSQL-Parser. Java-Aufrufe werden im vorhandenen Snapshot anhand von Paket, Import und Empfängertyp aufgelöst; TypeScript verwendet die Compiler-Symbolauflösung. Fehlende oder mehrdeutige Ziele bleiben offen. Fachliche Modulzuordnungen sind separat als abgeleitet gekennzeichnet.
+The Company Brain indexes Java, Kotlin, TypeScript/TSX and Pascal with Tree-sitter and SQL with the PostgreSQL parser. Java calls are resolved in the snapshot by package, import and receiver type; TypeScript uses the compiler's symbol resolution. Missing or ambiguous targets stay open. Business module assignments are marked separately as derived.
 
-Jev ergänzt fachliche Restzuordnungen und bewertet Dokument-Code-Paare für Doku-Auswirkungen. Ein altes Dokument kann zum geänderten Code passen, obwohl sein beschriebenes Verhalten veraltet ist. Im Graphen sind Modellverbindungen abgeleitet; Herkunft und unsichere Vorschläge stehen in den Details.
+Jev adds the remaining business assignments and rates document–code pairs for documentation impact. An old document can match changed code even though the behaviour it describes is outdated. Model links are shown as derived in the graph; their origin and uncertain suggestions are listed in the details.
 
-Im Ordner `frontend`: `npm run brain:index` baut den Graphen offline. `npm run brain:map` ruft Jev ausdrücklich auf, unveränderte Requests kommen aus dem lokalen Cache. Der serverseitige Key heißt `TYPESAFE_API_KEY` in `frontend/.env.local`; kein `VITE_`-Präfix. Standardbudget: 0,25 USD pro Mapping-Lauf, mit `NEURALDOC_JEV_BUDGET_USD` konfigurierbar (höchstens 1 USD). Cache/Rohberichte unter `mcp/state/` sind ignoriert; veraltete Ergebnisse werden bei geändertem Eingabekontext nicht geladen. Ohne passende lokale Ergebnisse bleibt der Graph technisch nutzbar.
+In the `frontend` folder: `npm run brain:index` builds the graph offline. `npm run brain:map` explicitly calls Jev; unchanged requests come from the local cache. The server-side key is `TYPESAFE_API_KEY` in `frontend/.env.local`, without a `VITE_` prefix. Default budget: 0.25 USD per mapping run, configurable with `NEURALDOC_JEV_BUDGET_USD` (at most 1 USD). Caches and raw reports in `mcp/state/` are ignored; stale results are not loaded when the input changes. Without matching local results the graph remains technically usable.
 
-`npm run brain:test` testet ohne Modellkosten. `npm run brain:evaluate` prüft 13 manuell beschriftete Paare mit Jev. `npm run brain:report` schreibt den [Testbericht](MAPPING_REPORT.md). Die [TypeSafe API](https://docs.typesafe.ai/api) wird mit dem festen Modell `jev-1.13.0` verwendet. Normale Seitenaufrufe und Frontend-Builds lösen keine Modellkosten aus.
+`npm run brain:test` tests without model costs. `npm run brain:evaluate` checks 13 manually labelled pairs with Jev. `npm run brain:report` writes the [test report](MAPPING_REPORT.md). The [TypeSafe API](https://docs.typesafe.ai/api) is used with the pinned model `jev-1.13.0`. Normal page views and frontend builds never cause model costs.
 
-## Lizenz
+## License
 
-MIT, siehe [LICENSE](LICENSE). Die Oberfläche baut auf einer MIT-lizenzierten Vorlage auf; deren Hinweis steht in [frontend/LICENSE-DASHBOARD](frontend/LICENSE-DASHBOARD).
+MIT, see [LICENSE](LICENSE). The interface is based on an MIT-licensed template; its notice is in [frontend/LICENSE-DASHBOARD](frontend/LICENSE-DASHBOARD).

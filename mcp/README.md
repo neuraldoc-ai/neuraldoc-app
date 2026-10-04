@@ -1,82 +1,81 @@
 # neuraldoc MCP
 
-Die optionale [Texterstellung mit Gemini Flash-Lite](DRAFTING.md) ist angeschlossen: einzelne offene Stellen im Editor formulieren oder eigene Schreibkontexte über API/CLI übergeben. Ohne API-Key funktionieren die bestehenden Demo-Prüfungen weiterhin. Normale MCP-Aufrufe lösen keine interne Texterstellung aus.
+Optional [text drafting with an LLM](DRAFTING.md) is connected: draft individual open passages in the editor, or pass your own writing contexts via API/CLI. Without an API key the existing demo checks keep working. Normal MCP calls never trigger internal drafting.
 
-Drei Werkzeuge für den Coding-Agenten der Entwicklung (Claude Code, Cursor, VS Code). neuraldoc liest GitLab, Jira, Confluence und SharePoint selbst und gibt dem Agenten nur das zurück, was die Antwort braucht. Die Idee kommt von kapa.ai (Antworten aus der Doku mit Quelle) und executor.sh (ein Endpunkt, Zugangsdaten zentral, wenige Tokens). Der Unterschied: neuraldoc prüft die Doku gegen den Code.
+Three tools for the development team's coding agent (Claude Code, Cursor, VS Code). neuraldoc reads GitLab, Jira, Confluence and SharePoint itself and returns only what the answer needs. The idea comes from kapa.ai (answers from the docs with sources) and executor.sh (one endpoint, central credentials, few tokens). The difference: neuraldoc checks the documentation against the code.
 
-| Werkzeug | Wann | Was zurückkommt |
+| Tool | When | What comes back |
 |---|---|---|
-| `ticket_context` | vor dem Programmieren, mit einem Jira-Ticket | Ticket, die Änderung, auf der es aufbaut, Regeln und Parameter aus dem Code, Doku-Stand mit Status, Code-Stellen, offene Punkte, wer später freigibt |
-| `ask` | bei einer Fachfrage | kurze Zitate mit Quelle, je Fundstelle „stimmt“, „veraltet“ (mit dem, was der Code tut), „unvollständig“ oder „aktualisiert“ |
-| `check_change` | wenn das Feature fertig ist (MR, Branch, Ticket oder Commits) | vollständige gefundene Quellenliste mit Originalnamen, Stellen und Änderungsinhalt, zusätzlich vorbereitete Entwürfe, Rückfragen, Handarbeit und **ein Link** zum Prüfen und Freigeben |
+| `ticket_context` | before coding, with a Jira ticket | ticket, the change it builds on, rules and parameters from the code, documentation status, code locations, open points, who approves later |
+| `ask` | for a domain question | short quotes with sources, each marked "correct", "outdated" (with what the code does), "incomplete" or "updated" |
+| `check_change` | when the feature is done (MR, branch, ticket or commits) | the complete list of sources found with original names, locations and required change, plus prepared drafts, questions, manual work and **one link** to review and approve |
 
-## Vollständigkeit vor Kürze
+For an imported project of your own, the same three tools search the imported Git snapshot and documents instead; see the dashboard README.
 
-Die Quellenprüfung für Teillieferungen liest alle 33 Confluence-Seiten und alle sieben extrahierten SharePoint-Dateien. Sie berücksichtigt auch Schulungen, Leistungsbeschreibungen, Screenshots, Tabellenblätter und PDF-Folien. Parameter und Code-Regeln werden aus den finalen Dateien des Release-Standes gelesen, nicht aus alten Zwischenständen der Commit-Diffs. Jeder Änderungspunkt besitzt Originalnamen, Quellen-ID, Fundstelle und Codebelege. Testreferenz wird vom MCP nicht geladen; sie bleibt eine externe Testreferenz.
+## Completeness before brevity
 
-Die 19 vorbereiteten Dashboard-Entwürfe sind von der Quellenprüfung getrennt. Eine zusätzlich gefundene Stelle ist eine Prüfhilfe und kein fertiger oder automatisch freigegebener Entwurf. Nicht zugeordnete Quellen gelten als ungeprüft. Der zusätzliche Detektor verwendet ausdrücklich begrenzte, deterministische Fachregeln für Teillieferung; er ist keine allgemeine semantische Analyse beliebiger ERP-Änderungen. Andere Änderungsarten nutzen weiterhin die vorbereiteten Dashboard-Entwürfe und weisen diese Grenze aus.
+The source check for partial deliveries reads all 33 Confluence pages and all seven extracted SharePoint files, including training material, service descriptions, screenshots, spreadsheets and PDF slides. Parameters and code rules are read from the final files of the release, not from intermediate states in commit diffs. Every change item carries the original name, source ID, location and code evidence. The test reference is never loaded by the MCP; it stays an external test reference.
 
-Codebelege und fachliche Anforderungen bleiben unterscheidbar: Erlösdatum und OP-Zuordnung der Teilrechnung stammen aus dem Jira-Kommentar zu MOB-4812; der Codeausschnitt belegt die Teilrechnung mit TR. Beide Belege werden mitgeliefert und beim gezielten Nachladen ungekürzt gezeigt. Vorbereitete Doku-Entwürfe sind entsprechend beschriftet und werden nicht als direkter Codeausschnitt ausgegeben.
+The 19 prepared dashboard drafts are separate from the source check. An additionally found passage is a review aid, not a finished or automatically approved draft. Unassigned sources count as unchecked. The additional detector uses explicitly limited, deterministic domain rules for partial deliveries; it is not a general semantic analysis of arbitrary ERP changes. Other change types use the prepared dashboard drafts and state this limit.
 
-Der Standard liefert die vollständigen Fakten als Text einmal. `format: "structured"` ergänzt das Datenmodell für Oberflächen; das Dashboard fordert diesen Modus ausdrücklich an. `details: true` liefert Entwurfstexte ungekürzt. Mit `source_id` lädt der Agent nur die benötigte Originalquelle samt ungekürztem extrahiertem Text und Codeausschnitten nach; dieser Abruf erzeugt keinen neuen MR-Kommentar:
+Code evidence and business requirements stay distinguishable: revenue date and open-item assignment of the partial invoice come from the Jira comment on MOB-4812; the code excerpt proves the partial invoice with TR. Both pieces of evidence are returned and shown in full when loaded on demand. Prepared documentation drafts are labelled as such and never presented as a direct code excerpt.
+
+By default the full facts are returned once as text. `format: "structured"` adds the data model for user interfaces; the dashboard requests this mode explicitly. `details: true` returns draft texts in full. With `source_id` the agent loads only the original source it needs, including the full extracted text and code excerpts; this call creates no new MR comment:
 
 ```json
 {"merge_request":"1287","source_id":"01MOBIQ004822DOC16"}
 ```
 
-Die Quellenliste kommt als direkt nutzbare Antworttabelle, mit einer Zeile je Fundstelle und einer eigenen Spalte für die konkrete Änderung. Bei einem Doku-Prüfauftrag prüft der Agent seinen Entwurf mit `check_change` und `answer` vor der Ausgabe. Der Abruf bewertet Lücken und liefert zusätzlich eine vollständig ergänzte, formal geprüfte Antwort aus dem Quelleninventar zum unveränderten Übernehmen. Dadurch müssen Ergänzungen nicht erneut verlustbehaftet zusammengefasst werden. Fachfragen und Ticketvorbereitung benötigen keine Doku-Gesamtprüfung. Die Prüfung verwendet ausschließlich die aus Quellen/Code abgeleitete Liste und keine Testreferenz. Auch dieser Abruf erzeugt keinen MR-Kommentar. Die Prüfung ist formal: Sie ersetzt kein fachliches Gutachten und erkennt beispielsweise falsche Verneinungen nicht zuverlässig. Ein fremder Client kann die Übernahme weiterhin missachten; entscheidend ist deshalb immer dessen tatsächliche Schlussantwort.
+The source list comes as a ready-to-use answer table with one row per finding and a separate column for the concrete change. For a documentation review task, the agent checks its draft answer with `check_change` and `answer` before replying. The call rates gaps and additionally returns a fully completed, formally checked answer built from the source inventory, to be used unchanged. This avoids lossy re-summarising. Domain questions and ticket preparation need no full documentation check. The check uses only the list derived from sources and code, never the test reference, and creates no MR comment. The check is formal: it does not replace an expert review and, for example, does not reliably detect wrong negations. A third-party client can still ignore the result; what counts is its actual final answer.
 
 ```json
-{"merge_request":"1287","answer":"Die eigene Antwort vor der Ausgabe …"}
+{"merge_request":"1287","answer":"Your own answer before replying …"}
 ```
 
-Das übernimmt [Executors Prinzip der gezielten Entdeckung und Abfrage](https://executor.sh/): eine kleine Werkzeugoberfläche und Details auf Abruf. neuraldoc führt dabei keine beliebigen Agentenskripte aus; die drei fachlichen Werkzeuge bleiben erhalten.
+This follows [Executor's principle of targeted discovery and retrieval](https://executor.sh/): a small tool surface and details on demand. neuraldoc does not run arbitrary agent scripts; the three domain tools stay as they are.
 
-## Ablauf
+## Flow
 
-1. Der Agent ruft `check_change` auf und gibt dem Nutzer den Link (`/app/aenderungen/<id>`).
-2. Ist es eingeschaltet, setzt neuraldoc denselben Link als Kommentar in den Merge-Request.
-3. Auf der Seite prüft eine Person die Entwürfe und übernimmt, passt an oder verwirft sie. Wer freigibt, hängt von der Doku-Art ab (Dashboard → MCP → „Wer gibt frei“); technische Doku darf die Entwicklung selbst freigeben.
-4. Jede übernommene Stelle schreibt neuraldoc nach Confluence oder SharePoint zurück, mit neuer Versionsnummer. In der Demo wird das nur protokolliert.
+1. The agent calls `check_change` and gives the user the link (`/app/aenderungen/<id>`).
+2. If enabled, neuraldoc posts the same link as a comment on the merge request.
+3. On that page a person reviews the drafts and accepts, edits or rejects them. Who approves depends on the document type (Dashboard → MCP → "Wer gibt frei"); development may approve technical documentation itself.
+4. neuraldoc writes every accepted passage back to Confluence or SharePoint with a new version number. In the demo this is only logged.
 
-## Starten
+## Starting
 
-| Start | Endpunkt |
+| Start | Endpoint |
 |---|---|
-| `npm run dev` in `frontend/` | `http://localhost:5174/mcp` (läuft im Vite-Server mit, Dashboard unter `/app/mcp`) |
-| `npm run mcp` in `frontend/` | `http://localhost:8787/mcp` (eigenständig) |
-| `node mcp/stdio.mjs` | stdio, für Clients, die den Server selbst starten |
+| `npm run dev` in `frontend/` | `http://localhost:5174/mcp` (runs inside the Vite server, dashboard at `/app/mcp`) |
+| `npm run mcp` in `frontend/` | `http://localhost:8787/mcp` (standalone) |
+| `node mcp/stdio.mjs` | stdio, for clients that start the server themselves |
 
-Token: `Authorization: Bearer nd_demo_mobiq_2b7f9c41e8` (oder `NEURALDOC_MCP_TOKEN` setzen). Links zeigen auf den Host der Anfrage; bei stdio auf `NEURALDOC_APP_URL` (Standard `http://localhost:5174`).
+Token: `Authorization: Bearer nd_demo_mobiq_2b7f9c41e8` (or set `NEURALDOC_MCP_TOKEN`). Links point to the host of the request; with stdio to `NEURALDOC_APP_URL` (default `http://localhost:5174`).
 
 ```
 claude mcp add --transport http neuraldoc http://localhost:5174/mcp --header "Authorization: Bearer nd_demo_mobiq_2b7f9c41e8"
-codex mcp add neuraldoc -- node <pfad>/mcp/stdio.mjs
+codex mcp add neuraldoc -- node <path>/mcp/stdio.mjs
 ```
 
+## Selectable workflows
 
-## Auswählbare Abläufe
+Besides the three tools, the server offers three MCP prompts via `prompts/list` and `prompts/get` (showcase only). Fetching a prompt runs no tool yet: the client receives the task for its agent.
 
-Neben den drei Tools bietet der Server drei MCP-Prompts über `prompts/list` und `prompts/get`. Ihr Abruf führt noch kein Tool aus: Der Client erhält den Arbeitsauftrag für seinen Agenten.
-
-| Claude Code | Argument | Ablauf |
+| Claude Code | Argument | Workflow |
 |---|---|---|
-| `/neuraldoc:ticket_context MOB-4844` | `ticket` | Ticket vorbereiten |
-| `/neuraldoc:ask` | `question` | Produktfrage mit Quellen beantworten |
-| `/neuraldoc:check_change !1287` | `change` | MR oder Jira-Ticket auf Doku-Auswirkungen prüfen |
+| `/neuraldoc:ticket_context MOB-4844` | `ticket` | prepare a ticket |
+| `/neuraldoc:ask` | `question` | answer a product question with sources |
+| `/neuraldoc:check_change !1287` | `change` | check an MR or Jira ticket for documentation impact |
 
-Auch `/mcp__neuraldoc__ticket_context`, `/mcp__neuraldoc__ask` und `/mcp__neuraldoc__check_change` funktionieren in Claude Code. Mehrteilige Fragen über die Argumenteingabe des Clients angeben; die CLI zerlegt inline angegebene Argumente nach Leerzeichen. Der Prompt `check_change` akzeptiert MR-Nummern oder MOB-Tickets; das Tool unterstützt zusätzlich Branches und Commits.
+`/mcp__neuraldoc__ticket_context`, `/mcp__neuraldoc__ask` and `/mcp__neuraldoc__check_change` also work in Claude Code. Enter multi-part questions through the client's argument input; the CLI splits inline arguments at spaces. The `check_change` prompt accepts MR numbers or MOB tickets; the tool additionally supports branches and commits.
 
-Für Codex liegt der Skill unter [`.agents/skills/neuraldoc`](../.agents/skills/neuraldoc/SKILL.md). Auf diesem Rechner ist er zusätzlich unter `~/.codex/skills/neuraldoc` installiert. Per `$neuraldoc` oder über den Skill-Eintrag im Slash-Menü auswählen, etwa `$neuraldoc MR !1287 prüfen`. Ein neuer Thread bzw. Neustart kann zum Neuladen nötig sein.
+References: [Claude Code MCP prompts](https://code.claude.com/docs/en/mcp#use-mcp-prompts-as-commands), [Codex slash commands and skills](https://learn.chatgpt.com/docs/reference/slash-commands).
 
+## Structure
 
-Referenzen: [Claude Code MCP-Prompts](https://code.claude.com/docs/en/mcp#use-mcp-prompts-as-commands), [Codex Slash-Befehle und Skills](https://learn.chatgpt.com/docs/reference/slash-commands).
-
-## Aufbau
-
-- `core.mjs`: die drei Werkzeuge, Freigaberegeln, Entscheidungen, Zurückschreiben, Protokoll mit Tokens (Antwort gegen die Rohdaten, die neuraldoc dafür gelesen hat; vier Zeichen je Token).
-- `sources.mjs`: GitLab, Jira, Confluence und SharePoint aus dem Beispieldatensatz (Submodule unter `datasets/`, Pfade über `dataset.mjs`), dazu die BM25-Suche und wo jedes Dokument liegt. Echte Anbindungen benötigen API-Loader sowie passende Fachregeln und Validierung auf dem jeweiligen Produkt; die Demo-Regeln decken das nicht allgemein ab.
-- `impact.mjs`: Originalquellen, regelbasierte Fundstellen und Codebelege; keine Ground-Truth-Abhängigkeit. `impact.test.mjs` prüft Vollständigkeit, neue Quellen, geänderte Parameter und gezieltes Nachladen.
-- Änderungen, Dokumente, Entwürfe und der Zielgruppen-Filter kommen aus `frontend/src/dashboard/features/docs/data.ts` und `logic.ts`, also genau dem, was das Dashboard zeigt. Node 24 lädt die `.ts`-Dateien direkt.
-- `handler.mjs`: MCP über JSON-RPC 2.0, Streamable HTTP mit JSON-Antworten (ohne SSE), Session-ID per `Mcp-Session-Id`; dazu `/api/mcp/*` für das Dashboard. Entscheidungen im Dashboard gehen an `/api/mcp/decisions`, damit der Agent den Stand sieht.
-- Zustand (Regeln, Entscheidungen, Zurückgeschriebenes, MR-Kommentare, Protokoll) liegt in `mcp/state/`. Löschen setzt alles zurück.
+- `core.mjs`: the three tools, approval rules, decisions, write-back, and a log with tokens (answer versus the raw data neuraldoc read for it; four characters per token).
+- `sources.mjs`: GitLab, Jira, Confluence and SharePoint from the sample dataset (submodules in `datasets/`, paths via `dataset.mjs`), plus BM25 search and where each document lives. Real connections need API loaders as well as suitable domain rules and validation for the product at hand; the demo rules do not cover that in general.
+- `impact.mjs`: original sources, rule-based findings and code evidence; no dependency on the ground truth. `impact.test.mjs` checks completeness, new sources, changed parameters and on-demand loading.
+- `projects.mjs`, `project-import.mjs`, `project-mcp.mjs`: import and review of your own Git repository and documents.
+- Changes, documents, drafts and the audience filter come from `frontend/src/dashboard/features/docs/data.ts` and `logic.ts`, exactly what the dashboard shows. Node 24 loads the `.ts` files directly.
+- `handler.mjs`: MCP over JSON-RPC 2.0, Streamable HTTP with JSON responses (no SSE), session ID via `Mcp-Session-Id`; plus `/api/mcp/*` for the dashboard. Decisions in the dashboard go to `/api/mcp/decisions` so the agent sees the current state.
+- State (rules, decisions, write-backs, MR comments, log, imported projects) lives in `mcp/state/`. Deleting it resets everything.

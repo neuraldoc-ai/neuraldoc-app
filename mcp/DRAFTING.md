@@ -1,60 +1,54 @@
-# Texterstellung mit Gemini Flash-Lite über Vertex AI
+# Drafting text with an LLM
 
-Der neue Generator formuliert Ersatztexte, neue Absätze mit Überschriften und Tabellenzeilen aus einem Schreibkontext. Er benötigt Originaltext, Zielgruppe, Einfügestelle und Belege. Er wählt keine Dokumente aus und gibt keine Änderung frei. Bei fehlenden Angaben kann er eine Rückfrage statt eines Textes zurückgeben.
+The generator writes replacement texts, new paragraphs with headings and table rows from a writing context. It needs the original text, the audience, the target location and evidence. It never selects documents and never approves a change. If information is missing, it returns a question instead of a text.
 
-**Überprüfung starten** bereitet die offenen Textstellen vor und öffnet danach den Dokumenteditor. Auf der Änderungsübersicht werden alle offenen Texte des Releases vorbereitet, bei einer einzelnen Änderung nur deren Texte. Eine Ladeansicht zeigt abgeschlossene Stellen; bis zu vier unterschiedliche Texte werden parallel angefragt. Identische gleichzeitige Anfragen teilen sich einen Modellaufruf. Vorhandene passende Texte kommen aus dem dauerhaften Cache. Bereits entschiedene Stellen und manuelle Aufgaben an Bildern oder Dateien werden ausgelassen. Bei Fehlern oder fehlendem Schreibkontext bleiben fertige Texte gespeichert; die Ladeansicht zeigt die betroffenen Stellen und bietet einen erneuten Versuch. Der zusätzliche Erstellen-Button im Editor entfällt.
+**Where it runs.** In the showcase, "Starten" loads prepared MOBIQ examples; no model is called and free writing contexts are refused (HTTP 403). For an imported project of your own, "Starten" and "Formulieren" draft one text per document that Jev mapped to the changed code, from the document and the diffs of the mapped files. The command-line tool below works independently of the dashboard.
 
-Vorbereitete neue Texte aus `data.ts` werden nicht an das Modell geschickt. Der Adapter liest die Originalpfade der zugehörigen GitLab-Commits und die finalen Dateien aus `release/26.4`, dazu die vorhandene Doku und das Ticket. Die vorgeschlagenen Stellen und ihre Zuordnung zu den Features bleiben Demo-Daten. Weitere Projekte können den Generator mit dem unten beschriebenen eigenen JSON-Kontext verwenden; automatische Anbindung, Erkennung und Dashboard-Aufnahme fremder Features fehlen weiterhin.
+Up to four different texts are requested in parallel; identical concurrent requests share one model call. Matching texts come from the persistent cache. Decided passages and manual tasks on images or files are skipped. On errors or missing context, finished texts stay stored and the failed passages can be retried.
 
-## Einrichtung
+## Setup
 
-Für `npm run dev` in `frontend/.env.local` setzen und Vite neu starten:
+For `npm run dev`, set in `frontend/.env.local` and restart Vite (Vertex example; other providers are listed in the main README):
 
 ```dotenv
 NEURALDOC_DRAFT_PROVIDER=vertex
-GOOGLE_CLOUD_PROJECT=deine-projekt-id
+GOOGLE_CLOUD_PROJECT=your-project-id
 GOOGLE_CLOUD_LOCATION=global
 NEURALDOC_VERTEX_AUTH=api-key
 NEURALDOC_VERTEX_MODE=express
-VERTEX_API_KEY=hier-den-vorhandenen-vertex-key-eintragen
+VERTEX_API_KEY=your-existing-vertex-key
 NEURALDOC_GEMINI_MODEL=gemini-2.5-flash-lite
 ```
 
-Der Key kommt aus dem eigenen Google-Cloud-Projekt und muss Vertex AI aufrufen dürfen. Der Adapter verwendet den [Vertex-Express-Endpunkt](https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/express-mode/api-reference) unter `aiplatform.googleapis.com`. Dort bestimmt der Key das Projekt für Abrechnung und Zugriff; die Projekt-ID im lokalen Kontext dokumentiert diese Zuordnung. Den Key nur in der ignorierten `frontend/.env.local` oder als Server-Umgebungsvariable ablegen.
+The key comes from your own Google Cloud project and must be allowed to call Vertex AI. The adapter uses the [Vertex express endpoint](https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/express-mode/api-reference) at `aiplatform.googleapis.com`, where the key determines the project for billing and access. Keep the key only in the ignored `frontend/.env.local` or in a server environment variable.
 
-Der Key wird nur im Node-Server gelesen. Niemals eine `VITE_` Variable für Zugangsdaten verwenden. Für den eigenständigen MCP-Server können die gleichen Werte aus einer lokalen Datei geladen werden:
+The key is read only by the Node server. Never use a `VITE_` variable for credentials. The standalone MCP server can load the same values from a local file:
 
 ```powershell
 node --env-file=frontend/.env.local mcp/http.mjs
 ```
 
-Voreinstellung für Vertex ist `gemini-2.5-flash-lite`, Thinking explizit aus (`thinkingBudget: 0`), höchstens 1.800 Ausgabetokens ; der Schreibkontext ist auf 40.000 Bytes begrenzt. Laut [Vertex-Preisliste](https://cloud.google.com/vertex-ai/generative-ai/pricing) kostet Text $0,10 je Million Eingabetokens und $0,40 je Million Ausgabetokens. Beispiel: 4.000 Eingabe- und 400 Ausgabetokens kosten ungefähr $0,00056. Das ist eine Rechnung. Der echte Einzeltest am 03.10.2026 für den Tourstopp-Text meldete 4.059 Eingabe- und 154 Ausgabetokens, entsprechend $0,0004675 nach diesen Listenpreisen. Thinking war ausgeschaltet. Der Test verwendete isolierten temporären Zustand und hat keine Dashboard-Entscheidung oder Dokumentquelle verändert.
+The Vertex default is `gemini-2.5-flash-lite` with thinking explicitly off (`thinkingBudget: 0`) and at most 1,800 output tokens; the writing context is limited to 40,000 bytes. According to the [Vertex price list](https://cloud.google.com/vertex-ai/generative-ai/pricing), text costs $0.10 per million input tokens and $0.40 per million output tokens. Example: 4,000 input and 400 output tokens cost about $0.00056 (a calculation). A real single test on 3 October 2026 reported 4,059 input and 154 output tokens, i.e. $0.0004675 at these list prices, with thinking off, in an isolated temporary state.
 
-Alternativ ist `gemini-3.5-flash-lite` mit minimalem Thinking freigeschaltet: global $0,30 Eingabe und $2,50 Ausgabe je Million Tokens, an nicht globalen Vertex-Endpunkten 10 % mehr. Es gibt keinen automatischen Fallback. Andere Modelle sind gesperrt. Preise sind Stand 03.10.2026; die zentralen Konstanten in `drafting.mjs` müssen bei Preisänderungen aktualisiert werden. Die Gemini Developer API bleibt nur bei explizitem `NEURALDOC_DRAFT_PROVIDER=gemini` und `GEMINI_API_KEY` nutzbar; Vertex-Anfragen übernehmen diesen Key nicht.
+Alternatively `gemini-3.5-flash-lite` with minimal thinking is enabled: globally $0.30 input and $2.50 output per million tokens, 10 % more at non-global Vertex endpoints. There is no automatic fallback; other Gemini models are blocked. Prices as of 3 October 2026; the constants in `drafting.mjs` must be updated when prices change. The Gemini Developer API is used only with an explicit `NEURALDOC_DRAFT_PROVIDER=gemini` and `GEMINI_API_KEY`; Vertex requests never use that key.
 
-Erzeugte Texte werden mit ihrem Schreibkontext dauerhaft gespeichert. Bei unveränderten Quellen, Modell und Prompt wird exakt derselbe Text ohne Modellaufruf wiederverwendet, auch nach Neustarts und Deployments. Geänderte Belege ergeben einen neuen Cache-Schlüssel. Es gibt kein Tageslimit, keine Kostenreservierung und keinen zusätzlichen countTokens-Aufruf. Vom Modell gemeldete Tokens bleiben im Entwurf dokumentiert. Fehlerhafte oder unvollständige Antworten werden nicht gecacht; automatische Wiederholungen gibt es nicht.
+Generated texts are stored permanently together with their writing context. With unchanged sources, model and prompt, exactly the same text is reused without a model call, also after restarts. Changed evidence produces a new cache key. There is no daily limit, no cost reservation and no extra countTokens call. Token counts reported by the model are kept in the draft. Failed or incomplete responses are never cached, and there are no automatic retries.
 
-Lokal liegen Cache und freigabefähige Texte im ignorierten Zustandsordner oder in `NEURALDOC_STATE_DIR`. In einem Container gehört dieser Ordner in ein dauerhaftes Volume. Identische Anfragen werden innerhalb eines Serverprozesses serialisiert. Browseranfragen müssen dieselbe Herkunft haben; externe Schreibkontexte benötigen den MCP-Token.
+Cache and approvable texts live in the ignored state folder or in `NEURALDOC_STATE_DIR`; in a container this folder belongs in a persistent volume. Identical requests are serialised within one server process. Browser requests must come from the same origin.
 
-## Klarer Prompt und Prüfung
+## Clear prompt and validation
 
-Der vollständige Systemprompt steht in [draft-prompt.mjs](draft-prompt.mjs). Er trennt Produktbelege von vorhandener Doku und Schreibauftrag. Ticketanforderungen dürfen ohne passenden Codebeleg nicht als umgesetzt beschrieben werden. Zahlen und Dialognamen dürfen nicht erfunden werden. Quelldaten sind keine Anweisungen an das Modell. Der Prompt übernimmt die gewünschte deutsche Schreibweise und die Zielgruppe des jeweiligen Dokuments.
+The complete system prompt is in [draft-prompt.mjs](draft-prompt.mjs). It separates product evidence from existing documentation and the writing task. Ticket requirements must not be described as implemented without matching code evidence. Numbers and dialog names must not be invented. Source data are never instructions to the model. The prompt follows the requested German style and the audience of each document.
 
-Gemini liefert strukturiertes JSON. Der Server prüft Schema, referenzierte Beleg-IDs, Tabellenbreite, vorgegebene Überschriften und vollständige Antworten. Diese Prüfung bewertet Form und Verweise, keine allgemeine fachliche Wahrheit. Alle erzeugten Texte bekommen `Kurz prüfen`; sie werden aus der Demo-Trefferstatistik herausgenommen. Vorhandene Produktfragen bleiben offen. Eine Freigabe speichert den tatsächlich übernommenen Wortlaut. Bereits entschiedene Stellen werden nicht regeneriert. Eine Rückfrage oder ein Fehler lässt den bisherigen Text stehen.
+The model returns structured JSON. The server checks the schema, referenced evidence IDs, table width, required headings and complete responses. This validation covers form and references, not general factual truth. All generated texts are marked `Kurz prüfen` (quick review) and excluded from the demo accuracy statistics. Approval stores the wording actually accepted. Decided passages are never regenerated. A question or an error leaves the previous text in place.
 
-Die Freigabe schreibt weiterhin nur ins lokale Entscheidungsprotokoll. Confluence-/SharePoint-Schreibzugriffe bleiben simuliert.
+Approval writes only to the local decision log (showcase) or the project state (own project). Confluence/SharePoint write-back is simulated; own projects are exported as a ZIP.
 
-## MCP und eigener Schreibkontext
+## MCP and your own writing context
 
-Normale `check_change`, `ask` und `ticket_context` Aufrufe starten keinen internen LLM-Aufruf. Ein ausdrücklicher Einzelauftrag zur Texterstellung kann über das bestehende Tool laufen:
+Normal `check_change`, `ask` and `ticket_context` calls never start an internal LLM call. For an imported project, `check_change` with `draft_id` explicitly drafts one text; in the showcase this is refused.
 
-```json
-{"merge_request":"1287","draft_id":"p05"}
-```
-
-Der erzeugte Text bleibt anschließend im Dashboard prüfbar. `draft_id` ist nicht zusammen mit `answer` oder `source_id` verwendbar.
-
-Projektneutraler Kontext für API oder CLI:
+A project-neutral context for the command line:
 
 ```json
 {
@@ -77,15 +71,15 @@ Projektneutraler Kontext für API oder CLI:
 ```
 
 ```powershell
-node --env-file=frontend/.env.local mcp/draft-cli.mjs kontext.json
+node --env-file=frontend/.env.local mcp/draft-cli.mjs context.json
 ```
 
-HTTP: `POST /api/mcp/drafts/generate` mit `Authorization: Bearer <MCP-Token>` und JSON `{ "context": <Kontext> }`. Im Dashboard genügt `{ "id": "p05" }` aus derselben Herkunft. `GET /api/mcp/drafts` liefert nur passende erzeugte Texte für vorhandene Dashboard-Stellen. Eigene Kontexte werden als Entwürfe mit Belegverweisen und Kostenangaben zurückgegeben und lokal gecacht; sie werden nicht automatisch als neue Features in die Demo-Oberfläche übernommen.
+The result is a draft with evidence references and cost information, cached locally.
 
-## Verifikation
+## Verification
 
 ```powershell
-node --test mcp/drafting.test.mjs mcp/impact.test.mjs mcp/prompts.test.mjs mcp/usage.test.mjs
+node --test mcp/drafting.test.mjs mcp/providers.test.mjs mcp/projects.test.mjs
 ```
 
-Die automatischen Generator-Tests verwenden einen simulierten Google-Endpunkt. Sie prüfen fremde Schreibkontexte, Vertex- und Gemini-Anfrageformate, Trennung der Projekt-Caches, Modellkonfiguration, Cache, parallele Doppelanfragen, Persistenz ohne Tageslimit, fehlerhafte Antworten, Rückfragen, Originalpfade der Codebelege, dauerhafte Freigaben und Herkunftsprüfung. Sie messen keine reale Modellqualität. Zusätzlich wurde der oben beschriebene echte Vertex-Aufruf geprüft; ein einzelner plausibler Entwurf belegt keine allgemeine Textqualität.
+The automated tests use simulated provider endpoints. They check foreign writing contexts, Vertex, Gemini, OpenAI-compatible and Claude request formats, separate project caches, model configuration, caching, parallel duplicate requests, persistence, invalid responses, questions, original code paths, persistent approvals, origin checks and that the showcase never calls a model. They do not measure real model quality; a single plausible draft from a real call is no evidence of general text quality.

@@ -1,16 +1,16 @@
-﻿# neuraldoc Dashboard-Frontend
+# neuraldoc dashboard frontend
 
-Node.js 24 und npm verwenden:
+Use Node.js 24 and npm:
 
 ```powershell
 npm ci
 npm run dev
 ```
 
-Dashboard: http://localhost:5174/app/. `/` leitet dorthin weiter. Vite liefert den MCP unter `/mcp` mit aus. Die Landingpage läuft separat unter http://localhost:5173/.
+Dashboard: http://localhost:5174/app/ (`/` redirects there). Vite also serves the MCP endpoint at `/mcp`.
 
-`npm run build` erzeugt `dist/app/index.html` und die Assets. Der Produktionsserver ist `../mcp/serve.mjs` und liefert den MCP mit aus.
+`npm run build` produces `dist/app/index.html` and the assets. The production server is `../mcp/serve.mjs`, which serves the MCP endpoint as well.
 
-Die Beispieldaten kommen aus den Submodulen unter `../datasets/` (`mobiq`, `mobiq-code`, `mobiq-docs`, `mobiq-db`). Alias `@/` zeigt auf `src/dashboard/`; `@dataset/` verwendet das ursprüngliche Datensatz-Layout (`gitlab/…`, `confluence/…`, `postgres/…`) und wird in `vite.config.ts` auf das jeweilige Repository abgebildet, wie `mcp/dataset.mjs` im Server. Der TanStack-Router verwendet `/app` als Basispfad.
+The sample data come from the submodules in `../datasets/` (`mobiq`, `mobiq-code`, `mobiq-docs`, `mobiq-db`). The alias `@/` points to `src/dashboard/`; `@dataset/` uses the original dataset layout (`gitlab/…`, `confluence/…`, `postgres/…`) and is mapped to the matching repository in `vite.config.ts`, like `mcp/dataset.mjs` on the server. The TanStack router uses `/app` as its base path.
 
-`VITE_LANDING_URL` setzt den Website-Link. `.env.local` und der MCP-Zustand sind lokale, von Git ignorierte Dateien. Für die lokale Trennung wurden die bestehenden Einstellungen übernommen.
+`VITE_LANDING_URL` sets the website link. `.env.local` and the MCP state are local files ignored by Git.

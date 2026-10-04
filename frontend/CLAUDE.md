@@ -1,3 +1,3 @@
-# Frontend-Regeln
+# Frontend rules
 
-Dashboard unter `/app/`, Port 5174. shadcn/ui aus `src/dashboard/components/ui` verwenden. UI-Texte auf Deutsch; MOBIQ und Musterhaus Software GmbH sind erfundene Beispieldaten. Zahlen aus den Daten ableiten. Die Landingpage liegt in einem eigenen Repository.
+Dashboard under `/app/`, port 5174. Use shadcn/ui from `src/dashboard/components/ui`. UI texts in German; MOBIQ and Musterhaus Software GmbH are fictional sample data. Derive numbers from the data. The landing page lives in its own repository.

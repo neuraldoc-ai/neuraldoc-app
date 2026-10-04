@@ -10,59 +10,60 @@ const tokens = caches.reduce((s, c) => s + c.response.usage.input_tokens, 0)
 const times = caches.map((c) => c.elapsedMs).sort((a, b) => a - b)
 const semantic = graph.edges.filter((e) => e.kind === 'semantic')
 const summary = evaluation.summary
-const report = `# Komponenten-Mapping: Test am MOBIQ-Beispiel
+const fence = '```'
+const report = `# Component mapping: test on the MOBIQ example
 
-Stand: ${graph.metadata.semantic.createdAt}. Modell: ${graph.metadata.semantic.model}.
+As of: ${graph.metadata.semantic.createdAt}. Model: ${graph.metadata.semantic.model}.
 
-## Technischer Graph
+## Technical graph
 
-- ${graph.metadata.analysis.files.length} Code-Dateien: Java, Kotlin, TSX und Pascal, alle ohne Parserfehler.
-- ${graph.metadata.analysis.sql.length} SQL-Dateien mit PostgreSQL AST geparst. Kein Produktcode oder SQL ausgeführt.
-- ${graph.nodes.filter((n) => n.type === 'function').length} explizite Funktionen/Methoden/Konstruktoren; ${graph.edges.filter((e) => e.kind === 'calls').length} auflösbare statische Aufrufverbindungen.
-- ${graph.metadata.analysis.unresolvedCalls.length} Aufrufe bleiben ohne eindeutiges Ziel. Der Ausschnitt enthält keine vollständigen Projekte/Abhängigkeiten. Java-Auflösung berücksichtigt Paket, explizite Imports, deklarierte Empfängertypen und Argumentanzahl; sie ersetzt keinen Java-Compiler. Kotlin und Pascal sind geparst, ihre Aufrufe bleiben mangels Typauflösung offen. Keine Analyse von DI, Reflection oder Laufzeitbindung.
-- Fachmodule aus Paket-/Verzeichnispfaden sind konfigurierte, abgeleitete Zuordnungen. Ein unpassender Pfad wird nicht automatisch zu „Plattform“.
-- ORM-/Tabellenbeziehungen aus Namensgleichheit bleiben abgeleitet; SQL-AST und Fremdschlüssel werden separat belegt.
+- ${graph.metadata.analysis.files.length} code files: Java, Kotlin, TSX and Pascal, all without parser errors.
+- ${graph.metadata.analysis.sql.length} SQL files parsed with the PostgreSQL AST. No product code or SQL executed.
+- ${graph.nodes.filter((n) => n.type === 'function').length} explicit functions/methods/constructors; ${graph.edges.filter((e) => e.kind === 'calls').length} resolvable static call links.
+- ${graph.metadata.analysis.unresolvedCalls.length} calls remain without a unique target. The excerpt contains no complete projects/dependencies. Java resolution uses package, explicit imports, declared receiver types and argument count; it does not replace a Java compiler. Kotlin and Pascal are parsed, but their calls stay open for lack of type resolution. No analysis of DI, reflection or runtime binding.
+- Business modules from package/directory paths are configured, derived assignments. A non-matching path does not automatically become "platform".
+- ORM/table relationships from name matches stay derived; SQL AST and foreign keys are evidenced separately.
 
-## Jev im Use Case
+## Jev in this use case
 
-- ${graph.metadata.semantic.subjects} Objekte geprüft: Dokumente, Tabellen/Views und Dateien ohne klare Pfadzuordnung.
-- ${semantic.length} Modellverbindungen übernommen: ${semantic.filter((e) => e.target.startsWith('m:')).length} fachliche Modulzuordnungen und ${semantic.filter((e) => e.target.startsWith('file:')).length} Dokument-Code-Verbindungen.
-- ${graph.metadata.semantic.deferred.length} Objekte ohne übernommene Modulzuordnung. Niedrig bewertete Dokument-Code-Vorschläge stehen in den Objektdetails zur Prüfung.
-- Mehrere Fachmodule sind möglich. Leere Dokumente erzeugen keine Modellverbindung. Alte Dokumentation darf trotz Verhaltenswiderspruch zum aktuellen Code derselben Komponente zugeordnet werden.
-- Jede Modellverbindung bleibt „abgeleitet“, mit Modell, Wahrscheinlichkeit, Zeitstempel, Ausschnitt und Request-Fingerprint. Der Belegfilter entfernt sie. Wahrscheinlichkeiten sind keine empirisch gemessene Genauigkeit.
-- Kandidaten für Dokument-Code-Mapping werden aus vorhandenen Doku-Vorschlägen/Quell-Commits und deren geänderten Dateien gewonnen; maximal 16 pro Dokument. Damit ist die Suche auf diese Kandidaten begrenzt und nicht vollständig für beliebige bislang unverbundene Komponenten.
-- Inhaltsbasierter lokaler Cache, versioniertes Modell, validierte Antworten und Budgetprüfung. „brain:index“/Frontend-Aufrufe machen keine bezahlten API-Aufrufe. Nur „brain:map“ und „brain:evaluate“ rufen Jev ausdrücklich auf.
+- ${graph.metadata.semantic.subjects} objects checked: documents, tables/views and files without a clear path assignment.
+- ${semantic.length} model links accepted: ${semantic.filter((e) => e.target.startsWith('m:')).length} business module assignments and ${semantic.filter((e) => e.target.startsWith('file:')).length} document–code links.
+- ${graph.metadata.semantic.deferred.length} objects without an accepted module assignment. Low-rated document–code suggestions are listed in the object details for review.
+- Several business modules are possible. Empty documents produce no model link. Old documentation may be assigned to the same component even if its behaviour contradicts the current code.
+- Every model link stays "derived", with model, probability, timestamp, excerpt and request fingerprint. The evidence filter removes them. Probabilities are not an empirically measured accuracy.
+- Candidates for document–code mapping come from existing documentation proposals/source commits and their changed files; at most 16 per document. The search is therefore limited to these candidates and not complete for arbitrary unconnected components.
+- Content-based local cache, versioned model, validated responses and budget check. "brain:index" and frontend calls make no paid API calls. Only "brain:map" and "brain:evaluate" call Jev explicitly.
 
-## Kleine manuelle Prüfung
+## Small manual check
 
-${evaluation.note}
+${summary.total} manually labelled cases from the same sample dataset, ${summary.positives} of them positive; the others are negative or have no document content. Not a representative or independent quality measurement.
 
-- Richtige Klassenentscheidungen: ${summary.choiceCorrect}/${summary.total}.
-- Mit konservativer Übernahmeschwelle: ${summary.acceptedTruePositive}/${summary.positives} passende Paare übernommen; ${summary.positives - summary.acceptedTruePositive} passende Paare bleiben zur Prüfung offen.
-- Falsch übernommene unpassende/inhaltlose Paare: ${summary.acceptedFalsePositive}.
-- Die Schwellen sind eine Prüfregel, nicht mit diesem kleinen Sample kalibriert. Ergebnisse dürfen nicht als allgemeine 100-%-Genauigkeit ausgegeben werden.
+- Correct class decisions: ${summary.choiceCorrect}/${summary.total}.
+- With the conservative acceptance threshold: ${summary.acceptedTruePositive}/${summary.positives} matching pairs accepted; ${summary.positives - summary.acceptedTruePositive} matching pairs stay open for review.
+- Wrongly accepted non-matching/empty pairs: ${summary.acceptedFalsePositive}.
+- The thresholds are a review rule, not calibrated on this small sample. Results must not be presented as general 100 % accuracy.
 
-| Dokument | Code | Erwartet | Jev | Übernommen |
+| Document | Code | Expected | Jev | Accepted |
 | --- | --- | --- | --- | --- |
-${evaluation.cases.map((c) => `| ${c.doc} | ${path.basename(c.file)} | ${c.expected} | ${c.answer.choice} (${(c.answer.probabilities[c.answer.choice] * 100).toFixed(0)} %) | ${c.accepted ? 'ja' : 'nein'} |`).join('\n')}
+${evaluation.cases.map((c) => `| ${c.doc} | ${path.basename(c.file)} | ${c.expected} | ${c.answer.choice} (${(c.answer.probabilities[c.answer.choice] * 100).toFixed(0)} %) | ${c.accepted ? 'yes' : 'no'} |`).join('\n')}
 
-## Verbrauch und Wiederholung
+## Usage and reproduction
 
-Alle bisher erhaltenen Antworten in den beiden lokalen Caches (einschließlich Entwicklungsdurchläufen): ${caches.length} API-Antworten, ${tokens} Input-Tokens, ca. ${(tokens * 0.042 / 1e6).toFixed(6)} USD. Geschätzt nach [Jev-Preismodell](https://docs.typesafe.ai/models), keine Abrechnungsauskunft. Latenz der erhaltenen Antworten: Median ${times[Math.floor(times.length / 2)]} ms, P95 ${times[Math.floor(times.length * 0.95)]} ms. Fehlgeschlagene Requests ohne Usage sind darin nicht enthalten.
+All responses received so far in the two local caches (including development runs): ${caches.length} API responses, ${tokens} input tokens, about ${(tokens * 0.042 / 1e6).toFixed(6)} USD. Estimated from the [Jev pricing](https://docs.typesafe.ai/models), not a billing statement. Latency of the received responses: median ${times[Math.floor(times.length / 2)]} ms, P95 ${times[Math.floor(times.length * 0.95)]} ms. Failed requests without usage are not included.
 
-Im Ordner frontend:
+In the frontend folder:
 
-\`\`\`powershell
-npm run brain:index     # offline, vorhandene passende Modellresultate verwenden
-npm run brain:map       # Jev explizit ausführen; unveränderte Requests aus Cache
-npm run brain:evaluate  # die 13 beschrifteten Fälle prüfen
-npm run brain:test      # lokale Parser-, Graph- und API-Vertragstests, keine Modellkosten
-npm run brain:report    # diesen Bericht aus den lokalen Resultaten erzeugen
-\`\`\`
+${fence}powershell
+npm run brain:index     # offline, uses existing matching model results
+npm run brain:map       # runs Jev explicitly; unchanged requests come from the cache
+npm run brain:evaluate  # checks the labelled cases
+npm run brain:test      # local parser, graph and API contract tests, no model costs
+npm run brain:report    # writes this report from the local results
+${fence}
 
-TYPESAFE_API_KEY liegt ausschließlich in frontend/.env.local (ignoriert), niemals in VITE_* Variablen. NEURALDOC_JEV_BUDGET_USD begrenzt den Zuordnungslauf (Standard 0,25 USD; maximal 1 USD pro Lauf). Cache und Rohberichte liegen unter mcp/state/ (ignoriert). Der Graph enthält lediglich Entscheidungen und Herkunft, keine Zugangsdaten. Node benutzt den Windows-System-Zertifikatsspeicher, TLS-Prüfung bleibt aktiv.
+TYPESAFE_API_KEY lives only in frontend/.env.local (ignored), never in VITE_* variables. NEURALDOC_JEV_BUDGET_USD limits the mapping run (default 0.25 USD; at most 1 USD per run). Cache and raw reports live in mcp/state/ (ignored). The graph contains only decisions and provenance, no credentials. Node uses the operating system's certificate store; TLS verification stays enabled.
 
-API-Vertrag: [TypeSafe API](https://docs.typesafe.ai/api). Parser: [Tree-sitter](https://github.com/tree-sitter/tree-sitter), [TypeScript Compiler API](https://github.com/microsoft/TypeScript/wiki/Using-the-Compiler-API), [PostgreSQL Parser](https://github.com/constructive-io/pgsql-parser).
+API contract: [TypeSafe API](https://docs.typesafe.ai/api). Parsers: [Tree-sitter](https://github.com/tree-sitter/tree-sitter), [TypeScript Compiler API](https://github.com/microsoft/TypeScript/wiki/Using-the-Compiler-API), [PostgreSQL parser](https://github.com/constructive-io/pgsql-parser).
 `
 fs.writeFileSync(path.join(root, 'MAPPING_REPORT.md'), report)
 console.log(JSON.stringify({ subjects: graph.metadata.semantic.subjects, semanticEdges: semantic.length, documentCodeEdges: semantic.filter((e) => e.target.startsWith('file:')).length, deferred: graph.metadata.semantic.deferred.length, apiResponses: caches.length, inputTokens: tokens, estimatedUsd: tokens * 0.042 / 1e6, evaluation: summary }))
