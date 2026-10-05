@@ -1,0 +1,31 @@
+{
+  "name": "axios",
+  "language": "JavaScript (library code + separate documentation repository)",
+  "repo": "https://github.com/axios/axios",
+  "docs": {
+    "repo": "https://github.com/axios/axios-docs",
+    "ref": "main@2026-04-14",
+    "commit": "675520b",
+    "include": ["posts/en/*.md"],
+    "exclude": ["posts/en/sponsor.md", "posts/en/translating.md"]
+  },
+  "code": {
+    "ref": "v1.20.0",
+    "commit": "v1.20.0"
+  },
+  "notes": "Case: documentation lives in its own repository (axios/axios-docs, English pages only, last content change February 2026, archived after the docs moved into the main repo) and is checked against axios v1.20.0 (August 2026). Ground truth = statements of the docs repository that the v1.20.0 code (lib/, index.d.ts) contradicts, and request options or error codes the code has that the exhaustive lists in the docs leave out. Curated by reading lib/ and index.d.ts; the maintainers never updated this repository for these changes.",
+  "items": [
+    { "id": "ax-1", "doc": "posts/en/req_config.md", "anchor": "// `onUploadProgress` allows handling of progress events for uploads", "kind": "contradicts", "level": "must", "what": "onUploadProgress and onDownloadProgress are not browser only; the Node.js http adapter reports progress too.", "files": ["lib/adapters/http.js"] },
+    { "id": "ax-2", "doc": "posts/en/req_config.md", "anchor": "// `adapter` allows custom handling of requests which makes testing easier.", "kind": "incomplete", "level": "should", "what": "adapter also accepts an adapter name ('xhr', 'http', 'fetch') or a list of them; the default is ['xhr', 'http', 'fetch'].", "files": ["lib/adapters/adapters.js", "lib/defaults/index.js"] },
+    { "id": "ax-3", "doc": "posts/en/req_config.md", "anchor": "xsrfHeaderName: 'X-XSRF-TOKEN', // default", "kind": "incomplete", "level": "must", "what": "withXSRFToken (boolean or function) decides whether the XSRF token header is set, also for cross-origin requests.", "files": ["lib/helpers/resolveConfig.js", "index.d.ts"] },
+    { "id": "ax-4", "doc": "posts/en/req_config.md", "anchor": "These are the available config options for making requests.", "kind": "incomplete", "level": "should", "what": "fetchOptions passes extra RequestInit options to the fetch adapter.", "files": ["lib/adapters/fetch.js", "index.d.ts"] },
+    { "id": "ax-5", "doc": "posts/en/req_config.md", "anchor": "These are the available config options for making requests.", "kind": "incomplete", "level": "should", "what": "httpVersion (1 or 2) and http2Options (e.g. sessionTimeout) enable HTTP/2 in the Node.js http adapter.", "files": ["lib/adapters/http.js", "index.d.ts"] },
+    { "id": "ax-6", "doc": "posts/en/req_config.md", "anchor": "These are the available config options for making requests.", "kind": "incomplete", "level": "should", "what": "parseReviver is passed to JSON.parse when the response is parsed.", "files": ["lib/defaults/index.js", "index.d.ts"] },
+    { "id": "ax-7", "doc": "posts/en/req_config.md", "anchor": "These are the available config options for making requests.", "kind": "incomplete", "level": "should", "what": "redact (config keys) and sensitiveHeaders control redaction of sensitive values in errors and logs.", "files": ["lib/core/AxiosError.js", "index.d.ts"] },
+    { "id": "ax-8", "doc": "posts/en/req_config.md", "anchor": "// `socketPath` defines a UNIX Socket to be used in node.js.", "kind": "incomplete", "level": "should", "what": "allowedSocketPaths restricts which socketPath values may be used.", "files": ["lib/adapters/http.js", "index.d.ts"] },
+    { "id": "ax-9", "doc": "posts/en/req_config.md", "anchor": "These are the available config options for making requests.", "kind": "incomplete", "level": "should", "what": "formDataHeaderPolicy ('legacy' or 'content-only') decides which headers of a form-data object are copied.", "files": ["lib/core/setFormDataHeaders.js", "index.d.ts"] },
+    { "id": "ax-10", "doc": "posts/en/req_config.md", "anchor": "// http adapter only (node.js)", "kind": "incomplete", "level": "should", "what": "maxRate also accepts a single number for both directions.", "files": ["index.d.ts", "lib/adapters/http.js"] },
+    { "id": "ax-11", "doc": "posts/en/req_config.md", "anchor": "FormData: window?.FormData || global?.FormData", "kind": "incomplete", "level": "should", "what": "env also accepts fetch, Request and Response implementations for the fetch adapter.", "files": ["lib/adapters/fetch.js", "index.d.ts"] },
+    { "id": "ax-12", "doc": "posts/en/handling_errors.md", "anchor": "The table below lists out specific definitions for internal axios error.", "kind": "incomplete", "level": "should", "what": "The announced table of error codes is missing: ERR_BAD_OPTION_VALUE, ERR_BAD_OPTION, ECONNABORTED, ETIMEDOUT, ERR_NETWORK, ERR_FR_TOO_MANY_REDIRECTS, ERR_DEPRECATED, ERR_BAD_RESPONSE, ERR_BAD_REQUEST, ERR_CANCELED, ERR_NOT_SUPPORT, ERR_INVALID_URL, ERR_FORM_DATA_DEPTH_EXCEEDED.", "files": ["lib/core/AxiosError.js"] }
+  ]
+}

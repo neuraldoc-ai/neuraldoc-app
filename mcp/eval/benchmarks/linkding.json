@@ -1,0 +1,30 @@
+{
+  "name": "linkding",
+  "language": "Python/Django web app with database migrations, docs folder",
+  "repo": "https://github.com/sissbruecker/linkding",
+  "docs": {
+    "ref": "v1.44.0",
+    "commit": "v1.44.0",
+    "include": ["README.md", "docs/src/content/docs/*.md", "docs/src/content/docs/*.mdx"],
+    "exclude": ["docs/src/content/docs/acknowledgements.md", "docs/src/content/docs/community.md", "docs/src/content/docs/managed-hosting.md"]
+  },
+  "code": {
+    "ref": "v1.47.0",
+    "commit": "v1.47.0"
+  },
+  "notes": "Case: a self-hosted web app (Django, SQLite/PostgreSQL migrations, JavaScript frontend) with a documentation site in docs/. Ground truth = documentation changes between v1.44.0 and v1.47.0 that the v1.47.0 code supports, plus one gap the maintainers never fixed: bundles got the database fields filter_unread and filter_shared (migration 0054) and the API serializer returns them, but api.md still shows bundles without them. Left out: community, hosting and acknowledgement pages, the auth-proxy and extension-store advice (deployment knowledge, not code) and wording changes.",
+  "items": [
+    { "id": "ld-1", "doc": "docs/src/content/docs/options.md", "anchor": "### `LD_DISABLE_BACKGROUND_TASKS`", "kind": "incomplete", "level": "should", "what": "LD_SUPERVISOR_MANAGED (experimental, default False): supervisor manages background tasks and uwsgi, task logs go to the container output.", "files": ["bootstrap.sh", "supervisord-all.conf"] },
+    { "id": "ld-2", "doc": "docs/src/content/docs/options.md", "anchor": "### `LD_DISABLE_URL_VALIDATION`", "kind": "incomplete", "level": "must", "what": "LD_ALLOWED_INTERNAL_HOSTS: by default metadata, preview images and PDF snapshots are not loaded from internal hosts (SSRF protection); comma-separated hosts, IPs, CIDR ranges, .domain or * allow them.", "files": ["bookmarks/services/http_client.py", "bookmarks/settings/base.py"] },
+    { "id": "ld-3", "doc": "docs/src/content/docs/options.md", "anchor": "### `LD_ENABLE_OIDC`", "kind": "incomplete", "level": "must", "what": "LD_DISABLE_LOGIN_FORM (default False) hides the username/password form so only OIDC login remains.", "files": ["bookmarks/settings/base.py"] },
+    { "id": "ld-4", "doc": "docs/src/content/docs/options.md", "anchor": "### `LD_CSRF_TRUSTED_ORIGINS`", "kind": "incomplete", "level": "should", "what": "LD_SESSION_COOKIE_AGE sets the session cookie lifetime in seconds, default 1209600 (2 weeks).", "files": ["bookmarks/settings/base.py"] },
+    { "id": "ld-5", "doc": "docs/src/content/docs/options.md", "anchor": "### `LD_CSRF_TRUSTED_ORIGINS`", "kind": "incomplete", "level": "must", "what": "LD_CORS_ALLOWED_ORIGINS: comma-separated origins allowed to call /api/* from a browser; enables CORS for the API only.", "files": ["bookmarks/middlewares.py", "bookmarks/settings/base.py"] },
+    { "id": "ld-6", "doc": "docs/src/content/docs/options.md", "anchor": "### `LD_CSRF_TRUSTED_ORIGINS`", "kind": "incomplete", "level": "should", "what": "LD_USE_X_FORWARDED_HOST (default false) trusts X-Forwarded-Host over Host.", "files": ["bookmarks/settings/base.py"] },
+    { "id": "ld-7", "doc": "docs/src/content/docs/api.md", "anchor": "When using `POST`, at least all required fields must be provided (currently only `url`).", "kind": "contradicts", "level": "should", "what": "The update section means PUT (full update) requires all required fields; auto tagging rules are applied on every update and merged into tag_names.", "files": ["bookmarks/api/routes.py", "bookmarks/api/serializers.py"] },
+    { "id": "ld-8", "doc": "docs/src/content/docs/api.md", "anchor": "Creates a new tag.", "kind": "incomplete", "level": "must", "what": "Tags can be deleted: DELETE /api/tags/<id>/.", "files": ["bookmarks/api/routes.py"] },
+    { "id": "ld-9", "doc": "docs/src/content/docs/api.md", "anchor": "\"excluded_tags\": \"personal\",", "kind": "incomplete", "level": "must", "what": "Bundles have the fields filter_unread and filter_shared (values off, yes, no; default off) in responses and payloads (migration 0054, BookmarkBundleSerializer).", "files": ["bookmarks/api/serializers.py", "bookmarks/migrations/0054_bookmarkbundle_filter_shared_and_more.py", "bookmarks/models.py"] },
+    { "id": "ld-10", "doc": "docs/src/content/docs/archiving.md", "anchor": "Linkding can automatically create HTML snapshots", "kind": "incomplete", "level": "should", "what": "A URL that points to a PDF is downloaded and stored as an asset instead of creating an HTML snapshot.", "files": ["bookmarks/services/website_loader.py", "bookmarks/services/assets.py"] },
+    { "id": "ld-11", "doc": "README.md", "anchor": "Format Python code with black", "kind": "contradicts", "level": "should", "what": "Formatting uses ruff (Python), djlint (templates) and prettier; make lint runs ruff.", "files": ["Makefile", "pyproject.toml"] },
+    { "id": "ld-12", "doc": "README.md", "anchor": "python3 manage.py runserver", "kind": "contradicts", "level": "should", "what": "Development server and frontend are started with make serve and make frontend; management commands run with uv run manage.py.", "files": ["Makefile"] }
+  ]
+}

@@ -8,7 +8,7 @@ import { classify, ignored } from '../../frontend/src/dashboard/features/docs/im
 
 const root = fileURLToPath(new URL('../..', import.meta.url))
 export const evalDir = path.join(root, 'mcp', 'state', 'eval')
-export const BENCHMARKS = ['mobiq', 'httpx', 'zx', 'cobra']
+export const BENCHMARKS = ['mobiq', 'httpx', 'zx', 'cobra', 'chalk', 'ky', 'axios', 'linkding']
 const { zipSync, strToU8 } = await import('../../frontend/server-deps.mjs')
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 1 << 28 })
 const walk = (dir, visit, base = dir) => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { if (e.name === '.git') continue; const p = path.join(dir, e.name); if (e.isDirectory()) walk(p, visit, base); else visit(path.relative(base, p).replaceAll('\\', '/'), p) } }
@@ -36,26 +36,41 @@ function mobiq() {
 
 function oss(name) {
   const spec = JSON.parse(fs.readFileSync(fileURLToPath(new URL(`./benchmarks/${name}.json`, import.meta.url)), 'utf8'))
-  const src = path.join(evalDir, 'src'), clone = path.join(src, name)
-  if (!fs.existsSync(clone)) { fs.mkdirSync(src, { recursive: true }); git(src, 'clone', '--quiet', '--filter=blob:none', spec.repo, name) }
-  const tree = (ref) => {
-    const dir = path.join(src, `${name}@${ref.ref}`)
+  const src = path.join(evalDir, 'src')
+  const checkout = (repo, dirName, ref) => {
+    const clone = path.join(src, dirName)
+    if (!fs.existsSync(clone)) { fs.mkdirSync(src, { recursive: true }); git(src, 'clone', '--quiet', '--filter=blob:none', repo, dirName) }
+    const dir = path.join(src, `${dirName}@${ref.ref}`)
     if (!fs.existsSync(dir)) git(clone, '-c', 'core.autocrlf=false', 'worktree', 'add', '--detach', dir, ref.commit)
     return dir
   }
   const entries = { 'manifest.json': strToU8(JSON.stringify({ repoName: `${name}-${spec.code.ref}`, docsName: `${name}-docs-${spec.docs.ref}` })) }
-  // The repository at the new version, without its own (new) documentation; the old documentation as separate upload.
-  walk(tree(spec.code), (rel, abs) => { if (!ignored(rel) && classify(rel, 'repo') === 'code') entries[`repo/${rel}`] = fs.readFileSync(abs) })
+  // The repository at the new version, without its own (new) documentation; the old documentation either as separate
+  // upload (docs/…, also from its own repository) or, for README-only projects, inside the repository (docsInRepo).
+  walk(checkout(spec.repo, name, spec.code), (rel, abs) => { if (!ignored(rel) && classify(rel, 'repo') === 'code') entries[`repo/${rel}`] = fs.readFileSync(abs) })
   const include = spec.docs.include.map(glob), exclude = spec.docs.exclude.map(glob)
-  walk(tree(spec.docs), (rel, abs) => { if (include.some((r) => r.test(rel)) && !exclude.some((r) => r.test(rel))) entries[`docs/${rel}`] = fs.readFileSync(abs) })
-  return { name, language: spec.language, upload: Buffer.from(zipSync(entries)), items: spec.items.map((i) => ({ ...i, title: i.doc })), keyOf: (docPath) => docPath.replace(/^dokumentation\//, '') }
+  const docsDir = spec.docs.repo ? checkout(spec.docs.repo, `${name}-docs`, spec.docs) : checkout(spec.repo, name, spec.docs)
+  const planted = new Map()
+  for (const m of spec.mutations || []) planted.set(m.file, [...(planted.get(m.file) || []), m])
+  walk(docsDir, (rel, abs) => {
+    if (!include.some((r) => r.test(rel)) || exclude.some((r) => r.test(rel))) return
+    let bytes = fs.readFileSync(abs)
+    // Planted changes turn a correct statement into an outdated one; the exact text must exist once.
+    for (const m of planted.get(rel) || []) {
+      const text = bytes.toString('utf8')
+      if (text.split(m.find).length !== 2) throw new Error(`${name}: Mutation ${m.item} nicht eindeutig in ${rel}`)
+      bytes = Buffer.from(text.replace(m.find, () => m.replace))
+    }
+    entries[`${spec.docsInRepo ? 'repo' : 'docs'}/${rel}`] = bytes
+  })
+  return { name, language: spec.language, upload: Buffer.from(zipSync(entries)), items: spec.items.map((i) => ({ ...i, title: i.doc })), keyOf: (docPath) => docPath.replace(/^(dokumentation|repository)\//, '') }
 }
 
 export const loadBenchmark = (name) => name === 'mobiq' ? mobiq() : oss(name)
 
 /** Section of an item: the one containing its anchor, else every section of its document. */
 export function sectionsOf(item, docFiles, keyOf) {
-  const sections = docFiles.filter((d) => d.origin === 'docs' && keyOf(d.path) === item.doc)
+  const sections = docFiles.filter((d) => keyOf(d.path) === item.doc)
   if (sections.length <= 1 || !item.anchor) return sections
   const exact = sections.filter((d) => d.text.includes(item.anchor))
   if (exact.length) return exact.slice(0, 1)

@@ -1,0 +1,33 @@
+{
+  "name": "ky",
+  "language": "TypeScript (small library, long README only)",
+  "repo": "https://github.com/sindresorhus/ky",
+  "docsInRepo": true,
+  "docs": {
+    "ref": "v2.0.0",
+    "commit": "v2.0.0",
+    "include": ["readme.md"],
+    "exclude": []
+  },
+  "code": {
+    "ref": "v2.1.0",
+    "commit": "v2.1.0"
+  },
+  "notes": "Case: a library with one long README (about 45 KB) and no other documentation. Ground truth = README changes between v2.0.0 and v2.1.0 that the v2.1.0 code supports, checked in source/. Left out: FAQ additions, security warnings about forwarding credentials (advice, not behaviour), example header values, link additions and the clarification of ky.create. The empty first/last progress chunk was already wrong in v2.0.0 code; the maintainers fixed the text in v2.1.0.",
+  "items": [
+    { "id": "ky-1", "doc": "readme.md", "anchor": "### ky.delete(input, options?)", "kind": "incomplete", "level": "must", "what": "There is a ky.query(input, options?) shortcut for the QUERY method.", "files": ["source/core/constants.ts", "source/types/ky.ts"] },
+    { "id": "ky-2", "doc": "readme.md", "anchor": "and `DELETE`) are uppercased", "kind": "contradicts", "level": "must", "what": "QUERY is one of the standard methods that are uppercased.", "files": ["source/core/constants.ts", "source/types/options.ts"] },
+    { "id": "ky-3", "doc": "readme.md", "anchor": "- `methods`: `get` `put` `head` `delete` `options` `trace`", "kind": "contradicts", "level": "must", "what": "The default retry methods include query.", "files": ["source/utils/normalize.ts", "source/types/retry.ts"] },
+    { "id": "ky-4", "doc": "readme.md", "anchor": "If `maxRetryAfter` is set to `undefined`, it will use `options.timeout`.", "kind": "contradicts", "level": "must", "what": "maxRetryAfter defaults to Infinity (not undefined/options.timeout); a retry timing delay larger than maxRetryAfter is capped to maxRetryAfter.", "files": ["source/utils/normalize.ts", "source/core/Ky.ts", "source/types/retry.ts"] },
+    { "id": "ky-5", "doc": "readme.md", "anchor": "- `backoffLimit`: `undefined`", "kind": "contradicts", "level": "should", "what": "backoffLimit defaults to Infinity.", "files": ["source/utils/normalize.ts", "source/types/retry.ts"] },
+    { "id": "ky-6", "doc": "readme.md", "anchor": "If `retry` is a number, it will be used as `limit`", "kind": "incomplete", "level": "should", "what": "retry.limit, including the numeric shorthand, must be a finite, non-negative integer (otherwise an error is thrown).", "files": ["source/utils/normalize.ts", "source/types/retry.ts"] },
+    { "id": "ky-7", "doc": "readme.md", "anchor": "If the response provides an HTTP status contained in `afterStatusCodes`", "kind": "contradicts", "level": "must", "what": "413 is only retried when the response has a retry timing header; besides RateLimit-Reset the headers X-RateLimit-Retry-After, X-RateLimit-Reset and X-Rate-Limit-Reset are used as fallbacks.", "files": ["source/core/Ky.ts", "source/core/retry-timing.ts"] },
+    { "id": "ky-8", "doc": "readme.md", "anchor": "Also, `.json()` throws if the body is empty or the response status is `204`.", "kind": "contradicts", "level": "should", "what": ".json() throws on an empty body unless the parseJson option handles empty bodies (parseJson receives the text).", "files": ["source/core/Ky.ts"] },
+    { "id": "ky-9", "doc": "readme.md", "anchor": "Per-attempt timeout in milliseconds for getting a response, applied independently to each retry.", "kind": "incomplete", "level": "should", "what": "Ky shortcut methods also use timeout as a separate timeout for reading the response body; such body timeouts are not retried by retryOnTimeout.", "files": ["source/core/Ky.ts"] },
+    { "id": "ky-10", "doc": "readme.md", "anchor": "data that was sent. Note: It's empty for the first call.", "kind": "contradicts", "level": "must", "what": "onDownloadProgress: the chunk contains the received data; there is no empty first call (an empty chunk only when an empty body completes).", "files": ["source/utils/body.ts"] },
+    { "id": "ky-11", "doc": "readme.md", "anchor": "data that was sent. Note: It's empty for the last call.", "kind": "contradicts", "level": "should", "what": "onUploadProgress: the last call carries the final chunk; an empty chunk only when an empty request body completes.", "files": ["source/utils/body.ts"] },
+    { "id": "ky-12", "doc": "readme.md", "anchor": "By default, `.extend()` deep-merges options", "kind": "incomplete", "level": "should", "what": "When extending an instance, signals are combined; replaceOption(signal) replaces inherited signals, signal: undefined removes them.", "files": ["source/core/Ky.ts", "source/utils/merge.ts"] },
+    { "id": "ky-13", "doc": "readme.md", "anchor": "population is bounded by the request timeout and a 10 MiB response body size limit", "kind": "incomplete", "level": "should", "what": "error.data reads are bounded by the timeout or 10 seconds when timeout is disabled and by the remaining totalTimeout; if totalTimeout expires, a TimeoutError is thrown instead of HTTPError.", "files": ["source/core/Ky.ts"] },
+    { "id": "ky-14", "doc": "readme.md", "anchor": "- Hooks", "kind": "incomplete", "level": "should", "what": "Highlights: upload and download progress and response validation with Standard Schema are features.", "files": ["source/utils/body.ts", "source/types/standard-schema.ts"] }
+  ]
+}

@@ -1,48 +1,83 @@
 # Evaluating the initial check
 
-How well does the initial check find documentation that no longer matches the code, and how good are the corrections it drafts? This folder measures that on four benchmarks with real Jev and LLM calls. The product never reads anything from here.
+How well does the initial check find documentation that no longer matches the code, and how good are the corrections it proposes? This folder measures that on eight benchmarks with real LLM and Jev calls. The product never reads anything from here.
 
 ## Benchmarks
 
-| Benchmark | Language | Documentation | Code | Expected changes |
+| Benchmark | Case | Documentation | Code | Expected changes |
 |---|---|---|---|---|
-| `mobiq` | Java, Kotlin, TS, Pascal, SQL; German docs | MOBIQ 26.3: 33 Confluence pages + 7 files | MOBIQ release 26.4 (`datasets/mobiq-code`) | 62 from `datasets/mobiq/data/ground-truth.json` (one new-page item has no section and is left out) |
+| `chalk` | tiny library, the README is the only documentation, imported inside the repository | `chalk/chalk` v5.3.0 `readme.md` plus three planted outdated statements from chalk's own older API | v6.0.1 | 9 |
+| `ky` | small TypeScript library with one long README (45 KB, 35 sections) | `sindresorhus/ky` v2.0.0 `readme.md` | v2.1.0 | 14 |
+| `axios` | documentation in its own repository | `axios/axios-docs` (English pages, last content change February 2026) | `axios/axios` v1.20.0 (August 2026) | 12 |
+| `linkding` | Django web app with database migrations and a documentation site in `docs/` | `sissbruecker/linkding` v1.44.0 (`README.md`, `docs/src/content/docs/*`) | v1.47.0 | 12 |
+| `mobiq` | German ERP sample: Java, Kotlin, TS, Pascal, SQL; Confluence pages, Word, Excel, PDF | MOBIQ 26.3: 33 Confluence pages + 7 files | MOBIQ release 26.4 (`datasets/mobiq-code`) | 62 from `datasets/mobiq/data/ground-truth.json` |
 | `httpx` | Python | `encode/httpx` 0.27.2 (`README.md`, `docs/**`) | 0.28.1 | 8 |
 | `zx` | TypeScript CLI | `google/zx` 8.3.0 (`README.md`, `docs/*.md`) | 8.5.0 | 16 |
 | `cobra` | Go | `spf13/cobra` v1.8.1 (`README.md`, `site/content/**`) | v1.10.1 | 6 |
 
-The open-source benchmarks follow real project history: documentation of the older tag, code of the newer one. Ground truth is the set of documentation changes the maintainers made between the two tags *that the newer code supports*. Each was read in the diff and checked against the code. Typos, prompt prefixes, sponsor lists, link moves and changes the code cannot decide (distribution channels, CI examples) are left out; the `notes` field of each file lists them. Every item names its section (`anchor`, a literal string of the old document) and the code files it depends on (`files`). The repositories are cloned on first use into `mcp/state/eval/src` and checked out by commit.
+The open-source benchmarks follow real project history: documentation of the older tag, code of the newer one. Ground truth is the set of documentation changes the maintainers made between the two tags *that the newer code supports*, each read in the diff and checked against the code. Typos, prompt prefixes, sponsor lists, link moves and changes the code cannot decide (distribution channels, CI examples, security advice) are left out; the `notes` field of each file lists them. `axios` compares a documentation repository the maintainers stopped updating with the current code: its items are option lists and statements the code contradicts, curated by reading `lib/` and `index.d.ts`. `linkding` includes one gap the maintainers never fixed (bundle fields from migration 0054 missing in `api.md`). Every item names its section (`anchor`, a literal string of the old document) and the code files it depends on (`files`).
 
-The repository is uploaded at the new version without its own documentation, the old documentation as a separate upload, exactly as a browser would send it.
+Three options of a benchmark file shape the upload: `docsInRepo` (old documentation inside the repository, the README-only case), `docs.repo` (documentation from its own repository) and `mutations` (planted changes: an exact text in the old documentation replaced by an outdated statement, each with its own item). The repositories are cloned on first use into `mcp/state/eval/src` and checked out by tag or commit; the code is uploaded without its own new documentation, exactly as a browser would send it.
 
 ## What is measured
 
 | Level | Metric |
 |---|---|
-| Retrieval (free) | recall@6 / @12: does a section's candidate list contain a file its expected changes depend on; MRR |
-| Document | recall of documents with a `must` (or any) expected change; precision of reported documents |
-| Item | an item is found when the section holding it is reported; section precision = reported sections with at least one expected item |
-| Draft | LLM judge per draft and expected item: covered / partial / missing, false statements, unnecessary changes. A draft is *correct* if it covers at least one item without a false statement, or, in a section without expected changes, if it answers `no_change`. Item coverage counts covered as 1, partial as 0.5 over all expected items (end to end) |
-| Cost and time | Jev input tokens and USD, model USD per draft (cached answers counted at their original cost), summed Jev response time |
+| Item | An item is found when its section is reported, or when a reported section of the same document adds the item's key name (the completeness pass inserts missing entries where the document's list is, not at the maintainers' anchor). Recall for `must` items and for all; section precision = reported sections with at least one expected item (low where the code shows drift the maintainers never fixed). |
+| Judge | `judge.mjs` (`judgeFindings`, `gemini-2.5-flash`, thinking budget 2048, temperature 0, cached) sees the section, the corrected section, the findings with their cited code, the expected items and the excerpts. Per item: covered / partial / missing (coverage: covered 1, partial 0.5). Per finding: correct / trivial / unproven / wrong. False statements in changed lines. |
+| Cost | LLM USD of the check (first pass, second look, completeness), Jev USD, judge USD. Cached answers cost nothing and are counted as cached. |
 
-The judge (`judge.mjs`, `gemini-2.5-flash`, temperature 0, cached) sees the section, the changed lines, the expected items and the code excerpts the writer saw. It was calibrated against 28 hand labels in `labels.json` (labelled by the coding agent, not yet reviewed by a person): exact agreement 82 %, covered-or-partial vs. missing 93 %, false statement yes/no 9 of 11. All five disagreements are one step apart. The judge does not penalise a draft that switches the language of a section; the product now rejects those itself.
+The judge is lenient: it rated every finding of these runs correct, including findings a person rejects. Precision below is therefore reported from hand review, the judge only for item coverage.
 
 ## How to run
 
 ```powershell
-# free: retrieval only, BM25 with and without the cap on test/script excerpts
-node --use-system-ca mcp/eval/retrieval.mjs
-# real Jev (about 0.03 USD for all four benchmarks), plus drafts and judge (about 0.15 USD)
-node --use-system-ca --env-file=frontend/.env.local mcp/eval/run.mjs [--bench mobiq,httpx,zx,cobra] [--drafts] [--judge] [--draft-model gemini-3.5-flash-lite]
-node mcp/eval/table.mjs --markdown   # latest report per variant and benchmark
-node mcp/eval/sweep.mjs              # Jev thresholds on the cached answers, free
-node mcp/eval/calibrate.mjs          # judge vs. hand labels, free
-node mcp/eval/costs.mjs              # everything spent so far, from the caches
+# real LLM and Jev calls plus the judge; identical requests come from the caches
+node --use-system-ca --env-file=frontend/.env.local mcp/eval/run.mjs [--bench chalk,ky,axios,linkding,mobiq] [--model gemini-3.5-flash-lite] [--no-judge] [--no-veto] [--label name]
+# free: retrieval of the October 4 variants
+node --use-system-ca mcp/eval/retrieval.mjs [--bench mobiq,httpx,zx,cobra] [--strategies cap,nocap]
 ```
 
-Reports are written to `mcp/state/eval` (git-ignored) together with all caches, so a repeated run costs nothing. The variants that lost (hybrid and graph retrieval, model findings in the check, full-text drafts) are in commit `be7355f`; check it out to reproduce their rows.
+Reports are written to `mcp/state/eval` (git-ignored) together with all caches: `check-cache/` holds the model answers (content-addressed, shared across runs), `judge/` the judge answers. A repeated run costs nothing; a changed prompt or code makes new requests. `table.mjs`, `sweep.mjs`, `calibrate.mjs` and `costs.mjs` read the reports of the October 4 check (commit `2433c97`).
 
-## Results (4 October 2026)
+## Results (5 October 2026): the section check
+
+`gemini-3.5-flash-lite` (thinking level medium), second look on, Jev as second opinion, completeness pass per document. Item recall must / all; judge coverage all; findings; hand review.
+
+| Benchmark | Sections checked | Recall must / all | Section precision | Coverage (judge) | Findings | Hand review | LLM cost of one full check |
+|---|---|---|---|---|---|---|---|
+| chalk (README only) | 11 of 13 | 86 / 89 % | 100 % | 56 % | 5 | 5 of 5 correct | about 0.14 USD |
+| ky (long README) | 34 of 35 | 100 / 71 % | 83 % | 43 % | 9 | 9 of 9 correct | about 0.36 USD |
+| axios (separate docs repo) | 28 of 30 | 100 / 92 % | 25 % | 50 % | 21 | sample of 6 correct, 15 option entries checked against `index.d.ts` | about 0.25 USD |
+| linkding (Django, database) | 65 of 67 | 40 / 50 % | 43 % | 21 % | 12 | sample of 3 correct: two wrong defaults and an auth keyword the maintainers never fixed | about 0.6 USD |
+| mobiq (German, Office, DB) | 47 of 51 | 83 / 79 % | 100 % | 44 % | 34 | sample of 12 correct | about 0.6 USD |
+| neuraldoc-app (own docs, no ground truth) | 68 of 69 | – | – | – | 8 | 4 correct, 4 trivial, 0 wrong | about 0.9 USD |
+
+Section precision against the ground truth is low on axios and linkding because the check reports real drift the maintainers never documented: `axios.query`, `postForm`/`putForm`/`patchForm`, `formSerializer.maxDepth`; linkding's `LD_SINGLEFILE_TIMEOUT_SEC` default (code 120, docs 60), `OIDC_RP_SCOPES` default (`openid email profile`, docs `oidc email profile`), the `Bearer` keyword for API tokens. Each was checked in the code.
+
+Compared with the Jev-only check of October 4 (below), on the README-only case that started this work: the old check sent both README sections to drafting, and the model answered "no change" for both (0 findings); the section check finds 5 of the 7 must items with correct one-line edits. On MOBIQ, item recall went from 89 to 79 %, section precision from 96 to 100 %, coverage of the expected changes by the proposed text from 31 to 44 %.
+
+What changed the numbers (each measured on these benchmarks):
+
+| Change | Effect |
+|---|---|
+| One section per heading instead of 6,000-character slices | the README case went from 2 to 11 checked sections |
+| Thinking level medium for `gemini-3.5-flash-lite` (minimal and low produced no thought tokens at all) | chalk: from 1 to 5 correct findings |
+| Three passes in the prompt (statements, lists, names that are gone) and "do report everything the code proves" | missing list entries found (chalk modifiers, ky retry methods) |
+| Names mentioned in the section looked up in an identifier index ("nicht im Code") | removed names found and verified by the server |
+| Completeness pass per document with one decision per candidate | axios from 0 to 92 % item recall, linkding from 25 to 50 % |
+| Files named in a section first | architecture and setup sections see the files they describe |
+| Second look on section findings | own docs: 7 of 7 wrong findings dropped (2 of 10 correct ones too); no loss on chalk, ky, mobiq. On completeness entries it rejected correct missing options (axios 92 → 0 %), so it is not used there. |
+| `gemini-2.5-flash` (thinking budget 1024) instead | same recall on chalk, cheaper, but 3 of 12 findings wrong and 3 trivial; not the default |
+
+Known limits: architecture prose about internal flows (which function calls which) is checked only against a few excerpts and can pass although outdated; a removed name can live in an uploaded dependency folder (`vendor`), which is why a deletion needs Jev's confirmation; the judge does not detect trivial or context-wrong findings.
+
+Spent on these measurements: about 5 USD in model calls (most of it during prompt iterations, each of which invalidates the cache) and 0.6 USD for the judge.
+
+## Earlier results (4 October 2026): Jev check with separate drafts
+
+The check below rated sections with Jev only and drafted corrections in a second step; the variants are in commits `be7355f` and `2433c97`.
+
 
 ### Finding the sections
 
@@ -75,7 +110,7 @@ All on the reported sections of the BM25 + cap check. Correct drafts / drafts; d
 
 Built in: BM25 with the test/script cap, Jev with one retry per malformed answer, and patch v2 drafts with `gemini-3.5-flash-lite`. It writes the fewest false statements and the most correct drafts, and it answers `no_change` on most sections that did not need a change (httpx 10, cobra 13). On MOBIQ all 21 drafts are in sections with an expected change; on httpx only 1 of its 6 drafts is (zx: 1 of 1, cobra: no draft).
 
-## Limits
+### Limits of the October 4 measurement
 
 - The open-source ground truth is small (30 items) and was curated by one reviewer (the coding agent) from the maintainers' diffs. Documentation that was already wrong and that maintainers never fixed counts as a false report. A manual review of the extra httpx reports found mostly real false alarms (nitpicks about example values, ordering, unlisted parameters) and one borderline real issue.
 - Each variant ran once. Jev and the models are not perfectly deterministic, so differences of one or two drafts are within noise.

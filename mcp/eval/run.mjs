@@ -1,78 +1,78 @@
-// End-to-end evaluation of the initial check: import → Jev check → (drafts) → (judge). Jev, the drafting model and the
-// judge are called for real; identical requests come from the caches below mcp/state/eval (git-ignored).
+// End-to-end evaluation of the initial check: import → section check (LLM + Jev) → judge. All model calls are real;
+// identical requests come from the caches below mcp/state/eval (git-ignored), so a repeated run costs nothing.
 //
-//   node --use-system-ca --env-file=frontend/.env.local mcp/eval/run.mjs [--bench mobiq,httpx,zx,cobra] [--k 6]
-//        [--drafts] [--draft-model gemini-3.5-flash-lite] [--judge] [--label name]
-// The variants compared in mcp/eval/README.md (hybrid/graph retrieval, model findings, full-text drafts) live in commit be7355f.
+//   node --use-system-ca --env-file=frontend/.env.local mcp/eval/run.mjs [--bench chalk,ky] [--model gemini-3.5-flash-lite]
+//        [--no-judge] [--no-veto] [--label name]
+// The Jev-only check with separate drafts (October 4) is in commit 2433c97.
 import fs from 'node:fs'
 import path from 'node:path'
 import { evalDir, loadBenchmark, sectionsOf, BENCHMARKS } from './benchmarks.mjs'
-import { judge, JUDGE_MODEL } from './judge.mjs'
+import { judgeFindings } from './judge.mjs'
 
 const arg = (name, fallback) => process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : fallback
-const benches = arg('--bench', BENCHMARKS.join(',')).split(','), k = Number(arg('--k', 6))
-const drafts = process.argv.includes('--drafts'), draftModel = arg('--draft-model', null), withJudge = process.argv.includes('--judge')
-const label = arg('--label', `jev-bm25-k${k}${drafts ? '-patch2' : ''}${draftModel ? `-${draftModel}` : ''}`)
+const benches = arg('--bench', BENCHMARKS.join(',')).split(','), model = arg('--model', null)
+const withJudge = !process.argv.includes('--no-judge'), jevVeto = !process.argv.includes('--no-veto')
+const label = arg('--label', `check${model ? `-${model}` : ''}${jevVeto ? '' : '-noveto'}`)
 process.env.NEURALDOC_STATE_DIR = evalDir
 delete process.env.NEURALDOC_MODE
-if (draftModel) process.env.NEURALDOC_GEMINI_MODEL = draftModel
+if (model) process.env.NEURALDOC_GEMINI_MODEL = model
 const projects = await import('../projects.mjs')
-const { INPUT_USD_PER_MILLION } = await import('../semantic-mapping.mjs')
 const pct = (v) => v === null || Number.isNaN(v) ? '–' : `${(v * 100).toFixed(0)} %`
 
 async function evaluate(name) {
   const started = Date.now(), bench = loadBenchmark(name)
   await projects.addProject(bench.upload)
-  const checked = await projects.checkProject({ k }), p = projects.activeProject()
-  const docs = p.docFiles.filter((d) => d.origin === 'docs'), sectionOf = new Map(p.docFiles.map((d) => [d.id, d]))
-  const flaggedSections = new Set(checked.dataset.proposals.map((x) => x.doc).filter((id) => sectionOf.get(id)?.origin === 'docs'))
-  const itemSections = new Map(bench.items.map((i) => [i.id, sectionsOf(i, p.docFiles, bench.keyOf)]))
-  const unmapped = bench.items.filter((i) => !itemSections.get(i.id).length).map((i) => i.id)
-  // Document level, as before: a document counts as found if any of its sections is flagged.
-  const level = new Map()
-  for (const i of bench.items) if (level.get(i.doc) !== 'must') level.set(i.doc, i.level)
-  const docKeys = [...new Set(docs.map((d) => bench.keyOf(d.path)))]
-  const flaggedDocs = new Set([...flaggedSections].map((id) => bench.keyOf(sectionOf.get(id).path)))
-  const mustDocs = docKeys.filter((key) => level.get(key) === 'must'), anyDocs = docKeys.filter((key) => level.has(key))
-  // Item level: an item is found when the section that holds it is flagged.
-  const found = (i) => itemSections.get(i.id).some((s) => flaggedSections.has(s.id))
+  const checked = await projects.checkProject({ jevVeto }), p = projects.activeProject()
+  // Only the documents the benchmark brings count (MOBIQ's repository README is not part of its ground truth).
+  const keys = new Set(bench.items.map((i) => i.doc))
+  const inScope = (d) => name === 'mobiq' ? d.origin === 'docs' : true
+  const sections = p.docFiles.filter(inScope), sectionOf = new Map(p.docFiles.map((d) => [d.id, d]))
+  const proposals = checked.dataset.proposals.filter((x) => inScope(sectionOf.get(x.section)))
+  const flagged = new Set(proposals.filter((x) => p.generated[x.id]?.generation.status === 'draft').map((x) => x.section))
+  // An item belongs to the section of its anchor, or to the flagged section of the same document whose correction adds
+  // the item's key name (the completeness pass inserts missing entries where the document's list is, not at the anchor).
+  const keyNames = (i) => (`${i.what}`.match(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b|\b[a-z][a-z0-9]*(?:[A-Z][a-z0-9]*)+\b|\b[a-z]+(?:_[a-z0-9]+)+\b/g) ?? [])
+  const addedText = (x) => (p.generated[x.id]?.generation.findings ?? []).flatMap((f) => f.edits.map((e) => e.text)).join('\n')
+  const byName = (i) => proposals.filter((x) => bench.keyOf(sectionOf.get(x.section).path) === i.doc && keyNames(i).some((n) => addedText(x).includes(n) && !sectionOf.get(x.section).text.includes(n))).map((x) => sectionOf.get(x.section))
+  const itemSections = new Map(bench.items.map((i) => { const named = byName(i); return [i.id, named.length ? named : sectionsOf(i, p.docFiles, bench.keyOf)] }))
+  const found = (i) => itemSections.get(i.id).some((s) => flagged.has(s.id))
   const must = bench.items.filter((i) => i.level === 'must')
-  const sectionsWithItems = new Set(bench.items.flatMap((i) => itemSections.get(i.id).map((s) => s.id)))
-  const records = p.mapping.records.filter((r) => r.response)
+  const withItems = new Set(bench.items.flatMap((i) => itemSections.get(i.id).map((s) => s.id)))
+  const records = new Map(p.mapping.records.map((r) => [r.doc, r]))
   const result = {
-    bench: name, label, retrieval: 'bm25', k, check: 'jev', at: new Date().toISOString(), documents: docKeys.length, sections: docs.length, codeFiles: p.files.length, items: bench.items.length, unmapped,
-    doc: { recallMust: mustDocs.filter((key) => flaggedDocs.has(key)).length / (mustDocs.length || NaN), recallAny: anyDocs.filter((key) => flaggedDocs.has(key)).length / anyDocs.length, precision: flaggedDocs.size ? [...flaggedDocs].filter((key) => level.has(key)).length / flaggedDocs.size : null, flagged: flaggedDocs.size },
+    bench: name, label, model: p.mapping.model, at: new Date().toISOString(), documents: new Set(sections.map((s) => s.source)).size, sections: sections.length,
+    checked: sections.filter((s) => records.has(s.id)).length, codeFiles: p.files.length, items: bench.items.length, docsWithItems: keys.size,
     item: { recallMust: must.length ? must.filter(found).length / must.length : null, recallAny: bench.items.filter(found).length / bench.items.length },
-    section: { flagged: flaggedSections.size, precision: flaggedSections.size ? [...flaggedSections].filter((id) => sectionsWithItems.has(id)).length / flaggedSections.size : null },
-    jev: { requests: records.length, inputTokens: records.reduce((s, r) => s + r.response.usage.input_tokens, 0), usd: records.reduce((s, r) => s + r.response.usage.input_tokens, 0) * INPUT_USD_PER_MILLION / 1e6, seconds: records.reduce((s, r) => s + (r.elapsedMs || 0), 0) / 1000, freshUsd: p.mapping.usage.estimatedUsd },
+    section: { flagged: flagged.size, precision: flagged.size ? [...flagged].filter((id) => withItems.has(id)).length / flagged.size : null },
+    status: Object.fromEntries(['findings', 'ok', 'unclear', 'skipped', 'rejected', 'error'].map((s) => [s, sections.filter((x) => records.get(x.id)?.status === s).length])),
+    findings: proposals.reduce((n, x) => n + (p.generated[x.id]?.generation.findings?.length || 0), 0),
+    dropped: sections.reduce((n, s) => n + (records.get(s.id)?.dropped?.length || 0), 0),
+    droppedReasons: Object.entries(sections.flatMap((s) => records.get(s.id)?.dropped ?? []).reduce((m, d) => ({ ...m, [d.reason.replace(/\(.*\)|\d+ %/g, '').trim()]: (m[d.reason.replace(/\(.*\)|\d+ %/g, '').trim()] || 0) + 1 }), {})),
+    llm: p.mapping.usage.llm, jevUsd: p.mapping.usage.estimatedUsd,
     missedItems: bench.items.filter((i) => !found(i)).map((i) => `${i.id} (${i.level})`),
-    falseSections: [...flaggedSections].filter((id) => !sectionsWithItems.has(id)).map((id) => sectionOf.get(id).title),
   }
-  if (drafts) {
+  if (withJudge) {
     const usage = { judgeUsd: 0, judgeCalls: 0 }, rows = []
-    for (const proposal of checked.dataset.proposals.filter((x) => sectionOf.get(x.doc)?.origin === 'docs')) {
-      const section = sectionOf.get(proposal.doc), items = bench.items.filter((i) => itemSections.get(i.id).some((s) => s.id === section.id))
-      const row = { section: section.title, items: items.map((i) => i.id) }
-      try {
-        const d = await projects.projectDraft(proposal.id)
-        Object.assign(row, { status: d.result.status, reason: d.result.reason, text: d.result.text, usd: d.usage?.costUsd ?? null, model: d.model })
-        if (withJudge && d.result.status === 'draft') row.judge = (await judge({ section, draft: d.result, items, evidence: d.context.evidence }, { cacheDir: path.join(evalDir, 'judge'), usage })).verdict
-      } catch (error) { Object.assign(row, { status: 'rejected', reason: error.message }) }
-      rows.push(row)
+    const retriever = (await import('../check.mjs')).createSectionRetriever(p.files)
+    const chunkById = new Map(retriever.chunks.map((c) => [c.id, c]))
+    for (const x of proposals) {
+      const section = sectionOf.get(x.section), g = p.generated[x.id], items = bench.items.filter((i) => itemSections.get(i.id).some((s) => s.id === section.id))
+      if (g.generation.status !== 'draft') { rows.push({ section: section.title, status: g.generation.status, items: items.map((i) => i.id), question: g.question }); continue }
+      const excerpts = (records.get(section.id)?.candidates ?? []).map((id) => chunkById.get(id)).filter(Boolean)
+      const j = (await judgeFindings({ section, corrected: g.text, findings: g.generation.findings, items, excerpts }, { cacheDir: path.join(evalDir, 'judge'), usage })).verdict
+      rows.push({ section: section.title, status: 'draft', items: items.map((i) => i.id), judge: j, findings: g.generation.findings.map((f, i) => ({ kind: f.kind, sure: f.sure, jev: f.jev?.verdict, explanation: f.explanation, verdict: j.findings[i]?.verdict, note: j.findings[i]?.note })) })
     }
-    const score = (row, id) => ({ covered: 1, partial: 0.5 }[row.judge?.items.find((v) => v.id === id)?.verdict] || 0)
+    // Items whose section was not flagged count as missing.
     const coverage = new Map()
-    for (const row of rows) for (const id of row.items) coverage.set(id, Math.max(coverage.get(id) || 0, score(row, id)))
-    const correct = (row) => row.items.length ? row.status === 'draft' && row.judge && row.judge.items.some((v) => v.verdict === 'covered') && !row.judge.false_statements.length : row.status === 'no_change'
-    result.drafts = {
-      variant: 'patch', model: rows.find((r) => r.model)?.model || draftModel, total: rows.length,
-      status: Object.fromEntries(['draft', 'no_change', 'needs_context', 'rejected'].map((s) => [s, rows.filter((r) => r.status === s).length])),
-      correct: withJudge ? rows.filter(correct).length : null,
-      withFalse: withJudge ? rows.filter((r) => r.judge?.false_statements.length).length : null,
-      falseStatements: withJudge ? rows.reduce((s, r) => s + (r.judge?.false_statements.length || 0), 0) : null,
-      unnecessary: withJudge ? rows.filter((r) => r.judge?.unnecessary).length : null,
-      itemCoverage: withJudge ? bench.items.reduce((s, i) => s + (coverage.get(i.id) || 0), 0) / bench.items.length : null,
-      usd: rows.reduce((s, r) => s + (r.usd || 0), 0), judgeModel: withJudge ? JUDGE_MODEL : null, judgeUsd: usage.judgeUsd, rows,
+    for (const row of rows) for (const v of row.judge?.items ?? []) coverage.set(v.id, Math.max(coverage.get(v.id) || 0, { covered: 1, partial: 0.5 }[v.verdict] || 0))
+    const verdicts = rows.flatMap((r) => r.findings ?? [])
+    const share = (v) => verdicts.length ? verdicts.filter((f) => f.verdict === v).length / verdicts.length : null
+    result.judge = {
+      itemCoverage: bench.items.reduce((s, i) => s + (coverage.get(i.id) || 0), 0) / bench.items.length,
+      mustCoverage: must.length ? must.reduce((s, i) => s + (coverage.get(i.id) || 0), 0) / must.length : null,
+      findings: verdicts.length, correct: share('correct'), trivial: share('trivial'), unproven: share('unproven'), wrong: share('wrong'),
+      sureCorrect: verdicts.filter((f) => f.sure).length ? verdicts.filter((f) => f.sure && f.verdict === 'correct').length / verdicts.filter((f) => f.sure).length : null, sure: verdicts.filter((f) => f.sure).length,
+      falseStatements: rows.reduce((n, r) => n + (r.judge?.false_statements.length || 0), 0), usd: usage.judgeUsd, rows,
     }
   }
   result.seconds = (Date.now() - started) / 1000
@@ -82,17 +82,12 @@ async function evaluate(name) {
 const all = []
 for (const name of benches) {
   const r = await evaluate(name); all.push(r)
-  console.log(`\n${r.bench} · ${r.label}: ${r.documents} Dokumente, ${r.sections} Abschnitte, ${r.codeFiles} Code-Dateien, ${r.items} Items${r.unmapped.length ? ` (ohne Abschnitt: ${r.unmapped.join(' ')})` : ''}`)
-  console.log(`  Dokument: Recall must ${pct(r.doc.recallMust)} · alle ${pct(r.doc.recallAny)} · Precision ${pct(r.doc.precision)} (${r.doc.flagged} gemeldet)`)
-  console.log(`  Item: Recall must ${pct(r.item.recallMust)} · alle ${pct(r.item.recallAny)} · Abschnitts-Precision ${pct(r.section.precision)} (${r.section.flagged} Abschnitte)`)
-  console.log(`  Jev: ${r.jev.requests} Anfragen, ${r.jev.inputTokens} Tokens, ${r.jev.usd.toFixed(4)} USD (neu ${r.jev.freshUsd.toFixed(4)}), ${r.jev.seconds.toFixed(0)} s Modellzeit`)
+  console.log(`\n${r.bench} · ${r.label} (${r.model}): ${r.documents} Dokumente, ${r.sections} Abschnitte (${r.checked} geprüft), ${r.codeFiles} Code-Dateien, ${r.items} Items`)
+  console.log(`  Status: ${JSON.stringify(r.status)} · ${r.findings} Befunde, ${r.dropped} verworfen ${JSON.stringify(r.droppedReasons)}`)
+  console.log(`  Item-Recall (Abschnitt gemeldet): must ${pct(r.item.recallMust)} · alle ${pct(r.item.recallAny)} · Abschnitts-Precision ${pct(r.section.precision)} (${r.section.flagged} gemeldet)`)
+  if (r.judge) console.log(`  Richter: Abdeckung alle ${pct(r.judge.itemCoverage)} · must ${pct(r.judge.mustCoverage)} · Befunde ${r.judge.findings}: korrekt ${pct(r.judge.correct)}, trivial ${pct(r.judge.trivial)}, unbelegt ${pct(r.judge.unproven)}, falsch ${pct(r.judge.wrong)} · „sicher“ ${r.judge.sure} davon korrekt ${pct(r.judge.sureCorrect)} · falsche Aussagen ${r.judge.falseStatements}`)
+  console.log(`  Kosten: LLM ${r.llm.usd.toFixed(4)} USD (${r.llm.calls} Aufrufe, ${r.llm.cached} Cache) · Jev ${(r.jevUsd || 0).toFixed(4)} USD · Richter ${(r.judge?.usd || 0).toFixed(4)} USD · ${r.seconds.toFixed(0)} s`)
   console.log(`  Verpasst: ${r.missedItems.join(' ') || '–'}`)
-  console.log(`  Ohne erwartete Änderung gemeldet: ${r.falseSections.join(' | ') || '–'}`)
-  if (r.drafts) {
-    const d = r.drafts
-    console.log(`  Entwürfe (${d.variant}, ${d.model}): ${JSON.stringify(d.status)} · korrekt ${d.correct ?? '–'}/${d.total} · mit falscher Aussage ${d.withFalse ?? '–'} (${d.falseStatements ?? '–'} Aussagen) · unnötig ${d.unnecessary ?? '–'} · Item-Abdeckung ${pct(d.itemCoverage)} · ${d.usd.toFixed(4)} USD · Richter ${d.judgeUsd.toFixed(4)} USD`)
-    for (const row of d.rows) console.log(`    ${row.status.padEnd(13)} ${row.section.slice(0, 50).padEnd(50)} ${row.judge ? row.judge.items.map((v) => `${v.id}:${v.verdict[0]}`).join(' ') + (row.judge.false_statements.length ? ` ✗${row.judge.false_statements.length}` : '') : ''}`)
-  }
 }
 fs.mkdirSync(evalDir, { recursive: true })
 fs.writeFileSync(path.join(evalDir, `run-${new Date().toISOString().replace(/[:.]/g, '-')}-${label}.json`), JSON.stringify(all, null, 2))
