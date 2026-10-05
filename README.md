@@ -34,7 +34,7 @@ Code changes every sprint, the manual, the dialog descriptions and the parameter
 - **Bring your own model.** OpenAI, Claude, Gemini, Vertex AI or a local LLM via any OpenAI-compatible server.
 
 <p align="center">
-  <img src="docs/images/review.png" alt="neuraldoc review view: an outdated sentence in a user manual, struck through in red, with the proposed replacement in green and the buttons accept, edit and reject" width="900"/>
+  <img src="docs/images/review.png" alt="neuraldoc review view: in a user manual only the outdated words are struck through in red and the new ones are green, with the buttons accept, edit and reject" width="900"/>
 </p>
 <p align="center">
   <em>Reviewing a proposal. The old sentence is struck through, the new one is green, the evidence (commit <code>d71c5e8</code>) is one click away.</em>
@@ -76,9 +76,13 @@ A repository given by GitHub URL brings its Git history: every commit since the 
 
 **Daten** shows the repository in a code editor (files, search, history, merge requests, diffs), the documents as neuraldoc read them, and a database if there is one: the repository's SQL files run read-only in the browser (PGlite). **Datenbank verbinden** adds your own PostgreSQL, on your machine (`host.docker.internal` from inside the container) or at an internet address, with SSL. The password stays in the `neuraldoc-data` volume; every query runs in a read-only transaction, at most 15 seconds and 1,000 rows. Use a database user that may only read.
 
-1. **Erstprüfung starten** compares every documentation section with the current code, as if the last release had just shipped, and lists each mismatch.
-2. **Starten** lets your LLM write the correction for each mismatch.
-3. Review, accept or edit, then **Freigaben exportieren** downloads a ZIP with the corrected documents.
+1. **Erstprüfung starten** compares every documentation section with the current code, as if the last release had just shipped. It takes a few seconds per section; the overview shows the progress.
+2. Each section that no longer matches comes back with its correction: every change is marked in the text (only the words that change), numbered, and explained below with the code that shows it. Deletions say why the text has to go.
+3. Accept all changes of a section, untick single ones, edit the text yourself or reject it; then **Freigaben exportieren** downloads a ZIP with the corrected documents.
+
+<p align="center">
+  <img src="docs/images/check.png" width="640" alt="Review of one section of the ky README: in the list of retry defaults only the added method query and the changed defaults undefined to Infinity are marked, numbered 1 to 3; below, each number has its reason and the line of code that shows it, with a checkbox to leave a change out"/>
+</p>
 
 ### Prepared showcase (no keys)
 
@@ -119,18 +123,18 @@ docker run -p 8080:8080 neuraldoc-showcase
 ## How it works
 
 ```
-repo + docs ──► code graph ──► initial check ──► LLM draft ──► your review ──► ZIP export
- (upload or      tree-sitter    Jev: which        correction    accept/edit     corrected
-  GitHub URL)    + SQL AST      sections disagree + evidence    /reject         documents
+repo + docs ──► code graph ──► initial check ─────────────────────────► your review ──► ZIP export
+ (upload or      tree-sitter    per section: LLM findings with quotes,   accept, untick   corrected
+  GitHub URL)    + SQL AST      server checks, second look, Jev; per     single changes,  documents
+                                document: missing list entries           edit or reject
 ```
 
 | Step | What happens | Cost |
 |---|---|---|
-| **Import** | Reads the code and the documents. PDF, Word, Excel and PowerPoint become text; long documents are split into sections. A cloned repository's commits since the last release are grouped into features. | free, local |
+| **Import** | Reads the code and the documents. PDF, Word, Excel and PowerPoint become text; every document is split into sections at its headings. Sections without prose (logos, badges, link lists) are not checked. A cloned repository's commits since the last release are grouped into features. | free, local |
 | **Code graph** | Parses Java, Kotlin, TypeScript/TSX, Pascal (tree-sitter) and SQL (PostgreSQL parser) into files, functions, calls and tables. | free, local |
-| **Initial check** | For every section, BM25 finds up to six matching places in the current code. [Jev](https://docs.typesafe.ai/api) rates each pair as *contradicts*, *incomplete*, *consistent* or *unrelated*. Contradictions and omissions become proposals. | paid, capped by budget |
-| **Drafting** | Your LLM corrects each mismatching section from those code places. It can also answer that the text is right, or ask a question. The response is validated against a JSON contract and its evidence IDs; a correction that drops most of the section or pastes source code is rejected. | paid or local |
-| **Review & export** | You decide. Approved sections are merged back into their documents; PDF and Office files come back as Markdown. The export lists the SHA-256 of every original. | free, local |
+| **Initial check** | For every section, neuraldoc looks up the names it mentions (code spans, options, flags, environment variables) in the code and picks the matching code places, files the section names first. Your LLM lists the statements the code contradicts, the names that no longer exist and the entries a list leaves out, each with a literal quote from the section and the code, a reason and the line edits that fix it. The server keeps only what it can verify: quotes exist, a "removed" name really occurs nowhere in the code, edits change more than whitespace, keep the language and the Markdown format. A second look drops context mistakes (another server, an example value), [Jev](https://docs.typesafe.ai/api) confirms each finding and must confirm every deletion. Per document, a completeness pass compares documented options, settings or fields with the code that defines them. | paid (your LLM, about 0.01 USD per section; Jev a fraction of that) |
+| **Review & export** | Every change is shown in place with its reason and code evidence. You take all, some or none, or edit the text. Approved sections are merged back into their documents; PDF and Office files come back as Markdown. The export lists the SHA-256 of every original. | free, local |
 
 Every link in the graph is marked as **proven** (read from the code) or **derived** (from a model), so you always know what was found and what was guessed. Details: [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -158,7 +162,7 @@ Keys, provider and model are set in the app under **Einstellungen** (stored in `
 | `NEURALDOC_GIT_TOKEN` | GitHub token, only for importing private repositories by URL (also in Einstellungen) | none |
 | `NEURALDOC_DRAFT_PROVIDER` | `openai`, `anthropic`, `gemini`, `vertex` or `local` | none |
 | `NEURALDOC_LLM_MODEL` | Model used for drafting | provider default |
-| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | Key for the chosen provider | none |
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` / `VERTEX_API_KEY` / `NEURALDOC_LLM_API_KEY` | Key for the chosen provider | none |
 | `NEURALDOC_LLM_BASE_URL` | OpenAI-compatible server for `local` (Ollama, LM Studio, vLLM) | none |
 | `NEURALDOC_MODE` | `showcase`: prepared MOBIQ sample only, no import, no model calls (set by the `showcase` image) | empty |
 | `NEURALDOC_MCP_TOKEN` | Bearer token for the MCP endpoint | random per installation, shown on the MCP page |
@@ -179,7 +183,7 @@ A local LLM on the same computer is reached from the container at `http://host.d
 ## Privacy
 
 - **Your files stay unchanged.** The upload goes only to your own container; the temporary copy is deleted after the import. Secrets such as `.env` files and private keys are filtered out in the browser and again on the server.
-- **What leaves your machine:** document text and code excerpts go to Jev (TypeSafe API) when you start the initial check, and to your LLM provider when you draft. With a local LLM, only the Jev request leaves your machine. A GitHub URL is cloned directly from GitHub.
+- **What leaves your machine:** when you start the initial check, document sections and code excerpts go to your LLM provider, and the findings with their code excerpts to Jev (TypeSafe API). With a local LLM, only the Jev request leaves your machine. A GitHub URL is cloned directly from GitHub.
 - **Beispielprojekt laden** clones two public GitHub repositories. The **showcase image** makes no external calls at all.
 - **No telemetry**, no analytics, no tracking. Keys are read at runtime and never written to the image, the caches or the export.
 - Projects, decisions, caches and database connections live in the Docker volume `neuraldoc-data`. **Einstellungen → Zurücksetzen** deletes all projects, or everything including profile, keys and database connections; `docker volume rm neuraldoc-data` deletes the volume.
@@ -196,10 +200,11 @@ This is an early release. Known limits:
 - Up to 1,500 code files (100 KB each), 400 documentation sections of about 6,000 characters, 200 MB per upload and 30 MB per document.
 - Scanned PDFs without a text layer cannot be read. Images and diagrams in documents are not checked.
 - Deep analysis for Java, Kotlin, TypeScript/TSX, Pascal and SQL; other languages are compared as plain text.
-- Code places are found by shared terms (BM25). A section that uses entirely different words than the code can be missed.
-- Measured on four projects ([mcp/eval/README.md](mcp/eval/README.md)): on the MOBIQ sample the check finds 89 % of the expected changes with 96 % precision. On real open-source projects (httpx, zx, cobra) it finds 75 to 100 % but reports two to five times more sections than the maintainers changed; most of those get a "no change" draft, the reviewer still sees them.
-- Drafts fix contradictions far more reliably than they add missing features: in the open-source projects only up to 13 % of the expected additions were drafted. Every draft names its evidence and needs your approval.
-- Drafts keep the language of the section (German and English are checked).
+- Code places are found by the names a section mentions and by shared terms (BM25). A section that describes behaviour in entirely different words than the code can be missed.
+- Measured on five projects with known answers ([mcp/eval/README.md](mcp/eval/README.md)): a README-only library (chalk), a long README (ky), a separate documentation repository (axios-docs), a Django app with database (linkding) and the MOBIQ sample. The check reports 50 to 92 % of the expected changes (must-have changes: 40 to 100 %), and on MOBIQ every reported section had an expected change. Of about 40 findings checked by hand, none was wrong; some were trivial (an alternative name for a key). On neuraldoc's own documentation it reported 8 changes, none wrong, 4 of them trivial; without the second look it had been 17, 7 of them wrong.
+- Overviews of internal flows (architecture prose) are the weak spot: the check sees only some code places and cannot tell what calls what.
+- A check costs about 0.01 USD per section with `gemini-3.5-flash-lite` (0.1 USD for a short README, 0.5 USD for a documentation site with 60 sections). Repeating it costs nothing: answers are cached by content.
+- Corrections keep the language of the section (German and English are checked) and its Markdown format.
 - Jira, Confluence and SharePoint are not connected directly. Upload exported files or Confluence pages in storage format instead.
 
 ---

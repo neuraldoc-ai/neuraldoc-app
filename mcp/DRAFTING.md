@@ -44,9 +44,13 @@ The model returns structured JSON. The server checks the schema, referenced evid
 
 Approval writes only to the local decision log (showcase) or the project state (own project). Confluence/SharePoint write-back is simulated; own projects are exported as a ZIP.
 
-### Line edits for your own project (`target.op: "patch"`)
+### Your own project: the section check
 
-For your own project the model does not rewrite the section. It gets the section with line numbers and the prompt `PATCH_PROMPT` (version `documentation-patch-v2`) and answers in two steps:
+For your own project, finding and correcting are one step: the initial check ([`check.mjs`](check.mjs), prompt `CHECK_PROMPT`, version `section-check-v2`) returns for every section its findings, each with a quote from the section, a quote from the code (`evidence` with `id` and `quote`, or the `absent` names for something removed), a German `explanation` and the line edits that fix it; a second prompt (`REVIEW_PROMPT`) drops context mistakes. The server rules are in [ARCHITECTURE.md](../ARCHITECTURE.md#pipeline-for-your-own-project). Re-checking a section with an answer from the reviewer (`POST /api/mcp/drafts/generate` with `id` and `answer`) runs the same check.
+
+### Line edits on request (`target.op: "patch"`)
+
+The drafting module still accepts `target.op: "patch"` for your own writing contexts given to the CLI ([`draft-cli.mjs`](draft-cli.mjs)). The model does not rewrite the section. It gets the section with line numbers and the prompt `PATCH_PROMPT` (version `documentation-patch-v2`) and answers in two steps:
 
 1. `findings`: each with `doc_quote` (literal from the section), `evidence_id` and `code_quote` (literal from that code excerpt) and a short `problem`.
 2. `edits`: `replace` lines start to end, `insert_after` a line (0 = before the first) or `delete`, at most 20.

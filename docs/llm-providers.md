@@ -2,8 +2,8 @@
 
 neuraldoc needs two services for your own projects:
 
-- **Jev** (`TYPESAFE_API_KEY`) maps documents to the changed code. It is required and stays an external API, even with a local LLM.
-- **One LLM** drafts the text changes. You choose the provider.
+- **Jev** (`TYPESAFE_API_KEY`, also `JEV_API_KEY`) gives a second opinion on every finding of the initial check and must confirm every deletion. It is required and stays an external API, even with a local LLM.
+- **One LLM** compares each documentation section with the code and writes the corrections. You choose the provider.
 
 The easiest way: open **Einstellungen** in the app, choose the provider and paste the keys. They are saved in the state directory (`/data/settings.json` in Docker), apply without a restart and are never returned to the browser. Alternatively set the variables in `.env` and pass it with `docker run --env-file .env`, or put them into `frontend/.env.local` when running without Docker; values saved in the interface take precedence. Never use a `VITE_` prefix for keys: those values end up in the browser bundle. The **Einstellungen** page in the app shows whether Jev and the LLM are configured (configuration only, no paid connection test). The status API `/api/mcp/setup` only reports whether keys are present.
 
@@ -39,5 +39,5 @@ API contracts: [OpenAI Structured Outputs](https://developers.openai.com/api/doc
 ## Costs
 
 - **Jev:** capped per mapping run by `NEURALDOC_JEV_BUDGET_USD` (default 0.25 USD, at most 1 USD). Unchanged requests come from the local cache.
-- **LLM:** costs of cloud providers are unknown until you set rates: `NEURALDOC_LLM_INPUT_USD_PER_MILLION` and `NEURALDOC_LLM_OUTPUT_USD_PER_MILLION`. For a local LLM, only API fees are reported (0 USD); power and hardware are not included.
+- **LLM:** the initial check makes about two requests per section with findings and one per other section. With `gemini-3.5-flash-lite` that is about 0.01 USD per section (thinking level medium); a repeated check comes from the cache. Costs of other cloud providers are unknown until you set rates: `NEURALDOC_LLM_INPUT_USD_PER_MILLION` and `NEURALDOC_LLM_OUTPUT_USD_PER_MILLION`. For a local LLM, only API fees are reported (0 USD); power and hardware are not included.
 - Page views, the showcase and builds never call a model.

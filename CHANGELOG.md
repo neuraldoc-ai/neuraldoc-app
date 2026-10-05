@@ -29,8 +29,18 @@ All notable changes to this project are documented here. The format follows [Kee
 - Own PostgreSQL connections (Daten → Datenbank verbinden): local or remote, single fields or a connection URL, SSL modes, schema, connection test. Read-only transactions, 15 s and 1,000 rows per query; the password never leaves the server.
 - Evaluation of the initial check in `mcp/eval`: MOBIQ plus three open-source benchmarks from real project history (httpx, zx, cobra), item-level scoring, a calibrated LLM judge for drafts, cost and time per variant.
 
+- Change view for your own project: the section reads as it will read, only the words that change are marked (one line instead of an old and a new line under each other), every change is numbered and explained below with the code that shows it; single changes can be unticked before accepting. Documents render as Markdown (lists, tables, code blocks, links, badges, notes).
+- The initial check runs in the background with a progress display; `GET /api/mcp/project/check` reports phase and progress.
+- Evaluation benchmarks for a README-only library (chalk), a long README (ky), a separate documentation repository (axios-docs) and a Django app with database (linkding); planted outdated statements per benchmark (`mutations`).
+- MCP `check_change` lists every change of a proposal with its reason and evidence.
+
 ### Changed
 
+- The initial check finds and corrects in one step per section: your LLM lists contradicted statements, removed names and missing list entries, each with a quote from the section and the code, a reason and its line edits; the server keeps only what it can verify; a second look drops context mistakes; Jev confirms each finding and every deletion. A completeness pass per document adds options, settings or fields the code defines and no document mentions. Default thinking level medium for `gemini-3.5-flash-lite`.
+- Documents are split into one section per heading (code blocks are never cut); sections without prose are not checked. A document is one page in the editor.
+- Corrections keep list markers, blank-line structure and code formatting of the original; replacements are cut down to the lines that change; whitespace-only changes are dropped.
+- Makefile, Dockerfile, shell scripts and `.env.example` count as code.
+- Model answers of the check are cached by content in `check-cache/`, shared by all projects.
 - Drafts for your own project are line edits on the numbered section with quoted findings. A draft needs at least one finding whose quotes appear in the section and in a code excerpt; untouched lines cannot be lost, and a draft that switches the section's language (German/English) is rejected.
 - Default Gemini model for drafts is `gemini-3.5-flash-lite` (fewest false statements in the evaluation, about 0.002 USD per draft).
 - The initial check passes at most one excerpt from tests or build scripts per section to Jev, retries a malformed Jev answer once and then skips only that section instead of failing the whole check.
