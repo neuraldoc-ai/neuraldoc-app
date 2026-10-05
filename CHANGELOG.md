@@ -25,6 +25,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - `ARCHITECTURE.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, guides under `docs/`.
 - Git history for repositories imported by URL: commits since the last tag are grouped into features (merge requests, ticket keys). Overview, Änderungen and the change page look like the showcase for your own project: features with kind, commits, affected doc types and proposals; findings no commit explains are listed as „Weitere Abweichungen“.
 - Daten for your own project: code editor with history, merge requests and diffs; documents as neuraldoc read them (Markdown rendered); the repository's SQL files as a read-only database in the browser.
+- Tables in Confluence pages, HTML, Word and Excel are imported as Markdown tables (before: one cell per line) and shown as tables in the editor. Re-import a project to get them.
 - Own PostgreSQL connections (Daten → Datenbank verbinden): local or remote, single fields or a connection URL, SSL modes, schema, connection test. Read-only transactions, 15 s and 1,000 rows per query; the password never leaves the server.
 - Evaluation of the initial check in `mcp/eval`: MOBIQ plus three open-source benchmarks from real project history (httpx, zx, cobra), item-level scoring, a calibrated LLM judge for drafts, cost and time per variant.
 

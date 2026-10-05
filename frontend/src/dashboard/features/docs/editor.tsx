@@ -52,7 +52,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { people, type Block } from "./data";
+import { datasetMode, people, type Block } from "./data";
 import { EvidenceCard } from "./evidence";
 import {
   bundleOf,
@@ -341,6 +341,8 @@ function BlockView({
     );
   const whole = block.kind === "p" ? replaces.find((r) => r.find?.trim() === block.text.trim()) : undefined;
   if (whole) return <SectionReplace p={whole} ctx={ctx} />;
+  // Imported sections are Markdown-like text: headings, lists and tables formatted.
+  if (block.kind === "p" && datasetMode === "working" && !replaces.length) return <SectionText text={block.text} />;
   if (block.kind === "p")
     return (
       <div className="grid gap-2">
@@ -491,6 +493,16 @@ function diffLines(before: string, after: string): DiffLine[] {
 /** One line of a section as it reads: Markdown headings and list items formatted, blank lines as space. */
 function SectionLine({ text, className }: { text: string; className?: string }) {
   if (!text.trim()) return <div className="h-3" aria-hidden />;
+  // Markdown table rows (the import writes tables this way): one grid row per line, the separator line hidden.
+  if (/^\s*\|.*\|\s*$/.test(text)) {
+    if (/^\s*\|[\s:|-]+\|\s*$/.test(text)) return null;
+    const cells = text.trim().slice(1, -1).split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, "|"));
+    return (
+      <div className={cn("grid border-b text-[14px] leading-6", className)} style={{ gridTemplateColumns: `repeat(${cells.length}, minmax(0, 1fr))` }}>
+        {cells.map((c, i) => <span key={i} className="px-2 py-1 [overflow-wrap:anywhere]">{c}</span>)}
+      </div>
+    );
+  }
   const heading = text.match(/^(#{1,6})\s+(.*)$/);
   if (heading) return <p className={cn("mt-2 font-medium tracking-tight", heading[1].length <= 2 ? "text-xl" : "text-lg", className)}>{heading[2]}</p>;
   const item = text.match(/^(\s*)([-*•]|\d+[.)])\s+(.*)$/);

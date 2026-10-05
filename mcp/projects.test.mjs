@@ -120,7 +120,7 @@ test('import rules: repository documents, ignored folders, secrets and URLs', ()
 test('documents: PDF, Word, Excel, PowerPoint and HTML become text; sections are exact slices', async () => {
   assert.match(await documentText('a.pdf', pdf(['Hallo PDF'])), /Seite 1[\s\S]*Hallo PDF/)
   assert.match(await documentText('a.docx', docs['handbuch/rabatt.docx']), /^# Rabatt im Handbuch\nAb 1000 EUR/)
-  assert.match(await documentText('a.xlsx', docs['parameter.xlsx']), /## Parameter\n\nRabattgrenze \| 1000 \| EUR/)
+  assert.match(await documentText('a.xlsx', docs['parameter.xlsx']), /## Parameter\n\n\| Rabattgrenze \| 1000 \| EUR \|\n\| --- \| --- \| --- \|/)
   assert.match(await documentText('a.pptx', docs['schulung.pptx']), /## Folie 1\n\nRabatt erklären/)
   assert.equal(await documentText('a.html', '<h1>Titel</h1><p>A &amp; B</p><script>x()</script>'), '# Titel\nA & B')
   await assert.rejects(documentText('a.pdf', Buffer.from('kein pdf')), /konnte nicht gelesen werden/)

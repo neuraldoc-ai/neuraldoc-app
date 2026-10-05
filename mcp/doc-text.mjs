@@ -8,6 +8,24 @@ export const isBinaryDoc = (file) => BINARY.test(file)
 
 const entities = (s) => s.replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d))).replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&')
 const runs = (xml, tag) => [...xml.matchAll(new RegExp(`<${tag}(?:\\s[^>]*)?>([^<]*)</${tag}>`, 'g'))].map((m) => entities(m[1])).join('')
+/** Rows of cells as a Markdown table: the first row is the header, short rows are padded, | inside a cell is escaped. */
+export function markdownTable(rows) {
+  const clean = rows.map((r) => r.map((c) => String(c).replace(/\s+/g, ' ').trim().replace(/\|/g, '\\|'))).filter((r) => r.some(Boolean))
+  if (!clean.length) return ''
+  const width = Math.max(...clean.map((r) => r.length))
+  const line = (r) => `| ${Array.from({ length: width }, (_, i) => r[i] ?? '').join(' | ')} |`
+  return [line(clean[0]), `| ${Array(width).fill('---').join(' | ')} |`, ...clean.slice(1).map(line)].join('\n')
+}
+
+/** HTML tables (also Confluence storage) as Markdown tables; cell paragraphs and line breaks become spaces. */
+const htmlTables = (html) => html.replace(/<table\b[\s\S]*?<\/table>/gi, (table) => {
+  const rows = (table.match(/<tr\b[\s\S]*?<\/tr>/gi) || []).map((row) => (row.match(/<t[hd]\b[\s\S]*?<\/t[hd]>/gi) || []).map((cell) => entities(cell.replace(/<br\s*\/?>|<\/p>|<\/li>/gi, ' ').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' '))))
+  return `\n\n${markdownTable(rows)}\n\n`
+})
+
+/** List items as one line each, without the blank line a paragraph inside <li> leaves behind. */
+const listItems = (text) => text.replace(/^- [ \t]+/gm, '- ').replace(/^(- .*)\n\n(?=- )/gm, '$1\n').replace(/^(- .*)\n\n(?=- )/gm, '$1\n')
+
 const tidy = (text) => text.replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
 
 function docx(files) {
@@ -15,8 +33,7 @@ function docx(files) {
   const out = []
   for (const block of xml.match(/<w:tbl>[\s\S]*?<\/w:tbl>|<w:p[ >][\s\S]*?<\/w:p>/g) || []) {
     if (block.startsWith('<w:tbl>')) {
-      for (const row of block.match(/<w:tr[ >][\s\S]*?<\/w:tr>/g) || []) out.push((row.match(/<w:tc[ >][\s\S]*?<\/w:tc>/g) || []).map((cell) => runs(cell, 'w:t').trim()).join(' | '))
-      out.push('')
+      out.push('', markdownTable((block.match(/<w:tr[ >][\s\S]*?<\/w:tr>/g) || []).map((row) => (row.match(/<w:tc[ >][\s\S]*?<\/w:tc>/g) || []).map((cell) => runs(cell, 'w:t')))), '')
       continue
     }
     const text = runs(block, 'w:t')
@@ -41,14 +58,15 @@ function xlsx(files) {
     const file = target(sheet[2]), xml = file && strFromU8(files[`xl/${file.replace(/^\/?xl\//, '')}`] || new Uint8Array())
     if (!xml) continue
     out.push(`## ${entities(sheet[1])}`, '')
+    const rows = []
     for (const row of (xml.match(/<row[ >][\s\S]*?<\/row>/g) || []).slice(0, 2000)) {
       const cells = (row.match(/<c [^>]*?(?:\/>|>[\s\S]*?<\/c>)/g) || []).map((c) => {
         const type = c.match(/ t="(\w+)"/)?.[1], value = c.match(/<v>([^<]*)<\/v>/)?.[1] ?? ''
         return type === 's' ? shared[Number(value)] ?? '' : type === 'inlineStr' ? runs(c, 't') : entities(value)
       })
-      if (cells.some((c) => c.trim())) out.push(cells.join(' | '))
+      rows.push(cells)
     }
-    out.push('')
+    out.push(markdownTable(rows), '')
   }
   return out.join('\n')
 }
@@ -72,7 +90,7 @@ export async function documentText(file, bytes) {
       const title = text.match(/^\s*<!--[^>]*?\/\s*([^>]+?)\s*(?:\(Version \d+\))?\s*-->/)?.[1]
       return (title ? `# ${title}\n\n` : '') + await documentText(file.replace(/\.xml$/i, '.html'), Buffer.from(text.replace(/^\s*<!--[\s\S]*?-->/, '').replace(/<ac:parameter\b[^>]*>[\s\S]*?<\/ac:parameter>/gi, '')))
     }
-    if (/\.html?$/i.test(file)) return tidy(entities(text.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<h([1-4])[^>]*>/gi, (_, n) => `\n${'#'.repeat(Number(n))} `).replace(/<\/(p|h\d|li|tr|div)>/gi, '\n').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ')))
+    if (/\.html?$/i.test(file)) return listItems(tidy(entities(htmlTables(text).replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<h([1-4])[^>]*>/gi, (_, n) => `\n${'#'.repeat(Number(n))} `).replace(/<li\b[^>]*>/gi, '\n- ').replace(/<\/(p|h\d|li|tr|div)>/gi, '\n').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' '))))
     return text
   } catch (error) {
     throw new Error(`${file}: Dokument konnte nicht gelesen werden (${error.message.slice(0, 120)}).`)

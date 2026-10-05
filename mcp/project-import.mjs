@@ -9,7 +9,7 @@ import { readHistory } from './git-history.mjs'
 
 export const digest = (value) => crypto.createHash('sha256').update(value).digest('hex')
 // Part of the project id: a changed importer builds a fresh project instead of reusing a stale graph.
-const IMPORTER_VERSION = 4
+const IMPORTER_VERSION = 5
 export const BUNDLE_ID = 'erstpruefung'
 
 /** Every regular file below root as a POSIX path; symlinks and ignored folders are never followed. */

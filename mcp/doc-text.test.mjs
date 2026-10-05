@@ -13,3 +13,8 @@ test('Confluence pages in storage format are documentation, with the page title 
   assert.match(text, /Ein Vertrag & eine Lieferung\./)
   assert.doesNotMatch(text, /ac:|Version\n/)
 })
+
+test('tables become Markdown tables, list items one line each', async () => {
+  const page = '<h2>Erlöse</h2><table><tbody><tr><th><p>Belegart</p></th><th><p>Bedeutung</p></th></tr><tr><td><p>RE</p></td><td><p>Rechnung</p></td></tr><tr><td>GS</td><td>Gut | schrift</td><td>extra</td></tr></tbody></table><ul><li><p>eins</p></li><li><p>zwei</p></li></ul>'
+  assert.equal(await documentText('seite.xml', Buffer.from(page)), '## Erlöse\n\n| Belegart | Bedeutung |  |\n| --- | --- | --- |\n| RE | Rechnung |  |\n| GS | Gut \\| schrift | extra |\n\n- eins\n- zwei')
+})
