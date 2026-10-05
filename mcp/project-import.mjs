@@ -3,13 +3,13 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { parseCode, resolveJava, resolveTypeScript, parseSQL, sqlObjects } from './code-analysis.mjs'
 import { classify, ignored, LIMITS } from '../frontend/src/dashboard/features/docs/import-rules.mjs'
-import { documentText, isBinaryDoc, sections } from './doc-text.mjs'
+import { documentText, documentTitle, isBinaryDoc, proseWords, sectionHeading, sections } from './doc-text.mjs'
 import { log } from './log.mjs'
 import { readHistory } from './git-history.mjs'
 
 export const digest = (value) => crypto.createHash('sha256').update(value).digest('hex')
 // Part of the project id: a changed importer builds a fresh project instead of reusing a stale graph.
-const IMPORTER_VERSION = 5
+const IMPORTER_VERSION = 7
 export const BUNDLE_ID = 'erstpruefung'
 
 /** Every regular file below root as a POSIX path; symlinks and ignored folders are never followed. */
@@ -30,10 +30,16 @@ const DOC_TYPES = [
   [/handbuch|manual|anleitung|benutzer|user|guide|faq|schulung|training|tutorial/, 'nutzer'],
 ]
 const docType = (file) => DOC_TYPES.find(([pattern]) => pattern.test(file.toLowerCase()))?.[1] || 'technik'
-const fileTitle = (file) => path.basename(file, path.extname(file)).replace(/_+/g, ' ').trim()
-const heading = (text) => text.match(/^#{1,3}\s+(.+)$/m)?.[1].trim().slice(0, 120)
-// PDF pages, slides and sheets get generated headings ("Seite 1"); their title is the file name.
-const titleOf = (text, file, format) => (!/^(pdf|pptx|xlsx|csv)$/.test(format) && heading(text)) || fileTitle(file)
+const fileTitle = (file) => { const name = path.basename(file, path.extname(file)).replace(/_+/g, ' ').trim(); return /^readme$/i.test(name) ? 'README' : name }
+// PDF pages, slides and sheets get generated headings ("Seite 1"); their title is the file name. A README is called
+// README even when its first heading is a badge row or the project logo.
+const titleOf = (text, file, format) => (!/^(pdf|pptx|xlsx|csv)$/.test(format) && !/^readme$/i.test(fileTitle(file)) && documentTitle(text)) || fileTitle(file)
+// Sections without prose (badges, logos, link lists, a bare heading) have nothing the code could contradict.
+// A list of links (related projects, sponsors) is not checkable either.
+// A line counts as a link line when hardly any text is left outside its links (a list item explaining a linked file is prose).
+const linkLine = (l) => /\]\([^)]+\)|<a\s|https?:\/\//.test(l) && proseWords(l.replace(/\[[^\]]*\]\([^)]*\)|<a\b[\s\S]*?<\/a>|https?:\/\/\S+/g, ' ')).length < 8
+const linkList = (text) => { const lines = text.split('\n').filter((l) => l.trim() && !/^#{1,6}\s/.test(l)); return lines.length >= 3 && lines.filter(linkLine).length / lines.length >= 0.7 }
+const checkable = (text) => !linkList(text) && (proseWords(text).length >= 6 || /`[^`\n]+`|```/.test(text) && proseWords(text).length >= 3)
 
 /**
  * Imports a code snapshot and documents from server-owned folders (an extracted upload or a fresh clone).
@@ -71,12 +77,18 @@ export async function importProject(input, { projectsDir }) {
   if (!files.length) throw new Error('Keine Code-Dateien gefunden. Bitte den Ordner des Repositories (mit den Quelltexten) hochladen.')
   if (!docSources.length) throw new Error(input.docs?.dir ? 'Keine lesbaren Dokumente gefunden. Unterstützt: Markdown, Text, HTML, PDF, Word, Excel, PowerPoint und CSV.' : 'Im Repository gibt es keine Dokumentation (README, docs/, PDFs). Bitte die Doku zusätzlich hochladen.')
 
-  // Long documents become consecutive sections; each one is checked and drafted on its own.
+  // Every document becomes consecutive sections (one per heading); each one is checked and corrected on its own.
+  // The dashboard shows a document as one page with its sections as blocks.
   const docFiles = []
   for (const source of docSources) {
     const parts = sections(source.text).filter((part) => part.trim())
     const title = titleOf(source.text, source.path, source.format)
-    parts.forEach((text, i) => docFiles.push({ id: `doc-${digest(`${source.id}:${i}`).slice(0, 12)}`, source: source.id, path: source.path, origin: source.origin, format: source.format, part: i + 1, parts: parts.length, title: parts.length > 1 ? `${title} · ${heading(text)?.slice(0, 80) || `Teil ${i + 1}`}` : title, type: docType(source.path), text }))
+    source.title = title
+    parts.forEach((text, i) => {
+      const head = sectionHeading(text)
+      const own = head && head !== title ? head : null
+      docFiles.push({ id: `doc-${digest(`${source.id}:${i}`).slice(0, 12)}`, source: source.id, path: source.path, origin: source.origin, format: source.format, part: i + 1, parts: parts.length, title: parts.length > 1 && own ? `${title} › ${own}` : parts.length > 1 ? `${title} › ${i === 0 ? 'Einleitung' : `Teil ${i + 1}`}` : title, heading: own, type: docType(source.path), text, checkable: !!text.trim() && checkable(text) })
+    })
   }
   if (docFiles.length > LIMITS.sections) throw new Error(`Die Dokumente ergeben ${docFiles.length} Abschnitte, erlaubt sind ${LIMITS.sections}. Bitte weniger oder kürzere Dokumente hochladen.`)
 
@@ -128,14 +140,14 @@ export async function importProject(input, { projectsDir }) {
 
   const now = new Date().toISOString(), date = now.slice(0, 10)
   nodes.push({ id: `f:${BUNDLE_ID}`, type: 'feature', label: 'Erstprüfung', sub: `${docFiles.length} Doku-Abschnitte`, description: 'Alle Dokumente gegen den aktuellen Code.' })
-  for (const doc of docFiles) nodes.push({ id: `doc:${doc.id}`, type: 'doc', label: doc.title, sub: doc.path, doc: doc.id, evidence: [{ source: doc.path, text: doc.text.slice(0, 1800) }] })
+  for (const source of docSources) nodes.push({ id: `doc:${source.id}`, type: 'doc', label: source.title, sub: source.path, doc: source.id, evidence: [{ source: source.path, text: source.text.slice(0, 1800) }] })
   const dataset = {
     company: { name, short: 'Eigenes Projekt', product: name, claim: 'Importiertes Projekt' },
     currentUser: { name: 'Lokaler Nutzer', role: 'Prüfung & Freigabe', initials: 'DU' },
     release: { id: date, freeze: date, ship: date },
     modules: Object.fromEntries(moduleDefs.map((m) => [m.id, m.name])),
     people: { local: { name: 'Lokaler Nutzer', role: 'Prüfung & Freigabe' } },
-    docs: docFiles.map((d) => ({ id: d.id, title: d.title, type: d.type, modules: [], owner: 'local', version: d.format.toUpperCase(), updated: date, pages: 1, blocks: [{ kind: 'p', text: d.text }] })),
+    docs: docSources.map((source) => { const parts = docFiles.filter((d) => d.source === source.id); return { id: source.id, title: source.title, path: source.path, type: docType(source.path), modules: [], owner: 'local', version: source.format.toUpperCase(), updated: date, pages: 1, sections: parts.map((d) => d.id), blocks: parts.map((d) => ({ kind: 'p', text: d.text })) } }),
     bundles: [{ id: BUNDLE_ID, title: 'Erstprüfung: Doku gegen aktuellen Code', ticket: 'Erstprüfung', mr: `${files.length} Code-Dateien`, merged: date, path: [name], classifiedVia: ['Statische Analyse', 'Jev'], summary: 'Jeder Doku-Abschnitt wird mit den passenden Stellen im aktuellen Code verglichen, als wäre das letzte Release gerade fertig. Jede Abweichung wird zu einem Vorschlag.', aspects: moduleDefs.map((m) => ({ kind: 'schnittstelle', module: m.id, text: m.description, commits: [] })), commits: [] }],
     proposals: [], backtest: [],
   }

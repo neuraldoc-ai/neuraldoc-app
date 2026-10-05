@@ -7,7 +7,7 @@ const TOUCHES = { fix: 'intern', test: 'intern' }
 
 /** Paths of the code excerpts a proposal's section contradicts (chunk ids look like file:<path>#L<line>). */
 export function proposalPaths(p, proposal) {
-  const record = p.mapping?.records?.find((r) => r.doc === proposal.doc)
+  const record = p.mapping?.records?.find((r) => r.doc === (proposal.section ?? proposal.doc))
   return [...new Set((record?.contradicts ?? []).map((id) => id.replace(/^file:/, '').replace(/#L\d+$/, '')))]
 }
 

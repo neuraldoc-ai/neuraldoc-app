@@ -9,11 +9,11 @@ export const tokens = (s) =>
     .filter((w) => w.length > 1 && !STOP.has(w))
     .map((w) => (w.length > 4 ? stem(w) : w))
 
-/** A BM25 index over `items`; `textOf` gives each item's searchable text. */
-export function bm25(items, textOf) {
+/** A BM25 index over `items`; `textOf` gives each item's searchable text, `tokenize` splits it into terms. */
+export function bm25(items, textOf, tokenize = tokens) {
   const tf = items.map((it) => {
     const m = new Map()
-    for (const t of tokens(textOf(it))) m.set(t, (m.get(t) ?? 0) + 1)
+    for (const t of tokenize(textOf(it))) m.set(t, (m.get(t) ?? 0) + 1)
     return m
   })
   const lens = tf.map((m) => [...m.values()].reduce((a, b) => a + b, 0))
@@ -22,7 +22,7 @@ export function bm25(items, textOf) {
   for (const m of tf) for (const t of m.keys()) df.set(t, (df.get(t) ?? 0) + 1)
   const N = items.length
   return (query, limit = 5) => {
-    const q = [...new Set(tokens(query))]
+    const q = [...new Set(tokenize(query))]
     return items
       .map((item, i) => {
         let score = 0

@@ -10,7 +10,7 @@ import { setupStatus } from './setup.mjs'
 import { listModels } from './models.mjs'
 import { installToken, profile, publicSettings, resetSettings, reviewer, saveSettings } from './settings.mjs'
 import { listConnections, saveConnection, deleteConnection, testConnection, queryConnection, resetConnections } from './db-connections.mjs'
-import { activeProject, addProject, activateProject, projectList, projectPayload, checkProject, projectDraft, projectDecisions, resetProjectDecisions, resetProjects, exportProject, showcaseOnly, projectSource, projectCommit, projectDocuments } from './projects.mjs'
+import { activeProject, addProject, activateProject, projectList, projectPayload, startCheck, checkStatus, projectDraft, projectDecisions, resetProjectDecisions, resetProjects, exportProject, showcaseOnly, projectSource, projectCommit, projectDocuments } from './projects.mjs'
 import { LIMITS } from '../frontend/src/dashboard/features/docs/import-rules.mjs'
 import { docTypeOrder, docTypes } from '../frontend/src/dashboard/features/docs/vocabulary.ts'
 import { log, logError } from './log.mjs'
@@ -155,8 +155,9 @@ async function api(req, res, path) {
       localMutation()
       if (path === '/api/mcp/project/import') return send(res, 200, await addProject(await readRaw(req, LIMITS.uploadBytes)))
       if (path === '/api/mcp/project/activate') return send(res, 200, activateProject((await readJsonBody(req)).id))
-      if (path === '/api/mcp/project/check') return send(res, 200, await checkProject())
+      if (path === '/api/mcp/project/check') return send(res, 202, startCheck())
     }
+    if (req.method === 'GET' && path === '/api/mcp/project/check') return send(res, 200, checkStatus, { 'Cache-Control': 'no-store' })
     if (req.method === 'GET' && path === '/api/mcp/project/source') return send(res, 200, projectSource(), { 'Cache-Control': 'no-store' })
     if (req.method === 'GET' && path === '/api/mcp/project/commit') return send(res, 200, projectCommit(new URL(req.url, 'http://localhost').searchParams.get('sha')))
     if (req.method === 'GET' && path === '/api/mcp/project/documents') return send(res, 200, projectDocuments(), { 'Cache-Control': 'no-store' })

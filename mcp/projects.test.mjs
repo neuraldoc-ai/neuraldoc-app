@@ -16,7 +16,6 @@ process.env.NEURALDOC_LLM_MODEL = 'mock-model'
 delete process.env.NEURALDOC_MODE
 const projects = await import('./projects.mjs')
 const { createJevClient, MODEL } = await import('./semantic-mapping.mjs')
-const { generateDraft } = await import('./drafting.mjs')
 const { middleware } = await import('./handler.mjs')
 const { projectTool } = await import('./project-mcp.mjs')
 const { documentText, sections } = await import('./doc-text.mjs')
@@ -44,6 +43,7 @@ const repo = {
   'src/pricing.ts': 'export function discount(total: number) {\n  return total >= 1000 ? total * 0.15 : total * 0.10\n}\n',
   'src/report.ts': "import { discount } from './pricing'\nexport function summary(total: number) {\n  return `Rabatt ${discount(total)}`\n}\n",
   'src/export.ts': 'export function exportDate(report: { createdAt: string }) {\n  return report.createdAt\n}\n',
+  'src/config.ts': "export const options = {\n  port: 3000,\n  host: 'localhost',\n  timeout: 30,\n  retries: 3,\n  logLevel: 'info',\n  maxSize: 10,\n  cacheDir: '.cache',\n}\n",
   'README.md': '# Shop\n\nDer Export verwendet das Erstellungsdatum des Berichts.\n',
   'LICENSE': 'MIT License',
   'CHANGELOG.md': '# Changelog\n\n- Rabatt geändert\n',
@@ -53,48 +53,66 @@ const repo = {
   'test/fixtures/sample.md': '# Fixture\n\nmust-not-be-a-document\n',
 }
 const docs = {
-  'rabatt.md': '# Rabatt\n\nDer Rabatt beträgt immer 10 Prozent des Auftragswerts.\n',
+  'rabatt.md': '# Rabatt\n\nDer Rabatt beträgt immer 10 Prozent des Auftragswerts.\nMit `rabattTabelle()` lässt sich die Staffel ausgeben.\n',
+  'optionen.md': '# Optionen\n\n- `port`: Port des Servers, Standard 3000.\n- `host`: Hostname, Standard localhost.\n- `timeout`: Zeitlimit in Sekunden, Standard 30.\n- `retries`: Wiederholungen, Standard 3.\n- `logLevel`: Protokollstufe, Standard info.\n- `maxSize`: Größte Datei in MB, Standard 10.\n',
   'installation.md': '# Installation\n\nDas Programm wird mit npm install eingerichtet.\n',
   'handbuch/rabatt.docx': office({ 'word/document.xml': '<w:document><w:body><w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Rabatt im Handbuch</w:t></w:r></w:p><w:p><w:r><w:t>Ab 1000 EUR gibt es 15 Prozent.</w:t></w:r></w:p></w:body></w:document>' }),
   'parameter.xlsx': office({ 'xl/workbook.xml': '<workbook><sheets><sheet name="Parameter" sheetId="1" r:id="rId1"/></sheets></workbook>', 'xl/_rels/workbook.xml.rels': '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>', 'xl/sharedStrings.xml': '<sst><si><t>Rabattgrenze</t></si><si><t>EUR</t></si></sst>', 'xl/worksheets/sheet1.xml': '<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1"><v>1000</v></c><c r="C1" t="s"><v>1</v></c></row></sheetData></worksheet>' }),
   'schulung.pptx': office({ 'ppt/slides/slide1.xml': '<p:sld><a:p><a:r><a:t>Rabatt erklären</a:t></a:r></a:p></p:sld>' }),
-  'export.pdf': pdf(['Export', 'Der Export verwendet das heutige Datum.']),
+  'export.pdf': pdf(['Export', 'Der Export verwendet das heutige Datum.', 'Die Datei enthält alle Berichte des Tages und entsteht jeden Abend.']),
   'bild.png': 'not a document',
 }
 
-// Jev mock: answers follow document and code, every response passes validateResponse.
+// Jev mock for the second opinion: every finding is confirmed, unless its claim says VETO. Answers pass validateResponse.
 let jevCalls = 0
-const jevFetch = (decide) => async (_url, options) => {
+const jevFetch = ({ malformed } = {}) => async (_url, options) => {
   jevCalls++
-  const request = JSON.parse(options.body), doc = request.state.document, answers = {}
+  const request = JSON.parse(options.body), answers = {}
+  if (malformed?.(request)) return { ok: true, status: 200, json: async () => ({ model: MODEL, answers: {}, usage: { input_tokens: 1, output_tokens: 1 } }) }
   for (const [id, q] of Object.entries(request.questions)) {
-    const keys = Object.keys(q.criteria)
-    const { choice, p } = id === 'component' ? { choice: keys[0], p: 0.95 } : decide(doc, request.state.code[Number(id.slice(5))])
-    const rest = (1 - p) / (keys.length - 1)
-    answers[id] = { type: 'choice', choice, confidence: p >= 0.9 ? 0.9 : 0.6, probabilities: Object.fromEntries(keys.map((k) => [k, k === choice ? p : rest])) }
+    const keys = Object.keys(q.criteria), claim = request.state.findings[Number(id.slice(8))].claim
+    const choice = claim.includes('VETO') ? 'refuted' : 'confirmed', p = 0.9
+    answers[id] = { type: 'choice', choice, confidence: 0.9, probabilities: Object.fromEntries(keys.map((k) => [k, k === choice ? p : (1 - p) / (keys.length - 1)])) }
   }
   return { ok: true, status: 200, json: async () => ({ model: MODEL, answers, usage: { input_tokens: 100, output_tokens: 3 } }) }
 }
-const decide = (doc, code) =>
-  doc.content.includes('immer 10 Prozent') && code.path === 'src/pricing.ts' ? { choice: 'contradicts', p: 0.95 }
-  : doc.path.endsWith('export.pdf') && code.path === 'src/export.ts' ? { choice: 'contradicts', p: 0.55 } // too uncertain
-  : doc.path.endsWith('rabatt.docx') && code.path === 'src/report.ts' ? { choice: 'incomplete', p: 0.7 }
-  : doc.path.endsWith('README.md') && code.path === 'src/export.ts' ? { choice: 'consistent', p: 0.95 }
-  : { choice: 'unrelated', p: 0.9 }
-const jev = (fetchImpl) => ({ createClient: (options) => createJevClient({ ...options, fetchImpl }) })
+const jev = (fetchImpl = jevFetch()) => (options) => createJevClient({ ...options, fetchImpl })
 
-// LLM mock speaks the OpenAI-compatible /v1 protocol of the local provider.
+// LLM mock speaks the OpenAI-compatible /v1 protocol of the local provider and answers the section check and the
+// completeness pass like a model would; `reply` can replace the section answer.
 let llmCalls = 0
-const llm = (reply) => ({ generate: (context, options) => generateDraft(context, { ...options, fetchImpl: async (_url, request) => {
+const llmFetch = (reply = checkReply) => async (_url, request) => {
   llmCalls++
-  const sent = JSON.parse(JSON.parse(request.body).messages[1].content)
-  return { ok: true, status: 200, json: async () => ({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(reply(sent)) } }], usage: { prompt_tokens: 500, completion_tokens: 80 } }) }
-} }) })
-// Own-project drafts are line edits (target.op patch) with findings quoted from the section and the code.
-const finding = (sent) => ({ doc_quote: 'Der Rabatt beträgt immer 10 Prozent', evidence_id: sent.evidence[0].id, code_quote: 'total >= 1000 ? total * 0.15', problem: 'Ab 1000 gilt 15 Prozent.' })
-const draftReply = (sent) => ({ status: 'draft', findings: [finding(sent)], edits: [{ op: 'replace', start: 3, end: 3, text: 'Ab 1.000 EUR Auftragswert beträgt der Rabatt 15 Prozent, darunter 10 Prozent.' }], reason: 'discount() staffelt ab 1000.', question: '', evidenceIds: [sent.evidence[0].id] })
-const questionReply = () => ({ status: 'needs_context', findings: [], edits: [], reason: 'Gilt die Grenze brutto oder netto?', question: 'Ist der Auftragswert brutto oder netto?', evidenceIds: [] })
-const noChangeReply = (sent) => ({ status: 'no_change', findings: [], edits: [], reason: 'Der Code bestätigt den Text.', question: '', evidenceIds: [sent.evidence[0].id] })
+  const body = JSON.parse(request.body), system = body.messages[0].content, content = JSON.parse(body.messages[1].content)
+  const value = system.startsWith('You check whether one document') ? listReply(content) : reply(content)
+  return { ok: true, status: 200, json: async () => ({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(value) } }], usage: { prompt_tokens: 500, completion_tokens: 80 } }) }
+}
+const ok = { status: 'ok', findings: [], question: '', summary: 'Der Abschnitt stimmt mit dem Code überein.' }
+const excerpt = (content, text) => content.code.find((c) => c.text.includes(text))
+const lineOf = (numbered, text) => numbered.split('\n').findIndex((l) => l.includes(text)) + 1
+function checkReply(content) {
+  const text = content.section.numbered
+  if (text.includes('immer 10 Prozent')) return {
+    status: 'findings', question: '', summary: 'Rabattstaffel und entfernte Funktion.',
+    findings: [
+      { kind: 'contradicts', doc_quote: 'Der Rabatt beträgt immer 10 Prozent', evidence: [{ id: excerpt(content, 'total >= 1000').id, quote: 'total >= 1000 ? total * 0.15' }], absent: [], explanation: 'Der Abschnitt nennt immer 10 Prozent, discount() in src/pricing.ts gibt ab 1000 EUR 15 Prozent.', edits: [{ op: 'replace', start: 3, end: 3, text: 'Ab 1.000 EUR Auftragswert beträgt der Rabatt 15 Prozent, darunter 10 Prozent.' }] },
+      { kind: 'removed', doc_quote: 'Mit `rabattTabelle()` lässt sich die Staffel ausgeben.', evidence: [], absent: ['rabattTabelle'], explanation: 'rabattTabelle() gibt es im Code nicht mehr.', edits: [{ op: 'delete', start: 4, end: 4, text: '' }] },
+    ],
+  }
+  // The PDF finding is wrong on purpose: Jev refutes it and it never reaches the reviewer.
+  if (text.includes('heutige Datum')) return { status: 'findings', question: '', summary: 'Datum.', findings: [{ kind: 'contradicts', doc_quote: 'Der Export verwendet das heutige Datum.', evidence: [{ id: excerpt(content, 'createdAt').id, quote: 'return report.createdAt' }], absent: [], explanation: 'VETO: das Datum kommt aus dem Bericht.', edits: [{ op: 'replace', start: lineOf(text, 'heutige Datum'), end: lineOf(text, 'heutige Datum'), text: 'Der Export verwendet das Erstellungsdatum.' }] }] }
+  return ok
+}
+function listReply(content) {
+  const lines = content.document.numbered.split('\n'), at = lines.findIndex((l) => l.includes('`maxSize`')) + 1
+  return {
+    summary: 'cacheDir fehlt.',
+    entries: content.candidates.map(({ name }) => name === 'cacheDir'
+      ? { name, add: true, reason: '', doc_quote: '- `maxSize`: Größte Datei in MB, Standard 10.', evidence: [{ id: excerpt(content, 'cacheDir').id, quote: "cacheDir: '.cache'" }], explanation: 'Der Code hat die Option cacheDir, die Liste nennt sie nicht.', edits: [{ op: 'insert_after', start: at, end: at, text: '- `cacheDir`: Cache-Verzeichnis, Standard .cache.' }] }
+      : { name, add: false, reason: 'kein Optionsname', doc_quote: '', evidence: [], explanation: '', edits: [] }),
+  }
+}
+const run = (fetchImpl = llmFetch(), jevImpl) => ({ fetchImpl, createClient: jev(jevImpl) })
 
 test('import rules: repository documents, ignored folders, secrets and URLs', () => {
   assert.equal(classify('README.md', 'repo'), 'doc')
@@ -125,7 +143,7 @@ test('documents: PDF, Word, Excel, PowerPoint and HTML become text; sections are
   assert.equal(await documentText('a.html', '<h1>Titel</h1><p>A &amp; B</p><script>x()</script>'), '# Titel\nA & B')
   await assert.rejects(documentText('a.pdf', Buffer.from('kein pdf')), /konnte nicht gelesen werden/)
   const long = Array.from({ length: 40 }, (_, i) => `## Kapitel ${i}\n\n${'Text '.repeat(60)}`).join('\n\n')
-  const parts = sections(long, 2000)
+  const parts = sections(long, { max: 2000 })
   assert.ok(parts.length > 5 && parts.every((p) => p.length <= 2000))
   assert.equal(parts.join(''), long)
   assert.ok(parts.slice(1).every((p) => p.startsWith('## Kapitel')))
@@ -136,9 +154,9 @@ test('upload: code and documents only; secrets, dependencies, legal texts and fi
   first = await projects.addProject(upload(repo, docs))
   assert.equal(first.mode, 'working')
   assert.equal(first.project.name, 'shop')
-  assert.deepEqual(first.project.files.map((f) => f.path).sort(), ['src/export.ts', 'src/pricing.ts', 'src/report.ts'])
+  assert.deepEqual(first.project.files.map((f) => f.path).sort(), ['src/config.ts', 'src/export.ts', 'src/pricing.ts', 'src/report.ts'])
   const paths = [...new Set(first.project.documents.map((d) => d.path))].sort()
-  assert.deepEqual(paths, ['dokumentation/export.pdf', 'dokumentation/handbuch/rabatt.docx', 'dokumentation/installation.md', 'dokumentation/parameter.xlsx', 'dokumentation/rabatt.md', 'dokumentation/schulung.pptx', 'repository/README.md'])
+  assert.deepEqual(paths, ['dokumentation/export.pdf', 'dokumentation/handbuch/rabatt.docx', 'dokumentation/installation.md', 'dokumentation/optionen.md', 'dokumentation/parameter.xlsx', 'dokumentation/rabatt.md', 'dokumentation/schulung.pptx', 'repository/README.md'])
   assert.equal(first.dataset.docs.find((d) => d.title === 'parameter').type, 'parameter')
   assert.equal(first.dataset.docs.find((d) => d.title === 'Installation').type, 'installation')
   const stored = JSON.stringify(projects.activeProject())
@@ -179,105 +197,138 @@ test('approval is refused before any draft exists', async () => {
 test('Jev is required: without a key no check and no proposal exist', async () => {
   const key = process.env.TYPESAFE_API_KEY
   delete process.env.TYPESAFE_API_KEY
-  try { await assert.rejects(projects.checkProject(jev(() => assert.fail('no request without key'))), /Jev-Key fehlt/) }
-  finally { process.env.TYPESAFE_API_KEY = key }
+  try {
+    await assert.rejects(projects.checkProject(run(() => assert.fail('no model request without Jev'))), /Jev-Key fehlt/)
+    assert.throws(() => projects.startCheck(), /Jev-Key fehlt/)
+  } finally { process.env.TYPESAFE_API_KEY = key }
   assert.equal(projects.activeProject().mapping, null)
 })
 
-test('an LLM is required too: without one the check does not call Jev', async () => {
+test('an LLM is required too: without one nothing is called', async () => {
   const provider = process.env.NEURALDOC_DRAFT_PROVIDER, model = process.env.NEURALDOC_LLM_MODEL
   delete process.env.NEURALDOC_DRAFT_PROVIDER; delete process.env.NEURALDOC_LLM_MODEL
-  try { await assert.rejects(projects.checkProject(jev(() => assert.fail('no Jev request without an LLM'))), /LLM/) }
-  finally { process.env.NEURALDOC_DRAFT_PROVIDER = provider; process.env.NEURALDOC_LLM_MODEL = model }
+  try {
+    await assert.rejects(projects.checkProject(run(() => assert.fail('no request without an LLM'), () => assert.fail('no Jev request'))), /LLM/)
+    assert.throws(() => projects.startCheck(), /LLM/)
+  } finally { process.env.NEURALDOC_DRAFT_PROVIDER = provider; process.env.NEURALDOC_LLM_MODEL = model }
   assert.equal(projects.activeProject().mapping, null)
 })
 
-test('a failing Jev run installs nothing', async () => {
-  await assert.rejects(projects.checkProject(jev(async () => ({ ok: false, status: 500 }))), /HTTP 500/)
+test('a check whose model fails for every section installs nothing', async () => {
+  await assert.rejects(projects.checkProject(run(async () => ({ ok: false, status: 500 }))), /HTTP 500/)
   const p = projects.activeProject()
   assert.equal(p.mapping, null)
   assert.equal(p.dataset.proposals.length, 0)
 })
 
-let proposal
-test('initial check: confident contradictions with the current code become proposals; the rest stays unchanged', async () => {
-  jevCalls = 0
-  const payload = await projects.checkProject(jev(jevFetch(decide)))
-  assert.ok(jevCalls >= 5)
-  assert.equal(payload.dataset.proposals.length, 2, 'a contradiction and an omission; the uncertain PDF verdict stays out')
-  const rabatt = payload.project.documents.find((d) => d.path === 'dokumentation/rabatt.md')
-  proposal = payload.dataset.proposals.find((x) => x.doc === rabatt.id)
-  assert.ok(proposal)
-  assert.equal(proposal.text, proposal.find, 'no text invented before a draft')
-  assert.match(proposal.why, /src\/pricing\.ts/)
-  const links = payload.graph.edges.filter((e) => e.kind === 'semantic' && e.target.startsWith('file:'))
-  assert.deepEqual(links.map((e) => [e.target, e.evidence.decision.verdict]).sort(), [['file:src/export.ts', 'consistent'], ['file:src/pricing.ts', 'contradicts'], ['file:src/report.ts', 'incomplete']])
-  assert.ok(payload.graph.edges.some((e) => e.kind === 'documents' && e.target === `doc:${rabatt.id}`))
+let proposal, options
+test('initial check: verified findings become proposals with their correction, reason and evidence', async () => {
+  jevCalls = 0; llmCalls = 0
+  const payload = await projects.checkProject(run())
+  const p = projects.activeProject(), titles = payload.dataset.proposals.map((x) => x.title).sort()
+  assert.deepEqual(titles, ['Optionen', 'Rabatt'], 'the PDF finding Jev refutes never becomes a proposal')
+  proposal = payload.dataset.proposals.find((x) => x.title === 'Rabatt')
+  options = payload.dataset.proposals.find((x) => x.title === 'Optionen')
+  const rabatt = p.docSources.find((s) => s.path === 'dokumentation/rabatt.md')
+  assert.equal(proposal.doc, rabatt.id, 'a proposal belongs to its document; the section is one block of it')
+  assert.equal(proposal.at, 0)
+  const g = p.generated[proposal.id]
+  assert.equal(g.generation.status, 'draft')
+  assert.equal(g.text, '# Rabatt\n\nAb 1.000 EUR Auftragswert beträgt der Rabatt 15 Prozent, darunter 10 Prozent.\n', 'both edits applied to the exact section')
+  assert.deepEqual(g.generation.findings.map((f) => [f.kind, f.sure]), [['contradicts', true], ['removed', true]])
+  assert.match(g.generation.findings[0].evidence[0].source, /^src\/pricing\.ts:1-/)
+  assert.deepEqual(g.generation.findings[1].absent, ['rabattTabelle'])
+  assert.equal(g.confidence, 'hoch', 'every finding confirmed by Jev')
+  // The completeness pass adds the option the code has and the document's list leaves out, in the list's format.
+  assert.match(p.generated[options.id].text, /- `maxSize`: Größte Datei in MB, Standard 10\.\n- `cacheDir`: Cache-Verzeichnis, Standard \.cache\./)
+  assert.equal(p.mapping.lists.find((l) => l.doc === options.doc).added, 1)
+  const pdf = p.docFiles.find((d) => d.path.endsWith('export.pdf'))
+  assert.match(p.mapping.records.find((r) => r.doc === pdf.id).dropped[0].reason, /Jev widerspricht/)
+  assert.ok(payload.graph.edges.some((e) => e.id.startsWith('check:') && e.target === 'file:src/pricing.ts' && e.kind === 'semantic'))
   const labels = fs.readFileSync(new URL('../frontend/src/dashboard/features/docs/brain/model.ts', import.meta.url), 'utf8')
   for (const kind of new Set(payload.graph.edges.map((e) => e.kind))) assert.ok(labels.includes(`  ${kind}: "`), kind)
-  assert.equal(payload.project.mapping.mismatches, 2)
-  assert.equal(payload.project.mapping.consistent, 1)
+  assert.deepEqual([payload.project.mapping.mismatches, payload.project.mapping.findings], [2, 3])
   assert.equal(payload.project.mapping.records, undefined, 'raw records stay on the server')
-  const again = await projects.checkProject(jev(async () => { throw new Error('must use cache') }))
-  assert.ok(again.dataset.proposals.some((x) => x.id === proposal.id))
+  assert.ok(llmCalls > 0 && jevCalls > 0)
+  // Identical requests come from the caches: a repeated check costs nothing.
+  const again = await projects.checkProject(run(async () => { throw new Error('must use the model cache') }, async () => { throw new Error('must use the Jev cache') }))
+  assert.deepEqual(again.dataset.proposals.map((x) => x.id).sort(), payload.dataset.proposals.map((x) => x.id).sort())
 })
 
-test('drafts: question, "no change" and a validated correction from the current code', async () => {
-  llmCalls = 0
-  const question = await projects.projectDraft(proposal.id, undefined, llm(questionReply))
-  assert.equal(question.result.status, 'needs_context')
+test('the server keeps only what it can verify', async () => {
+  const { verifyFindings, codeIndex, createSectionRetriever, pickExcerpts, excerptId, narrow, tidyEdit } = await import('./check.mjs')
+  const p = projects.activeProject(), code = codeIndex(p.files), retriever = createSectionRetriever(p.files)
+  const section = { text: '# Rabatt\n\nDer Rabatt beträgt immer 10 Prozent und gilt für den gesamten Auftrag.\nRabatte berechnet `discount()` aus dem Auftragswert.\n- Punkt eins\n' }
+  const excerpts = pickExcerpts(retriever.rank(section, ['discount'])), ex = excerpts.find((c) => c.text.includes('0.15'))
+  const finding = (patch) => ({ kind: 'contradicts', doc_quote: 'Der Rabatt beträgt immer 10 Prozent', evidence: [{ id: excerptId(ex), quote: 'total * 0.15' }], absent: [], explanation: 'Ab 1000 EUR gelten 15 Prozent.', edits: [{ op: 'replace', start: 3, end: 3, text: 'Der Rabatt beträgt ab 1000 EUR 15 Prozent.' }], ...patch })
+  const verify = (...findings) => verifyFindings({ status: 'findings', findings, question: '', summary: 's' }, { section, excerpts, code, terms: [] })
+  assert.equal(verify(finding()).findings.length, 1)
+  const reasons = (f) => verify(f).dropped.map((d) => d.reason).join()
+  assert.match(reasons(finding({ doc_quote: 'steht nirgends im Abschnitt' })), /Zitat/)
+  assert.match(reasons(finding({ evidence: [{ id: excerptId(ex), quote: 'total * 0.99' }] })), /Codebeleg/)
+  assert.match(reasons(finding({ kind: 'removed', evidence: [], absent: ['discount'], edits: [{ op: 'delete', start: 4, end: 4, text: '' }] })), /kommt im Code vor/)
+  assert.match(reasons(finding({ edits: [{ op: 'replace', start: 3, end: 3, text: 'Der  Rabatt beträgt immer **10** Prozent und gilt für den gesamten Auftrag.' }] })), /Leerzeichen/)
+  assert.match(reasons(finding({ edits: [{ op: 'replace', start: 3, end: 3, text: 'The discount is always 15 percent of the order value and it is not changed.' }] })), /Sprache/)
+  assert.match(reasons(finding({ edits: [{ op: 'replace', start: 9, end: 9, text: 'x' }] })), /außerhalb/)
+  assert.equal(verify(finding(), finding({ explanation: 'zweimal' })).dropped[0].reason, 'überschneidet sich mit einem anderen Befund')
+  // A replacement that repeats unchanged lines is cut down to the changed line; list markers stay as they were.
+  const lines = section.text.split('\n')
+  assert.deepEqual(narrow({ op: 'replace', start: 1, end: 4, text: '# Rabatt\n\nDer Rabatt beträgt ab 1000 EUR 15 Prozent.\nRabatte berechnet `discount()` aus dem Auftragswert.' }, lines), [{ op: 'replace', start: 3, end: 3, text: 'Der Rabatt beträgt ab 1000 EUR 15 Prozent.' }])
+  assert.equal(tidyEdit({ op: 'replace', start: 5, end: 5, text: '- - Punkt zwei' }, lines).text, '- Punkt zwei')
+  assert.equal(tidyEdit({ op: 'insert_after', start: 5, end: 5, text: '- Punkt drei\n\n' }, lines).text, '- Punkt drei')
+  // Names the original writes as code stay code, new names of the same style too.
+  const table = ['| `OPENAI_API_KEY` / `GEMINI_API_KEY` | Key | none |']
+  assert.equal(tidyEdit({ op: 'replace', start: 1, end: 1, text: '| OPENAI_API_KEY / GEMINI_API_KEY / VERTEX_API_KEY | Key | none |' }, table).text, '| `OPENAI_API_KEY` / `GEMINI_API_KEY` / `VERTEX_API_KEY` | Key | none |')
+})
+
+test('re-check of one section: a question first, then the answer leads to the correction', async () => {
+  const question = (content) => content.reviewer_answer === 'Netto.' ? checkReply(content) : { status: 'unclear', findings: [], question: 'Gilt die Grenze brutto oder netto?', summary: 'Grenze unklar.' }
+  const asked = await projects.projectDraft(proposal.id, 'Bitte noch einmal prüfen.', run(llmFetch(question)))
+  assert.equal(asked.result.status, 'needs_context')
+  assert.equal(asked.proposal.question, 'Gilt die Grenze brutto oder netto?')
   assert.throws(() => projects.projectDecisions({ id: proposal.id, decision: { state: 'uebernommen' } }), /Rückfrage/)
-  const same = await projects.projectDraft(proposal.id, 'Prüfen.', llm(noChangeReply))
-  assert.equal(same.proposal.generation.status, 'no_change')
-  assert.match(same.proposal.question, /verwerfen/)
-  assert.throws(() => projects.projectDecisions({ id: proposal.id, decision: { state: 'uebernommen' } }), /Entwurf formulieren/)
-  await assert.rejects(projects.projectDraft(proposal.id, 'Brutto.', llm(() => draftReply({ evidence: [{ id: 'invented' }] }))), /unbekannte Belege/)
-  await assert.rejects(projects.projectDraft(proposal.id, 'Ohne Beleg.', llm((sent) => ({ ...draftReply(sent), findings: [{ ...finding(sent), code_quote: 'total * 0.20' }] }))), /Kein Befund/)
-  const draft = await projects.projectDraft(proposal.id, 'Netto.', llm(draftReply))
-  assert.equal(draft.result.status, 'draft')
-  assert.equal(draft.result.text, '# Rabatt\n\nAb 1.000 EUR Auftragswert beträgt der Rabatt 15 Prozent, darunter 10 Prozent.\n', 'edits applied to the exact section')
-  assert.equal(draft.proposal.generation.findings[0].problem, 'Ab 1000 gilt 15 Prozent.')
-  assert.match(draft.context.evidence[0].source, /Prüfung: widerspricht dem Abschnitt/)
-  assert.ok(draft.context.evidence.some((e) => e.id.startsWith('code:') && e.text.includes('0.15') && /src\/pricing\.ts, Zeilen 1-/.test(e.source)))
-  assert.ok(Buffer.byteLength(JSON.stringify(draft.context)) <= 40000)
-  assert.equal(llmCalls, 5)
-  const cached = await projects.projectDraft(proposal.id, 'Netto.', llm(() => { throw new Error('must use cache') }))
-  assert.equal(cached.cached, true)
+  const answered = await projects.projectDraft(proposal.id, 'Netto.', run(llmFetch(question)))
+  assert.equal(answered.result.status, 'draft')
+  assert.equal(answered.proposal.generation.answer, 'Netto.')
+  assert.equal(answered.result.findings.length, 2)
+  await assert.rejects(projects.projectDraft(proposal.id, '', run()), /1 bis 2.000/)
 })
 
-test('drafts for different places run side by side and are all kept', async () => {
-  const ids = projects.activeProject().dataset.proposals.map((p) => p.id)
-  assert.equal(ids.length, 2)
+test('re-checks of different sections run side by side; a full check waits for them', async () => {
   let release
   const gate = new Promise((resolve) => { release = resolve })
-  const slow = { generate: async (context, options) => { await gate; return llm(questionReply).generate(context, options) } }
-  const running = ids.map((id) => projects.projectDraft(id, 'Parallel.', slow))
-  await assert.rejects(projects.checkProject(jev(async () => { throw new Error('must not run') })), /läuft schon/)
+  const slow = async (url, request) => { await gate; return llmFetch((content) => ({ ...checkReply(content), summary: `Parallel ${content.section.heading}` }))(url, request) }
+  const running = [proposal.id, options.id].map((id) => projects.projectDraft(id, 'Parallel.', run(slow)))
+  await assert.rejects(projects.checkProject(run(async () => { throw new Error('must not run') })), /läuft schon/)
+  assert.throws(() => projects.startCheck(), /läuft schon/)
   release()
   await Promise.all(running)
   const p = projects.activeProject()
-  for (const id of ids) assert.equal(p.generated[id].generation.answer, 'Parallel.', 'no draft overwrites another')
-  // Back to the validated correction the following tests approve.
-  await projects.projectDraft(proposal.id, 'Netto.', llm(() => { throw new Error('must use cache') }))
+  for (const id of [proposal.id, options.id]) assert.equal(p.generated[id].generation.answer, 'Parallel.', 'no re-check overwrites another')
 })
 
-test('"no change" is only valid where the task allows it', async () => {
-  const context = { change: { id: 'c', title: 'c' }, document: { id: 'd', title: 'd', type: 't', audience: 'a', section: 's', before: 'Alt', surrounding: '' }, target: { id: 't', op: 'replace', instruction: 'Formuliere neu.' }, evidence: [{ id: 'e', source: 's', text: 'x' }] }
-  const noChangeFull = (sent) => ({ status: 'no_change', text: '', blocks: [], rows: [], reason: 'Der Code bestätigt den Text.', question: '', evidenceIds: [sent.evidence[0].id] })
-  await assert.rejects(llm(noChangeFull).generate(context, { config: { ...(await import('./drafting.mjs')).draftingConfig({ ...process.env, NEURALDOC_STATE_DIR: path.join(root, 'nc') }) } }), /nicht vorgesehen/)
-})
-
-test('one malformed Jev answer is retried once, then only its section is skipped', async () => {
+test('one malformed Jev answer is retried once; the findings stay, unconfirmed', async () => {
   let calls = 0
-  const flaky = async (url, options) => {
-    if (JSON.parse(options.body).state.document.path.endsWith('export.pdf')) { calls++; return { ok: true, status: 200, json: async () => ({ model: MODEL, answers: {}, usage: { input_tokens: 1, output_tokens: 1 } }) } }
-    return jevFetch(decide)(url, options)
-  }
-  const payload = await projects.checkProject({ createClient: (options) => createJevClient({ ...options, cachePath: path.join(root, 'flaky-cache.json'), fetchImpl: flaky }) })
+  const flaky = jevFetch({ malformed: (request) => request.state.section.includes('immer 10 Prozent') && ++calls })
+  const p0 = projects.activeProject()
+  fs.rmSync(path.join(projects.projectsDir, p0.id, 'jev-cache.json'), { force: true })
+  const payload = await projects.checkProject(run(llmFetch(), flaky))
   assert.equal(calls, 2, 'one retry')
-  const p = projects.activeProject(), pdf = p.docFiles.find((d) => d.path.endsWith('export.pdf'))
-  assert.equal(p.mapping.records.find((r) => r.doc === pdf.id).skipped, 'Jev-Antwort ungültig.')
-  assert.ok(payload.dataset.proposals.some((x) => x.id === proposal.id), 'the other sections are still checked')
+  const p = projects.activeProject(), g = p.generated[payload.dataset.proposals.find((x) => x.title === 'Rabatt').id]
+  assert.deepEqual(g.generation.findings.map((f) => [f.kind, f.sure]), [['contradicts', false]], 'without Jev a deletion is not kept')
+  assert.equal(g.confidence, 'pruefen')
+  fs.rmSync(path.join(projects.projectsDir, p.id, 'jev-cache.json'), { force: true })
+  await projects.checkProject(run())
+})
+
+test('the check runs in the background and reports its progress', async () => {
+  const started = projects.startCheck(run(async () => { throw new Error('must use the model cache') }))
+  assert.equal(started.running, true)
+  assert.ok(started.total >= 3)
+  while (projects.checkStatus.running) await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.equal(projects.checkStatus.phase, 'done')
+  assert.equal(projects.checkStatus.done, projects.checkStatus.total)
+  assert.equal(projects.checkStatus.findings, 3)
 })
 
 test('approval, edit, revoke and export: approved text merged into its document', async () => {
@@ -286,7 +337,7 @@ test('approval, edit, revoke and export: approved text merged into its document'
   assert.equal(exported.files.length, 1)
   assert.equal(exported.files[0].path, 'dokumentation/rabatt.md')
   assert.equal(exported.files[0].content, '# Rabatt\n\nBearbeitet.\n')
-  await assert.rejects(projects.projectDraft(proposal.id, 'x', llm(draftReply)), /zurücknehmen/)
+  await assert.rejects(projects.projectDraft(proposal.id, 'x', run()), /zurücknehmen/)
   projects.projectDecisions({ id: proposal.id, decision: null })
   assert.equal(projects.exportProject().files.length, 0)
   projects.projectDecisions({ id: proposal.id, decision: { state: 'uebernommen' } })

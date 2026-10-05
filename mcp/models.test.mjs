@@ -11,7 +11,7 @@ after(() => fs.rmSync(process.env.NEURALDOC_STATE_DIR, { recursive: true, force:
 const never = () => assert.fail('no request expected')
 
 test('Gemini offers only the models with known cost rates; without a key a built-in list, no request', async () => {
-  assert.deepEqual((await listModels('gemini', { fetchImpl: never })).models.map((m) => m.id), ['gemini-3.5-flash-lite', 'gemini-2.5-flash-lite'])
+  assert.deepEqual((await listModels('gemini', { fetchImpl: never })).models.map((m) => m.id), ['gemini-3.5-flash-lite', 'gemini-2.5-flash-lite', 'gemini-2.5-flash'])
   const openai = await listModels('openai', { fetchImpl: never })
   assert.equal(openai.source, 'built-in')
   assert.ok(openai.models.some((m) => m.id === 'gpt-4.1-mini'))

@@ -3,9 +3,10 @@
 export const LIMITS = { codeFiles: 1500, codeBytes: 100_000, fileBytes: 30_000_000, sections: 400, sectionChars: 6000, uploadBytes: 200_000_000 }
 
 const IGNORED_DIR = /(^|\/)(\.git|\.svn|\.hg|node_modules|bower_components|vendor|dist|build|out|target|bin|obj|coverage|\.next|\.nuxt|\.svelte-kit|\.venv|venv|__pycache__|\.pytest_cache|\.idea|\.vscode|\.gradle|\.terraform|\.cache)(\/|$)/i
-const SECRET = /(^|\/)(\.env[^/]*|[^/]*(secret|credential|private.?key)[^/]*|id_rsa|id_ed25519|\.npmrc|\.pypirc)$|\.(pem|key|p12|pfx|jks|keystore)$/i
-const GENERATED = /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|composer\.lock|poetry\.lock|Cargo\.lock|Gemfile\.lock|go\.sum)$|\.min\.(js|css)$|\.map$/i
-const CODE = /\.(java|kt|kts|ts|tsx|js|jsx|mjs|cjs|py|go|rs|cs|pas|dpr|sql|rb|php|swift|scala|c|cc|cpp|h|hpp|vue|svelte|yaml|yml|json|xml|properties|toml|ini|gradle)$/i
+// Example environment files (.env.example, .env.sample …) document configuration and hold no secrets.
+const SECRET = /(^|\/)(\.env(?!\.(example|sample|template|dist|defaults)$)[^/]*|[^/]*(secret|credential|private.?key)[^/]*|id_rsa|id_ed25519|\.npmrc|\.pypirc)$|\.(pem|key|p12|pfx|jks|keystore)$/i
+const GENERATED = /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|composer\.lock|poetry\.lock|Cargo\.lock|Gemfile\.lock|go\.sum|uv\.lock)$|\.min\.(js|css)$|\.map$/i
+const CODE = /\.(java|kt|kts|ts|tsx|js|jsx|mjs|cjs|py|go|rs|cs|pas|dpr|sql|rb|php|swift|scala|c|cc|cpp|h|hpp|vue|svelte|yaml|yml|json|xml|properties|toml|ini|gradle|sh|bash|ps1|bat|cmd|tf|graphql|gql|proto|prisma|cfg|conf)$|(^|\/)(Makefile|Dockerfile|Containerfile|Procfile|Justfile|\.env\.(example|sample|template|dist|defaults))$|(^|\/)Dockerfile\.[\w.-]+$/i
 export const DOC = /\.(md|mdx|markdown|txt|rst|adoc|asciidoc|html?|pdf|docx|xlsx|pptx|csv)$/i
 // Repository files that are not product documentation: legal texts, histories, templates.
 const NOT_DOCS = /(^|\/)(license|licence|copying|notice|changelog|changes|history|release[-_ ]?notes|code[-_]of[-_]conduct|authors|contributors|security|pull_request_template|issue_template)(\.[a-z]+)?$|(^|\/)\.github\//i

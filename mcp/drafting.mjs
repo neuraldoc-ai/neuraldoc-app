@@ -11,6 +11,7 @@ const DEFAULT_STATE = fileURLToPath(new URL('./state/', import.meta.url))
 const PRICES = {
   'gemini-3.5-flash-lite': { input: 0.30, output: 2.50, thinkingConfig: { thinkingLevel: 'minimal' } },
   'gemini-2.5-flash-lite': { input: 0.10, output: 0.40, thinkingConfig: { thinkingBudget: 0 } },
+  'gemini-2.5-flash': { input: 0.30, output: 2.50, thinkingConfig: { thinkingBudget: 0 } },
 }
 /** The Gemini models drafts may use (cost rates are known for them). */
 export const GOOGLE_MODELS = Object.keys(PRICES)
@@ -200,20 +201,20 @@ export function generateDraft(input, options = {}) {
 }
 
 /** One JSON call to the configured provider: { value, inputTokens, outputTokens, costUsd }. Used for drafts and for check findings. */
-export async function callModel(config, { system, content, schema, fetchImpl = fetch, price = modelPrice(config), temperature = 0.2, outputLimit = OUTPUT_LIMIT }) {
+export async function callModel(config, { system, content, schema, fetchImpl = fetch, price = modelPrice(config), temperature = 0.2, outputLimit = OUTPUT_LIMIT, thinking, timeoutMs }) {
   if (config.provider !== 'local' && !config.apiKey) throw new DraftError('Es ist noch kein LLM eingerichtet. Hinterleg unter Einstellungen einen Key.', 503)
   const google = ['vertex', 'gemini'].includes(config.provider), label = PROVIDER_LABELS[config.provider]
   const request = google ? {
     systemInstruction: { parts: [{ text: system }] },
     contents: [{ role: 'user', parts: [{ text: JSON.stringify(content) }] }],
-    generationConfig: { temperature, maxOutputTokens: outputLimit, thinkingConfig: price.thinkingConfig, responseMimeType: 'application/json', responseJsonSchema: schema },
+    generationConfig: { temperature, maxOutputTokens: outputLimit, thinkingConfig: thinking ?? price.thinkingConfig, responseMimeType: 'application/json', responseJsonSchema: schema },
   } : providerRequest(config, content, system, schema, outputLimit)
   const call = async (method, body) => {
     let response
-    try { response = await fetchImpl(google ? draftEndpoint(config, method) : request.url, { method: 'POST', headers: google ? { 'Content-Type': 'application/json', 'x-goog-api-key': config.apiKey } : request.headers, body: JSON.stringify(google ? body : request.body), signal: AbortSignal.timeout(config.provider === 'local' ? 120000 : 45000) }) }
+    try { response = await fetchImpl(google ? draftEndpoint(config, method) : request.url, { method: 'POST', headers: google ? { 'Content-Type': 'application/json', 'x-goog-api-key': config.apiKey } : request.headers, body: JSON.stringify(google ? body : request.body), signal: AbortSignal.timeout(timeoutMs ?? (config.provider === 'local' ? 120000 : 45000)) }) }
     catch { throw new DraftError(`${label} ist nicht erreichbar. Kein automatischer Wiederholungsversuch.`, 502) }
     // Provider bodies can include prompts or credentials. Only expose a safe status.
-    if (!response.ok) throw new DraftError(`${label} hat die Anfrage abgelehnt (HTTP ${response.status}). Prüf den API-Key und ob dein Konto das Modell nutzen darf.`, 502)
+    if (!response.ok) throw Object.assign(new DraftError(response.status === 429 ? `${label} meldet zu viele Anfragen (HTTP 429). Gleich noch einmal versuchen.` : `${label} hat die Anfrage abgelehnt (HTTP ${response.status}). Prüf den API-Key und ob dein Konto das Modell nutzen darf.`, 502), { httpStatus: response.status })
     try { return await response.json() } catch { throw new DraftError(`${label} hat eine unlesbare Antwort geliefert.`, 502) }
   }
   const raw = await call('generateContent', request)

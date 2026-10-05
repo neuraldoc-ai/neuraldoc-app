@@ -97,18 +97,75 @@ export async function documentText(file, bytes) {
   }
 }
 
-/** Splits text into exact, consecutive slices of at most `max` characters, preferring headings, then paragraphs. */
-export function sections(text, max = LIMITS.sectionChars) {
+/** Offsets of the line starts outside fenced code blocks, with the heading level of each line (0 = no heading). */
+function lineStarts(text) {
+  const out = []
+  let fence = null
+  for (let at = 0; at < text.length;) {
+    const end = text.indexOf('\n', at), line = text.slice(at, end < 0 ? text.length : end)
+    const marker = line.match(/^\s{0,3}(`{3,}|~{3,})/)?.[1]
+    if (fence) { if (marker && marker[0] === fence[0] && marker.length >= fence.length) fence = null; out.push({ at, level: 0, fenced: true }) }
+    else {
+      if (marker) fence = marker
+      out.push({ at, level: marker ? 0 : (line.match(/^(#{1,4})\s+\S/)?.[1].length ?? 0), fenced: !!marker, blank: !line.trim() })
+    }
+    if (end < 0) break
+    at = end + 1
+  }
+  return out
+}
+
+/**
+ * Splits text into exact, consecutive sections: one per heading (levels 1–4), tiny ones merged into the next,
+ * long ones cut at blank lines outside code blocks. Joining the sections gives back the text.
+ */
+export function sections(text, { max = LIMITS.sectionChars, min = 400 } = {}) {
+  const lines = lineStarts(text)
+  const cuts = [0, ...lines.filter((l) => l.level && l.at > 0).map((l) => l.at), text.length]
+  const parts = []
+  for (let i = 0; i < cuts.length - 1; i++) if (cuts[i + 1] > cuts[i]) parts.push([cuts[i], cuts[i + 1]])
+  // A heading with a line or two of text reads best together with what follows.
+  const merged = []
+  for (const part of parts) {
+    const last = merged.at(-1)
+    if (last && last[1] - last[0] < min) last[1] = part[1]
+    else merged.push([...part])
+  }
   const result = []
-  let start = 0
-  while (start < text.length) {
-    if (text.length - start <= max) { result.push(text.slice(start)); break }
-    const window = text.slice(start, start + max)
-    const headings = [...window.matchAll(/\n(?=#{1,4} )/g)].map((m) => m.index + 1).filter((i) => i > max / 4)
-    const paragraphs = [...window.matchAll(/\n\n/g)].map((m) => m.index + 2).filter((i) => i > max / 4)
-    const lines = [...window.matchAll(/\n/g)].map((m) => m.index + 1).filter((i) => i > max / 4)
-    const cut = headings.at(-1) ?? paragraphs.at(-1) ?? lines.at(-1) ?? max
-    result.push(text.slice(start, start + cut)); start += cut
+  for (const [from, to] of merged) {
+    let start = from
+    while (to - start > max) {
+      const inside = (at) => at > start + max / 4 && at <= start + max
+      // Never cut a code block in two: a long one may make its section up to three times as long.
+      const blank = lines.filter((l) => l.blank && !l.fenced && inside(l.at)).map((l) => l.at).at(-1)
+        ?? lines.find((l) => l.blank && !l.fenced && l.at > start + max && l.at < Math.min(to, start + 3 * max))?.at
+      if (blank === undefined && to - start <= 3 * max) break
+      const anyLine = lines.filter((l) => inside(l.at)).map((l) => l.at).at(-1)
+      const cut = blank ?? anyLine ?? start + max
+      result.push(text.slice(start, cut)); start = cut
+    }
+    if (to > start) result.push(text.slice(start, to))
   }
   return result
+}
+
+/** Front matter title, first Markdown or HTML h1, else null. */
+export function documentTitle(text) {
+  const front = text.match(/^---\n([\s\S]*?)\n---/)?.[1]?.match(/^title:\s*["']?(.+?)["']?\s*$/m)?.[1]
+  const h1 = text.match(/^#\s+(.+)$/m)?.[1] ?? text.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1]?.replace(/<[^>]*>/g, ' ')
+  const title = front ?? h1 ? plainHeading(front ?? h1) : null
+  return title ? title.slice(0, 120) : null
+}
+
+/** First heading of a section, without Markdown. */
+export const sectionHeading = (text) => { const h = text.match(/^#{1,4}\s+(.+)$/m)?.[1]; return h ? plainHeading(h.replace(/\s+#+$/, '')).slice(0, 100) : null }
+/** A heading without Markdown: code ticks, tags and emphasis go, underscores inside names stay. */
+function plainHeading(h) {
+  return h.replace(/<[^>]+>/g, ' ').replace(/`/g, '').replace(/\*\*|(?<!\w)__|__(?!\w)/g, '').replace(/(?<!\w)[*_](?=\S)|(?<=\S)[*_](?!\w)/g, '').replace(/\s+/g, ' ').trim()
+}
+
+/** Words a reader would read: no Markdown links targets, images, HTML tags, badges or code. */
+export function proseWords(text) {
+  const prose = text.replace(/```[\s\S]*?```/g, ' ').replace(/!\[[^\]]*\]\([^)]*\)/g, ' ').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/<[^>]+>/g, ' ').replace(/https?:\/\/\S+/g, ' ')
+  return prose.match(/\p{L}{2,}/gu) ?? []
 }

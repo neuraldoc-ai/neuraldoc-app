@@ -3,7 +3,7 @@ import { generateDraft } from './drafting.mjs'
 
 const file = process.argv[2]
 if (!file) {
-  console.error('Aufruf: node --env-file=mcp/.env mcp/draft-cli.mjs <kontext.json>')
+  console.error('Aufruf: node --env-file=frontend/.env.local mcp/draft-cli.mjs <kontext.json>')
   process.exitCode = 1
 } else {
   try {
