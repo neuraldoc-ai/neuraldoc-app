@@ -25,6 +25,7 @@ import { Route as AuthenticatedBrainIndexRouteImport } from './routes/_authentic
 import { Route as AuthenticatedDatenIndexRouteImport } from './routes/_authenticated/daten/index'
 import { Route as AuthenticatedDokumenteIndexRouteImport } from './routes/_authenticated/dokumente/index'
 import { Route as AuthenticatedDokumenteIdRouteImport } from './routes/_authenticated/dokumente/$id'
+import { Route as AuthenticatedEinstellungenIndexRouteImport } from './routes/_authenticated/einstellungen/index'
 import { Route as AuthenticatedMcpIndexRouteImport } from './routes/_authenticated/mcp/index'
 import { Route as AuthenticatedQualitaetIndexRouteImport } from './routes/_authenticated/qualitaet/index'
 import { Route as AuthenticatedVerlaufIndexRouteImport } from './routes/_authenticated/verlauf/index'
@@ -114,6 +115,12 @@ const AuthenticatedDokumenteIdRoute =
     path: '/dokumente/$id',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedEinstellungenIndexRoute =
+  AuthenticatedEinstellungenIndexRouteImport.update({
+    id: '/einstellungen/',
+    path: '/einstellungen/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedMcpIndexRoute = AuthenticatedMcpIndexRouteImport.update({
   id: '/mcp/',
   path: '/mcp/',
@@ -148,6 +155,7 @@ export interface FileRoutesByFullPath {
   '/brain/': typeof AuthenticatedBrainIndexRoute
   '/daten/': typeof AuthenticatedDatenIndexRoute
   '/dokumente/': typeof AuthenticatedDokumenteIndexRoute
+  '/einstellungen/': typeof AuthenticatedEinstellungenIndexRoute
   '/mcp/': typeof AuthenticatedMcpIndexRoute
   '/qualitaet/': typeof AuthenticatedQualitaetIndexRoute
   '/verlauf/': typeof AuthenticatedVerlaufIndexRoute
@@ -168,6 +176,7 @@ export interface FileRoutesByTo {
   '/brain': typeof AuthenticatedBrainIndexRoute
   '/daten': typeof AuthenticatedDatenIndexRoute
   '/dokumente': typeof AuthenticatedDokumenteIndexRoute
+  '/einstellungen': typeof AuthenticatedEinstellungenIndexRoute
   '/mcp': typeof AuthenticatedMcpIndexRoute
   '/qualitaet': typeof AuthenticatedQualitaetIndexRoute
   '/verlauf': typeof AuthenticatedVerlaufIndexRoute
@@ -190,6 +199,7 @@ export interface FileRoutesById {
   '/_authenticated/brain/': typeof AuthenticatedBrainIndexRoute
   '/_authenticated/daten/': typeof AuthenticatedDatenIndexRoute
   '/_authenticated/dokumente/': typeof AuthenticatedDokumenteIndexRoute
+  '/_authenticated/einstellungen/': typeof AuthenticatedEinstellungenIndexRoute
   '/_authenticated/mcp/': typeof AuthenticatedMcpIndexRoute
   '/_authenticated/qualitaet/': typeof AuthenticatedQualitaetIndexRoute
   '/_authenticated/verlauf/': typeof AuthenticatedVerlaufIndexRoute
@@ -212,6 +222,7 @@ export interface FileRouteTypes {
     | '/brain/'
     | '/daten/'
     | '/dokumente/'
+    | '/einstellungen/'
     | '/mcp/'
     | '/qualitaet/'
     | '/verlauf/'
@@ -232,6 +243,7 @@ export interface FileRouteTypes {
     | '/brain'
     | '/daten'
     | '/dokumente'
+    | '/einstellungen'
     | '/mcp'
     | '/qualitaet'
     | '/verlauf'
@@ -253,6 +265,7 @@ export interface FileRouteTypes {
     | '/_authenticated/brain/'
     | '/_authenticated/daten/'
     | '/_authenticated/dokumente/'
+    | '/_authenticated/einstellungen/'
     | '/_authenticated/mcp/'
     | '/_authenticated/qualitaet/'
     | '/_authenticated/verlauf/'
@@ -382,6 +395,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDokumenteIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/einstellungen/': {
+      id: '/_authenticated/einstellungen/'
+      path: '/einstellungen'
+      fullPath: '/einstellungen/'
+      preLoaderRoute: typeof AuthenticatedEinstellungenIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/mcp/': {
       id: '/_authenticated/mcp/'
       path: '/mcp'
@@ -416,6 +436,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedBrainIndexRoute: typeof AuthenticatedBrainIndexRoute
   AuthenticatedDatenIndexRoute: typeof AuthenticatedDatenIndexRoute
   AuthenticatedDokumenteIndexRoute: typeof AuthenticatedDokumenteIndexRoute
+  AuthenticatedEinstellungenIndexRoute: typeof AuthenticatedEinstellungenIndexRoute
   AuthenticatedMcpIndexRoute: typeof AuthenticatedMcpIndexRoute
   AuthenticatedQualitaetIndexRoute: typeof AuthenticatedQualitaetIndexRoute
   AuthenticatedVerlaufIndexRoute: typeof AuthenticatedVerlaufIndexRoute
@@ -431,6 +452,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedBrainIndexRoute: AuthenticatedBrainIndexRoute,
   AuthenticatedDatenIndexRoute: AuthenticatedDatenIndexRoute,
   AuthenticatedDokumenteIndexRoute: AuthenticatedDokumenteIndexRoute,
+  AuthenticatedEinstellungenIndexRoute: AuthenticatedEinstellungenIndexRoute,
   AuthenticatedMcpIndexRoute: AuthenticatedMcpIndexRoute,
   AuthenticatedQualitaetIndexRoute: AuthenticatedQualitaetIndexRoute,
   AuthenticatedVerlaufIndexRoute: AuthenticatedVerlaufIndexRoute,

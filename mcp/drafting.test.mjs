@@ -122,7 +122,7 @@ test('persisted cache works after a process restart even without credentials', a
 })
 
 test('missing key and expensive models fail without any provider request', async () => {
-  await assert.rejects(generateDraft(context(), { config: config('no-key', { apiKey: '' }), fetchImpl: () => assert.fail('No request allowed') }), /API-Key/)
+  await assert.rejects(generateDraft(context(), { config: config('no-key', { apiKey: '' }), fetchImpl: () => assert.fail('No request allowed') }), /LLM-Key/)
   assert.throws(() => draftingConfig({ NEURALDOC_GEMINI_MODEL: 'gemini-pro' }), /freigeschaltet/)
   assert.deepEqual(draftingConfig({ GOOGLE_CLOUD_PROJECT: 'test-project' }).model, 'gemini-3.5-flash-lite')
   assert.equal(draftingConfig({ GOOGLE_CLOUD_PROJECT: 'test-project', GEMINI_API_KEY: 'developer-key' }).apiKey, undefined)
@@ -233,6 +233,7 @@ test('HTTP showcase: cross-origin calls are rejected, prepared examples only, no
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   const base = `http://127.0.0.1:${server.address().port}`
   const oldFetch = globalThis.fetch
+  process.env.NEURALDOC_MODE = 'showcase'
   try {
     const post = (headers, body) => oldFetch(`${base}/api/mcp/drafts/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) })
     globalThis.fetch = () => assert.fail('Showcase must not call a provider')
@@ -242,7 +243,7 @@ test('HTTP showcase: cross-origin calls are rejected, prepared examples only, no
     const example = await post({ Origin: base }, { id: 'p05' })
     assert.equal(example.status, 200)
     assert.equal((await example.json()).proposal.generation.model, 'Vorbereitetes Beispiel')
-  } finally { globalThis.fetch = oldFetch; await new Promise((resolve) => server.close(resolve)) }
+  } finally { delete process.env.NEURALDOC_MODE; globalThis.fetch = oldFetch; await new Promise((resolve) => server.close(resolve)) }
 })
 
 

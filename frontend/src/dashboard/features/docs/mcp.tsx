@@ -39,7 +39,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { datasetMode, docs, type DocTypeId } from './data'
+import { datasetMode, docs, mcpInputs, type DocTypeId } from './data'
 import { blueSoft, typeIcon } from './overview-icons'
 import { Frame } from './ui'
 import { UsageSection } from './usage'
@@ -378,17 +378,14 @@ const projectInputs = (): Record<ToolName, InputSpec> => {
     ticket_context: { key: 'ticket', label: 'Aufgabe oder Frage', placeholder: titles[0] ?? 'Was willst du ändern?', examples: titles },
   }
 }
-const showcaseInputs: Record<ToolName, InputSpec> = {
-  check_change: { key: 'merge_request', label: 'Merge-Request, Branch oder Ticket', placeholder: '!1287, feature/MOB-4835-lieferstopp oder MOB-4812', examples: ['!1287', 'feature/MOB-4835-lieferstopp', 'MOB-4815'] },
-  ask: { key: 'question', label: 'Frage', placeholder: 'Wie wird die Anzahlung bei einer Teillieferung verrechnet?', examples: ['Wie wird die Anzahlung bei einer Teillieferung verrechnet?', 'Kann ein Gutschein teilweise eingelöst werden?', 'Wie plane ich eine Tour?'] },
-  ticket_context: { key: 'ticket', label: 'Jira-Ticket', placeholder: 'MOB-4844', examples: ['MOB-4844', 'MOB-4808', 'MOB-4850'] },
-}
+// The showcase examples (merge requests, tickets) come with the MOBIQ fixtures.
+const showcaseInputs = () => mcpInputs as Record<ToolName, InputSpec>
 
 /** check_change takes one of several keys; pick it from what was typed. */
 function argsFor(name: ToolName, value: string): Record<string, unknown> {
   const v = value.trim()
   if (datasetMode === 'working') return name === 'check_change' ? { ref: v } : { [projectInputs()[name].key]: v }
-  if (name !== 'check_change') return { [showcaseInputs[name].key]: v }
+  if (name !== 'check_change') return { [showcaseInputs()[name].key]: v }
   if (/^!?\d+$/.test(v)) return { merge_request: v }
   if (v.includes('/')) return { branch: v }
   if (/^[0-9a-f]{7,40}$/i.test(v)) return { commits: [v] }
@@ -428,7 +425,7 @@ function Playground({ info, tab, onTab }: { info: Info; tab: ToolName; onTab: (t
 function Try({ info, name }: { info: Info; name: ToolName }) {
   const qc = useQueryClient()
   const call = useMcp(info.token, info.protocol)
-  const spec = (datasetMode === 'working' ? projectInputs() : showcaseInputs)[name]
+  const spec = (datasetMode === 'showcase' ? showcaseInputs() : projectInputs())[name]
   const [value, setValue] = useState(spec.examples[0])
   const [result, setResult] = useState<CallResult | null>(null)
   const [sourceId, setSourceId] = useState<string | null>(null)

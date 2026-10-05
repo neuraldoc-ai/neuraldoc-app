@@ -59,7 +59,7 @@ export async function importProject(input, { projectsDir }) {
       let text
       try { text = await documentText(relative, bytes) } catch (error) { warnings.push(error.message); continue }
       if (!text.trim()) { warnings.push(`${relative}: kein lesbarer Text (z. B. gescanntes PDF ohne Texterkennung).`); continue }
-      docSources.push({ id: `src-${digest(shown).slice(0, 12)}`, path: shown, origin, format: path.extname(relative).slice(1).toLowerCase() || 'txt', binary: isBinaryDoc(relative) || /\.html?$/i.test(relative), sha256: digest(bytes), text })
+      docSources.push({ id: `src-${digest(shown).slice(0, 12)}`, path: shown, origin, format: path.extname(relative).slice(1).toLowerCase() || 'txt', binary: isBinaryDoc(relative) || /\.(html?|xml)$/i.test(relative), sha256: digest(bytes), text })
     }
   }
   if (!input.repo?.dir) throw new Error('Repository fehlt.')

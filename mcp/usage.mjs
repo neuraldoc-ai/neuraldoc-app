@@ -1,3 +1,4 @@
+import './showcase-init.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import { STATE } from './core.mjs'

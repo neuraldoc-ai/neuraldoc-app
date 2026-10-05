@@ -15,8 +15,6 @@ import { FilesBrowser } from './sources/files'
 import { GitLabBrowser } from './sources/gitlab'
 import { JiraBrowser } from './sources/jira'
 import { Frame } from './ui'
-import { ProjectControls, ImportedSources } from './project-controls'
-import { datasetMode } from './data'
 
 export type DataTab = 'gitlab' | 'jira' | 'confluence' | 'dokumente' | 'doku-arten' | 'datenbank'
 
@@ -24,10 +22,8 @@ export function DatasetPage({ tab, onTab }: { tab: DataTab; onTab: (tab: DataTab
   const withCode = data.issues.filter((i) => i.hasCode).length
   const kinds = [...new Set(data.files.map((f) => ({ pdf: 'PDF', docx: 'Word', xlsx: 'Excel' })[f.kind]))].join(', ')
   const active = tab === 'doku-arten' ? 'dokumente' : tab
-  if (datasetMode === 'working') return <Frame title='Daten' lead='Dein hochgeladener Code und deine Dokumentation.'><ProjectControls /><div className='flex gap-2'><button className='rounded-lg border px-3 py-2 text-sm hover:border-brand-300' onClick={() => onTab('gitlab')}>Code</button><button className='rounded-lg border px-3 py-2 text-sm hover:border-brand-300' onClick={() => onTab('dokumente')}>Dokumente</button></div><ImportedSources tab={tab} /></Frame>
   return (
     <Frame title='Daten' lead={`Beispieldatensatz MOBIQ ${data.release}. Karte anklicken, um den Inhalt zu sehen.`} actions={<AboutMobiq />}>
-      <ProjectControls />
       <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5'>
         <Source active={active === 'gitlab'} onClick={() => onTab('gitlab')} icon={<GitCommitHorizontal />} name='GitLab' value={data.commits.total} unit='Commits' sub={`Code · ${data.commits.merges} Merge-Requests`} />
         <Source active={active === 'jira'} onClick={() => onTab('jira')} icon={<SquareKanban />} name='Jira' value={data.issues.length} unit='Tickets' sub={`${withCode} mit Code`} />

@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
-import { handleMessage } from './handler.mjs'
+import test, { after } from 'node:test'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 
+// The prepared prompts belong to the MOBIQ showcase. An empty state directory: no imported project.
+process.env.NEURALDOC_MODE = 'showcase'
+process.env.NEURALDOC_STATE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'neuraldoc-prompts-'))
+after(() => fs.rmSync(process.env.NEURALDOC_STATE_DIR, { recursive: true, force: true }))
+const { handleMessage } = await import('./handler.mjs')
 const rpc = (method, params) => handleMessage({ jsonrpc: '2.0', id: 1, method, params })
 test('initialize advertises prompts alongside the unchanged three tools', async () => {
   assert.ok((await rpc('initialize', { protocolVersion: '2025-11-25' })).result.capabilities.prompts)
@@ -29,4 +36,12 @@ test('invalid prompt requests return JSON-RPC invalid params', async () => {
     { name: 'ask', arguments: { question: 'x', extra: 'y' } },
     { name: 'check_change', arguments: { change: 'some-branch' } },
   ]) assert.equal((await rpc('prompts/get', params)).error.code, -32602)
+})
+test('the normal app serves neither MOBIQ prompts nor MOBIQ tools', async () => {
+  delete process.env.NEURALDOC_MODE
+  try {
+    assert.deepEqual((await rpc('prompts/list')).result.prompts, [])
+    assert.ok((await rpc('tools/list')).result.tools.every((t) => !JSON.stringify(t).includes('MOB-')))
+    assert.match((await rpc('initialize', {})).result.instructions, /Noch kein Projekt/)
+  } finally { process.env.NEURALDOC_MODE = 'showcase' }
 })

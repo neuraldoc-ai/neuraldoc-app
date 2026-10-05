@@ -31,13 +31,26 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     steps:
+      # The app image must build without the MOBIQ submodules.
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
       - run: docker build -t neuraldoc .
       - name: Smoke test
         run: |
           docker run -d --name neuraldoc -p 8080:8080 neuraldoc
           for i in $(seq 1 30); do curl -fs http://localhost:8080/health/live && break; sleep 1; done
           curl -fs http://localhost:8080/app/ > /dev/null
-          curl -fs http://localhost:8080/api/mcp/project
+          curl -fs http://localhost:8080/api/mcp/project | grep -q '"mode":"empty"'
+          ! docker exec neuraldoc grep -rqi musterhaus /app/frontend/dist/assets
+
+  showcase:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - run: docker build --target showcase -t neuraldoc-showcase .
+      - name: Smoke test
+        run: |
+          docker run -d --name showcase -p 8080:8080 neuraldoc-showcase
+          for i in $(seq 1 30); do curl -fs http://localhost:8080/health/live && break; sleep 1; done
+          curl -fs http://localhost:8080/api/mcp/project | grep -q '"mode":"showcase"'

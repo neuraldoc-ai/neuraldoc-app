@@ -6,6 +6,7 @@
 // neuraldoc reads GitLab, Jira, Confluence and SharePoint itself (sources.mjs) and returns only what the
 // answer needs. The proposals, documents and the audience filter are the same the dashboard shows
 // (frontend/src/dashboard/features/docs/data.ts and logic.ts), so a link from here opens exactly that.
+import './showcase-init.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'

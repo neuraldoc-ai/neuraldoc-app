@@ -70,6 +70,7 @@ test('setup requires Jev, reports only key presence, and rejects invalid endpoin
 test('the showcase refuses free LLM draft contexts, even with a token', async () => {
   const oldState = process.env.NEURALDOC_STATE_DIR
   process.env.NEURALDOC_STATE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'neuraldoc-providers-'))
+  process.env.NEURALDOC_MODE = 'showcase'
   const { middleware, TOKEN } = await import('./handler.mjs')
   const server = http.createServer((req, res) => middleware(req, res))
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -78,6 +79,7 @@ test('the showcase refuses free LLM draft contexts, even with a token', async ()
     assert.equal(response.status, 403); assert.match((await response.json()).error, /Showcase/)
   } finally {
     await new Promise((resolve) => server.close(resolve))
+    delete process.env.NEURALDOC_MODE
     fs.rmSync(process.env.NEURALDOC_STATE_DIR, { recursive: true, force: true })
     if (oldState === undefined) delete process.env.NEURALDOC_STATE_DIR; else process.env.NEURALDOC_STATE_DIR = oldState
   }

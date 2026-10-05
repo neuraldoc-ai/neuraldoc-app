@@ -1,5 +1,3 @@
-import commits from '@dataset/gitlab/commits.json'
-import diffsRaw from '@dataset/gitlab/diffs.json'
 import { useEffect, useState } from 'react'
 import { Columns2, Rows2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -11,7 +9,6 @@ import { DiffViewer } from './sources/ide/editors'
 import { parseDiff } from './sources/ide/model'
 
 type FileDiff = { new_path: string; old_path: string; diff: string; new_file: boolean; deleted_file: boolean; renamed_file: boolean }
-const diffs = diffsRaw as Record<string, FileDiff[]>
 
 export default function CommitDetails({ initialHash, hashes }: { initialHash: string; hashes: string[] }) {
   const [hash, setHash] = useState(initialHash)
@@ -51,11 +48,25 @@ function ImportedCommit({ hash }: { hash: string }) {
   return <CommitView c={loaded.commit} files={loaded.files} />
 }
 
+/** The showcase reads its GitLab sample, a separate chunk. */
+function ShowcaseCommit({ hash }: { hash: string }) {
+  const [loaded, setLoaded] = useState<Loaded | 'missing'>(null)
+  useEffect(() => {
+    let live = true
+    import('./showcase-commits').then(({ commits, diffs }) => {
+      const c = resolveCommitSource(hash, commits)
+      if (live) setLoaded(c ? { commit: c, files: (diffs as Record<string, FileDiff[]>)[c.id] ?? [] } : 'missing')
+    }).catch(() => { if (live) setLoaded({ error: 'Beispieldaten konnten nicht geladen werden.' }) })
+    return () => { live = false }
+  }, [hash])
+  if (!loaded) return <p role='status' className='p-6 text-sm text-muted-foreground'>Commit wird geladen …</p>
+  if (loaded === 'missing') return <p className='p-6 text-sm text-muted-foreground'>Für Commit {hash} liegt kein GitLab-Beleg im Beispieldatensatz vor.</p>
+  if ('error' in loaded) return <p role='alert' className='p-6 text-sm text-muted-foreground'>{loaded.error}</p>
+  return <CommitView c={loaded.commit} files={loaded.files} />
+}
+
 function CommitCode({ hash }: { hash: string }) {
-  if (datasetMode === 'working') return <ImportedCommit hash={hash} />
-  const c = resolveCommitSource(hash, commits)
-  if (!c) return <p className='p-6 text-sm text-muted-foreground'>Für Commit {hash} liegt kein GitLab-Beleg im Beispieldatensatz vor.</p>
-  return <CommitView c={c} files={diffs[c.id] ?? []} />
+  return datasetMode === 'showcase' ? <ShowcaseCommit hash={hash} /> : <ImportedCommit hash={hash} />
 }
 
 function CommitView({ c, files }: { c: SourceCommit; files: FileDiff[] }) {

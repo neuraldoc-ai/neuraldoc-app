@@ -297,7 +297,7 @@ test('re-import of the same state keeps decisions; another project is isolated; 
   projects.activateProject(first.project.id)
   assert.equal(projects.exportProject().files.length, 1)
   projects.activateProject(null)
-  assert.equal(projects.projectPayload().mode, 'showcase')
+  assert.equal(projects.projectPayload().mode, 'empty', 'the normal app never falls back to the MOBIQ showcase')
   projects.activateProject(first.project.id)
 })
 

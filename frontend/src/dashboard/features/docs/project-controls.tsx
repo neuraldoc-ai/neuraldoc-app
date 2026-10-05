@@ -1,5 +1,6 @@
 import { useRef, useState, type DragEvent } from 'react'
-import { Download, FileText, FolderGit2, FolderOpen, GitBranch, LoaderCircle, Upload, X } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { Download, FileText, FolderGit2, FolderOpen, GitBranch, KeyRound, LoaderCircle, Upload, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -7,10 +8,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
-import { importProject, projectAction, projectState } from './project'
+import { importProject, importSample, projectAction, projectState } from './project'
 import { archive, candidates, pick, type Picked, type Role } from './upload'
 import { repoUrl } from './import-rules.mjs'
 import { docs } from './data'
+import { loadSetup } from '@/features/settings/api'
 import { Link } from '@tanstack/react-router'
 
 const mb = (bytes: number) => bytes < 1e6 ? `${Math.max(1, Math.round(bytes / 1e3))} KB` : `${(bytes / 1e6).toFixed(1).replace('.', ',')} MB`
@@ -44,13 +46,13 @@ function Dropzone({ role, value, url, onPicked, onUrl, disabled }: { role: Role;
       <button type='button' className='text-xs text-brand-700 underline-offset-4 hover:underline dark:text-brand-300' onClick={(e) => { e.stopPropagation(); (role === 'repo' ? files : folder).current?.click() }}>{role === 'repo' ? 'Stattdessen ZIP wählen' : 'Stattdessen Ordner wählen'}</button>
     </div>}
     <input ref={folder} type='file' className='hidden' {...{ webkitdirectory: '', directory: '' }} onChange={(e) => { if (e.target.files?.length) void take(candidates(e.target.files)); e.target.value = '' }} />
-    <input ref={files} type='file' className='hidden' multiple={role === 'docs'} accept={role === 'repo' ? '.zip' : '.pdf,.docx,.xlsx,.pptx,.md,.mdx,.markdown,.txt,.rst,.adoc,.html,.htm,.csv,.zip'} onChange={(e) => { if (e.target.files?.length) void take(candidates(e.target.files)); e.target.value = '' }} />
+    <input ref={files} type='file' className='hidden' multiple={role === 'docs'} accept={role === 'repo' ? '.zip' : '.pdf,.docx,.xlsx,.pptx,.md,.mdx,.markdown,.txt,.rst,.adoc,.html,.htm,.xml,.csv,.zip'} onChange={(e) => { if (e.target.files?.length) void take(candidates(e.target.files)); e.target.value = '' }} />
     {!value && <div className='relative'><GitBranch className='pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground' /><Input aria-label={role === 'repo' ? 'GitHub-URL des Repositories' : 'GitHub-URL der Dokumentation'} className='pl-9' value={url} disabled={disabled} onChange={(e) => onUrl(e.target.value)} placeholder='oder GitHub-URL, z. B. github.com/organisation/repository' /></div>}
     {error && <p role='alert' className='text-xs text-destructive'>{error}</p>}
   </div>
 }
 
-export function ProjectControls() {
+export function ProjectControls({ prominent }: { prominent?: boolean }) {
   const [open, setOpen] = useState(false), [pending, setPending] = useState(''), [error, setError] = useState('')
   const [repo, setRepo] = useState<Picked | null>(null), [docsPicked, setDocs] = useState<Picked | null>(null), [repoLink, setRepoLink] = useState(''), [docsLink, setDocsLink] = useState('')
   async function run(action: string, work: () => Promise<void>) {
@@ -67,7 +69,7 @@ export function ProjectControls() {
   return <div className='grid gap-2'>
     <div className='flex flex-wrap items-center gap-2'>
       <Dialog open={open} onOpenChange={(value) => { if (!pending) { setOpen(value); setError('') } }}>
-        <DialogTrigger asChild><Button variant='outline' size='sm'><FolderOpen />Eigenes Projekt</Button></DialogTrigger>
+        <DialogTrigger asChild>{prominent ? <Button size='lg'><FolderOpen />Eigenes Projekt importieren</Button> : <Button variant='outline' size='sm'><FolderOpen />Eigenes Projekt</Button>}</DialogTrigger>
         <DialogContent className='max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-xl' showCloseButton={!pending}>
           <DialogHeader><DialogTitle>Eigenes Projekt prüfen</DialogTitle><DialogDescription>neuraldoc liest deinen Code und deine Doku und zeigt, wo sie nicht mehr zusammenpassen. Deine Dateien werden nicht verändert.</DialogDescription></DialogHeader>
           <form className='grid gap-5' onSubmit={(event) => { event.preventDefault(); void run('import', submit) }}>
@@ -76,18 +78,24 @@ export function ProjectControls() {
             {error && <p role='alert' className='text-sm text-destructive'>{error}</p>}
             <Button disabled={!!pending || !repoValid} type='submit'>{pending === 'import' ? <LoaderCircle className='animate-spin' /> : <Upload />}{pending === 'import' ? (repo ? 'Wird hochgeladen und analysiert …' : 'Wird geklont und analysiert …') : 'Importieren'}</Button>
           </form>
+          <p className='text-xs text-muted-foreground'>Nur ausprobieren? <button type='button' disabled={!!pending} className='text-brand-700 underline-offset-4 hover:underline disabled:opacity-60 dark:text-brand-300' onClick={() => void run('import', importSample)}>Beispielprojekt MOBIQ laden</button></p>
           {!!projectState.projects?.length && <div className='grid gap-1 border-t pt-3'><p className='text-xs text-muted-foreground'>Bisherige Projekte</p>{projectState.projects.map((project) => <Button key={project.id} variant='ghost' className='justify-between' disabled={!!pending} onClick={() => void run('activate', () => projectAction('activate', { id: project.id }))}><span>{project.name}</span><span className='text-xs text-muted-foreground'>{new Date(project.createdAt).toLocaleDateString('de-DE')}</span></Button>)}</div>}
         </DialogContent>
       </Dialog>
-      {projectState.project && <><Button variant='outline' size='sm' onClick={() => void downloadExport().catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Export fehlgeschlagen.'))}><Download />Freigaben exportieren</Button><Button variant='ghost' size='sm' disabled={!!pending} onClick={() => void run('activate', () => projectAction('activate', { id: null }))}>Showcase ansehen</Button></>}
+      {projectState.project && <Button variant='outline' size='sm' onClick={() => void downloadExport().catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Export fehlgeschlagen.'))}><Download />Freigaben exportieren</Button>}
     </div>
     {error && !open && <p role='alert' className='text-sm text-destructive'>{error}</p>}
   </div>
 }
 
-/** The big call to action on the overview until the initial check has run. */
+/** The big call to action on the overview until the initial check has run. Without a Jev key it leads to the settings first. */
 export function StartCheck() {
   const [pending, setPending] = useState(false), [error, setError] = useState('')
+  const setup = useQuery({ queryKey: ['setup'], queryFn: loadSetup })
+  if (setup.data && !setup.data.jev.configured) return <div className='grid justify-items-start gap-2 md:justify-items-end'>
+    <Button size='lg' asChild><Link to='/einstellungen'><KeyRound />Jev-Key hinterlegen</Link></Button>
+    <p className='max-w-[42ch] text-xs text-muted-foreground md:text-right'>Die Erstprüfung braucht deinen eigenen Jev-Key.</p>
+  </div>
   return <div className='grid justify-items-start gap-2 md:justify-items-end'>
     <Button size='lg' disabled={pending} onClick={() => { setPending(true); setError(''); projectAction('check').catch((cause: unknown) => { setError(cause instanceof Error ? cause.message : 'Erstprüfung fehlgeschlagen.'); setPending(false) }) }}>{pending ? <LoaderCircle className='animate-spin' /> : <FolderGit2 />}{pending ? 'Prüft …' : 'Erstprüfung starten'}</Button>
     {error && <p role='alert' className='max-w-[42ch] text-xs text-destructive md:text-right'>{error}</p>}

@@ -1,10 +1,15 @@
-# The MOBIQ showcase
+# The MOBIQ sample
 
-The showcase uses **MOBIQ**, a fictional ERP vendor for furniture and kitchen retail (Musterhaus Software GmbH). It has a release with 35 commits, Jira tickets, merge requests, a PostgreSQL database and Confluence and SharePoint documentation that is partly outdated. All companies, people and contents are fictional.
+**MOBIQ** is a fictional ERP vendor for furniture and kitchen retail (Musterhaus Software GmbH). It has a release with 35 commits, Jira tickets, merge requests, a PostgreSQL database and Confluence and SharePoint documentation that is partly outdated. All companies, people and contents are fictional.
+
+It is not part of the app. There are two ways to use it:
+
+- **As a project in the app.** On the start page, **Beispielprojekt laden** clones `mobiq-code` (release 26.4) and `mobiq-docs` (documentation of 26.3) from GitHub and imports them like your own project. The initial check and the drafts then use your keys.
+- **As the prepared showcase**, with drafts already written and no model calls: `git clone --recursive …`, then `docker build --target showcase -t neuraldoc-showcase .` and `docker run -p 8080:8080 neuraldoc-showcase`.
 
 ## Repositories
 
-The dataset lives in four repositories, included as Git submodules under `datasets/`:
+The dataset lives in four repositories. The showcase includes them as Git submodules under `datasets/`; the normal app does not need them:
 
 | Submodule | Contents |
 | --- | --- |
@@ -13,7 +18,7 @@ The dataset lives in four repositories, included as Git submodules under `datase
 | [`mobiq-docs`](https://github.com/neuraldoc-ai/mobiq-docs) | Confluence pages and SharePoint files |
 | [`mobiq-db`](https://github.com/neuraldoc-ai/mobiq-db) | PostgreSQL scripts and `docker compose` |
 
-The Docker image contains `mobiq/data`, `mobiq-docs` and `mobiq-db`. `mobiq-code` is only needed to rebuild the code graph.
+The showcase image contains `mobiq/data`, `mobiq-docs` and `mobiq-db`; the app image contains none of them. `mobiq-code` is only needed to rebuild the code graph. For local development of the showcase run `npm run dev:showcase` in `frontend/`.
 
 The code reads the data in the original layout (`gitlab/…`, `repo/…`, `postgres/…`); [`mcp/dataset.mjs`](../mcp/dataset.mjs) and [`frontend/vite.config.ts`](../frontend/vite.config.ts) map it to the repositories. To regenerate the dataset, run `node generate.mjs && node publish.mjs` in the `mobiq` repository.
 

@@ -14,6 +14,7 @@
     "start": "node --use-system-ca --env-file-if-exists=.env.local ../mcp/serve.mjs",
     "start:showcase": "node --use-system-ca --env-file-if-exists=.env.local --env-file=.env.showcase ../mcp/serve.mjs",
     "build": "tsc -b && vite build",
+    "build:app": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "mcp": "node --use-system-ca --env-file-if-exists=.env.local ../mcp/http.mjs",

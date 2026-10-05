@@ -47,36 +47,45 @@ Code changes every sprint, the manual, the dialog descriptions and the parameter
 **Requires:** [Git](https://git-scm.com/downloads) and [Docker](https://docs.docker.com/get-docker/). Nothing else on your machine.
 
 ```bash
-git clone --recursive https://github.com/neuraldoc-ai/neuraldoc-app.git
+git clone https://github.com/neuraldoc-ai/neuraldoc-app.git
 cd neuraldoc-app
 docker build -t neuraldoc .
 docker run -p 8080:8080 -v neuraldoc-data:/data neuraldoc
 ```
 
-Open **http://localhost:8080/app/**. You see the showcase: a fictional ERP vendor (MOBIQ) with a release, 35 commits and outdated documentation. No keys, no costs, no model calls.
+Open **http://localhost:8080/app/**. The app starts empty: import your own project, or click **Beispielprojekt laden** to try it on a sample.
 
-> **Windows:** clone with `git -c core.autocrlf=false clone --recursive …` so the sample code keeps its line endings.
+### Try the sample project
+
+The sample is a fictional ERP vendor (MOBIQ) whose documentation is one release behind the code. It lives in its own repositories, [mobiq-code](https://github.com/neuraldoc-ai/mobiq-code) (code of release 26.4) and [mobiq-docs](https://github.com/neuraldoc-ai/mobiq-docs) (33 Confluence pages and 7 Office/PDF files of release 26.3). **Beispielprojekt laden** clones both from GitHub and treats them like your own project, so the initial check and the drafts use your keys. You can also clone the two repositories yourself and drop them into **Eigenes Projekt**.
 
 ### Check your own project
 
-```bash
-cp .env.example .env              # Windows: Copy-Item .env.example .env
-# put your keys into .env (see Configuration)
-docker run -p 8080:8080 --env-file .env -v neuraldoc-data:/data neuraldoc
-```
+Open **Einstellungen** in the sidebar, enter your name and company, and paste your own keys: Jev (required) and one LLM (OpenAI, Claude, Gemini, Google Cloud Vertex AI or a local model). They are stored in the `neuraldoc-data` volume, apply immediately and are never sent back to the browser. Prefer environment variables? Pass `--env-file .env` (template: [.env.example](.env.example)); keys saved in the interface take precedence.
 
-In the app, **Übersicht → Eigenes Projekt**:
+On the start page **Eigenes Projekt importieren**, later **Übersicht → Eigenes Projekt**:
 
 | | How | Required |
 |---|---|---|
 | **Repository** | Drag the folder in, pick a folder or ZIP, or paste a GitHub URL | yes |
-| **Documentation** | Drop PDFs, Word, Excel, PowerPoint, Markdown, text or HTML, or paste a GitHub URL | no |
+| **Documentation** | Drop PDFs, Word, Excel, PowerPoint, Markdown, text, HTML or Confluence pages (storage format, `.xml`), or paste a GitHub URL | no |
 
 Without separate documentation, neuraldoc checks the READMEs, the `docs/` folder and the PDF and Office files inside the repository. `node_modules`, build output and `.env` files are filtered out in the browser before anything is uploaded.
 
 1. **Erstprüfung starten** compares every documentation section with the current code, as if the last release had just shipped, and lists each mismatch.
 2. **Starten** lets your LLM write the correction for each mismatch.
 3. Review, accept or edit, then **Freigaben exportieren** downloads a ZIP with the corrected documents.
+
+### Prepared showcase (no keys)
+
+A separate image shows the MOBIQ sample with prepared drafts: no import, no keys, no model calls. It needs the dataset submodules.
+
+```bash
+git clone --recursive https://github.com/neuraldoc-ai/neuraldoc-app.git   # Windows: git -c core.autocrlf=false clone --recursive …
+cd neuraldoc-app
+docker build --target showcase -t neuraldoc-showcase .
+docker run -p 8080:8080 neuraldoc-showcase
+```
 
 ---
 
@@ -127,7 +136,7 @@ The same container serves an MCP endpoint at `http://localhost:8080/mcp` with th
 
 ```bash
 claude mcp add --transport http neuraldoc http://localhost:8080/mcp \
-  --header "Authorization: Bearer nd_demo_mobiq_2b7f9c41e8"
+  --header "Authorization: Bearer <token from the MCP page>"
 ```
 
 Tools, prompts and token handling: [mcp/README.md](mcp/README.md).
@@ -136,19 +145,19 @@ Tools, prompts and token handling: [mcp/README.md](mcp/README.md).
 
 ## Configuration
 
-All settings are environment variables, passed with `--env-file .env`. The template is [.env.example](.env.example).
+Keys, provider and model are set in the app under **Einstellungen** (stored in `/data/settings.json`, file mode 600). All settings can also be passed as environment variables with `--env-file .env`; values saved in the interface win, and removing them there falls back to the environment. The template is [.env.example](.env.example).
 
 | Variable | Purpose | Default |
 |---|---|---|
 | `TYPESAFE_API_KEY` | Jev, checks documents against the code. Required for your own projects. | none |
 | `NEURALDOC_JEV_BUDGET_USD` | Spending cap per initial check (max 1 USD) | `0.25` |
-| `NEURALDOC_GIT_TOKEN` | GitHub token, only for importing private repositories by URL | none |
+| `NEURALDOC_GIT_TOKEN` | GitHub token, only for importing private repositories by URL (also in Einstellungen) | none |
 | `NEURALDOC_DRAFT_PROVIDER` | `openai`, `anthropic`, `gemini`, `vertex` or `local` | none |
 | `NEURALDOC_LLM_MODEL` | Model used for drafting | provider default |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | Key for the chosen provider | none |
 | `NEURALDOC_LLM_BASE_URL` | OpenAI-compatible server for `local` (Ollama, LM Studio, vLLM) | none |
-| `NEURALDOC_MODE` | `showcase` disables the import and all model calls | empty |
-| `NEURALDOC_MCP_TOKEN` | Bearer token for the MCP endpoint | demo token |
+| `NEURALDOC_MODE` | `showcase`: prepared MOBIQ sample only, no import, no model calls (set by the `showcase` image) | empty |
+| `NEURALDOC_MCP_TOKEN` | Bearer token for the MCP endpoint | random per installation, shown on the MCP page |
 | `PORT` | Port inside the container | `8080` |
 
 | Provider | `NEURALDOC_DRAFT_PROVIDER` | Example model |
@@ -167,7 +176,7 @@ A local LLM on the same computer is reached from the container at `http://host.d
 
 - **Your files stay unchanged.** The upload goes only to your own container; the temporary copy is deleted after the import. Secrets such as `.env` files and private keys are filtered out in the browser and again on the server.
 - **What leaves your machine:** document text and code excerpts go to Jev (TypeSafe API) when you start the initial check, and to your LLM provider when you draft. With a local LLM, only the Jev request leaves your machine. A GitHub URL is cloned directly from GitHub.
-- **Showcase mode** makes no external calls at all.
+- **Beispielprojekt laden** clones two public GitHub repositories. The **showcase image** makes no external calls at all.
 - **No telemetry**, no analytics, no tracking. Keys are read at runtime and never written to the image, the caches or the export.
 - Projects, decisions and caches live in the Docker volume `neuraldoc-data`. `docker volume rm neuraldoc-data` deletes everything.
 
@@ -186,16 +195,16 @@ This is an early release. Known limits:
 - Measured on four projects ([mcp/eval/README.md](mcp/eval/README.md)): on the MOBIQ sample the check finds 89 % of the expected changes with 96 % precision. On real open-source projects (httpx, zx, cobra) it finds 75 to 100 % but reports two to five times more sections than the maintainers changed; most of those get a "no change" draft, the reviewer still sees them.
 - Drafts fix contradictions far more reliably than they add missing features: in the open-source projects only up to 13 % of the expected additions were drafted. Every draft names its evidence and needs your approval.
 - Drafts keep the language of the section (German and English are checked).
-- Jira, Confluence and SharePoint are connected only in the showcase, not for your own projects.
+- Jira, Confluence and SharePoint are not connected directly. Upload exported files or Confluence pages in storage format instead.
 
 ---
 
 ## Troubleshooting
 
 <details>
-<summary><b>The showcase is empty or the build fails with missing <code>datasets/</code> files</b></summary>
+<summary><b>The showcase image fails to build with missing <code>datasets/</code> files</b></summary>
 
-The sample data are Git submodules. Run `git submodule update --init` in the cloned folder and build again.
+Only the showcase needs the sample data, as Git submodules. Run `git submodule update --init` in the cloned folder and build again. The normal app (`docker build -t neuraldoc .`) builds without them.
 </details>
 
 <details>
@@ -231,7 +240,7 @@ Map another host port: `docker run -p 9090:8080 …` and open `http://localhost:
 <details>
 <summary><b>Changed keys have no effect</b></summary>
 
-Environment variables are read at start. Stop the container and run it again; the volume keeps your data. The **Architektur** page shows whether Jev and the LLM are configured.
+Keys saved under **Einstellungen** apply immediately and win over environment variables; remove them there to use `.env` again. Environment variables are read at start: stop the container and run it again, the volume keeps your data. **Einstellungen** shows whether Jev and the LLM are configured.
 </details>
 
 ---

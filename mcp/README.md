@@ -50,12 +50,12 @@ This follows [Executor's principle of targeted discovery and retrieval](https://
 | `npm run mcp` in `frontend/` | `http://localhost:8787/mcp` (standalone) |
 | `node mcp/stdio.mjs` | stdio, for clients that start the server themselves |
 
-Token: `Authorization: Bearer nd_demo_mobiq_2b7f9c41e8` (or set `NEURALDOC_MCP_TOKEN`). Links point to the host of the request; with stdio to `NEURALDOC_APP_URL` (default `http://localhost:5173`).
+Token: random per installation (stored as `mcp-token` in the state directory and shown on the MCP page), or set `NEURALDOC_MCP_TOKEN`. The public showcase (`NEURALDOC_MODE=showcase`) uses the demo token `nd_demo_mobiq_2b7f9c41e8`. Links point to the host of the request; with stdio to `NEURALDOC_APP_URL` (default `http://localhost:5173`).
 
 With Docker, use port 8080 instead of 5173.
 
 ```
-claude mcp add --transport http neuraldoc http://localhost:5173/mcp --header "Authorization: Bearer nd_demo_mobiq_2b7f9c41e8"
+claude mcp add --transport http neuraldoc http://localhost:5173/mcp --header "Authorization: Bearer <token from the MCP page>"
 codex mcp add neuraldoc -- node <path>/mcp/stdio.mjs
 ```
 

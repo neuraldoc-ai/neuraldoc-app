@@ -18,7 +18,8 @@ export const ignored = (path) => IGNORED_DIR.test(path) || SECRET.test(path)
 /** 'code', 'doc' or null for a path inside the repository ('repo') or the documentation upload ('docs'). */
 export function classify(path, role) {
   if (IGNORED_DIR.test(path) || SECRET.test(path) || GENERATED.test(path)) return null
-  if (role === 'docs') return DOC.test(path) ? 'doc' : null
+  // Documentation uploads may also be Confluence pages in storage format (.xml).
+  if (role === 'docs') return DOC.test(path) || /\.xml$/i.test(path) ? 'doc' : null
   const name = path.split('/').pop()
   if (!NOT_DOCS.test(path) && !TESTS.test(path)) {
     if (/^readme(\.[a-z]+)?$/i.test(name) && (!name.includes('.') || DOC.test(name))) return 'doc'

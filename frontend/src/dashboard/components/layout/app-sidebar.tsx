@@ -1,7 +1,10 @@
-import { ArrowUpRight } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { ArrowUpRight, UserRound } from 'lucide-react'
 import { Logo } from '@/assets/logo'
-import { company, currentUser } from '@/features/docs/data'
-import { useBundles } from '@/features/docs/model'
+import { company, currentUser, datasetMode } from '@/features/docs/data'
+import { initials, useBundles } from '@/features/docs/model'
+import { projectState } from '@/features/docs/project'
+import { useProfile } from '@/features/settings/profile-store'
 import { useLayout } from '@/context/layout-provider'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
@@ -20,6 +23,7 @@ import { NavGroup } from './nav-group'
 
 function SidebarBrand() {
   const { toggleSidebar } = useSidebar()
+  const profile = useProfile((s) => s.profile)
   return (
     <SidebarMenu>
       <SidebarMenuItem>
@@ -30,12 +34,43 @@ function SidebarBrand() {
           <span className='flex min-w-0 flex-col leading-tight'>
             <span className='text-[15px] font-semibold tracking-[-0.03em]'>neuraldoc</span>
             <span className='truncate text-xs text-muted-foreground'>
-              {company.product} · {company.short}
+              {datasetMode === 'working' ? `${company.product} · ${profile?.company || 'Eigenes Projekt'}` : datasetMode === 'showcase' ? `Showcase · ${company.product}` : profile?.company || 'Noch kein Projekt'}
             </span>
           </span>
         </SidebarMenuButton>
       </SidebarMenuItem>
     </SidebarMenu>
+  )
+}
+
+const site = import.meta.env.VITE_LANDING_URL
+  ? { url: import.meta.env.VITE_LANDING_URL, label: 'Zur Website' }
+  : { url: 'https://github.com/neuraldoc-ai/neuraldoc-app', label: 'neuraldoc auf GitHub' }
+
+/** Who uses this installation, from Einstellungen. The public showcase shows its sample persona. */
+function UserButton() {
+  const profile = useProfile((s) => s.profile)
+  const person = (name: string, detail: string, avatar: React.ReactNode) => (
+    <>
+      <Avatar className='size-8'>
+        <AvatarFallback className='bg-background text-xs ring-1 ring-border ring-inset'>{avatar}</AvatarFallback>
+      </Avatar>
+      <span className='flex min-w-0 flex-col leading-tight'>
+        <span className='truncate text-sm font-medium'>{name}</span>
+        <span className='truncate text-xs text-muted-foreground'>{detail}</span>
+      </span>
+    </>
+  )
+  if (!projectState?.canImport)
+    return <SidebarMenuButton size='lg' className='pointer-events-none'>{person(currentUser.name, currentUser.role, currentUser.initials)}</SidebarMenuButton>
+  return (
+    <SidebarMenuButton size='lg' asChild tooltip='Profil bearbeiten'>
+      <Link to='/einstellungen'>
+        {profile?.name
+          ? person(profile.name, profile.company || profile.role || 'Profil bearbeiten', initials(profile.name))
+          : person('Profil einrichten', 'Name und Unternehmen', <UserRound className='size-4' />)}
+      </Link>
+    </SidebarMenuButton>
   )
 }
 
@@ -65,24 +100,16 @@ export function AppSidebar() {
       <SidebarFooter className='gap-1 p-2 pb-3'>
         <SidebarMenu>
           <SidebarMenuItem>
-            {/* The landing page lives outside the app router (/app), so a plain link. */}
-            <SidebarMenuButton asChild tooltip='Zur Website'>
-              <a href={import.meta.env.VITE_LANDING_URL || 'http://localhost:5174/'}>
+            {/* Outside the app router (/app), so a plain link. The hosted showcase sets its own website. */}
+            <SidebarMenuButton asChild tooltip={site.label}>
+              <a href={site.url} target='_blank' rel='noreferrer'>
                 <ArrowUpRight />
-                <span>Zur Website</span>
+                <span>{site.label}</span>
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton size='lg' className='pointer-events-none'>
-              <Avatar className='size-8'>
-                <AvatarFallback className='bg-background text-xs ring-1 ring-border ring-inset'>{currentUser.initials}</AvatarFallback>
-              </Avatar>
-              <span className='flex min-w-0 flex-col leading-tight'>
-                <span className='truncate text-sm font-medium'>{currentUser.name}</span>
-                <span className='truncate text-xs text-muted-foreground'>{currentUser.role}</span>
-              </span>
-            </SidebarMenuButton>
+            <UserButton />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

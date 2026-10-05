@@ -1,5 +1,5 @@
 import { activeProject, projectDraft, projectsDir } from './projects.mjs'
-import { bm25 } from './sources.mjs'
+import { bm25 } from './search.mjs'
 import { logError } from './log.mjs'
 import fs from 'node:fs'
 import path from 'node:path'

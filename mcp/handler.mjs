@@ -3,21 +3,28 @@
 //  - /api/mcp/*         small REST API for the neuraldoc dashboard (tools, rules, activity, decisions)
 // Used by http.mjs (standalone server) and by the Vite dev server (same port as the app).
 import { randomUUID } from 'node:crypto'
-import { activity, callTool, changeStatus, decisions, info, resetDecisions, setDecision, setRules, toolList } from './core.mjs'
-import { getPrompt, promptList } from './prompts.mjs'
-import { usage } from './usage.mjs'
-import { DraftError } from './drafting.mjs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { DraftError, draftingStatus } from './drafting.mjs'
 import { setupStatus } from './setup.mjs'
+import { installToken, profile, publicSettings, reviewer, saveSettings } from './settings.mjs'
 import { activeProject, addProject, activateProject, projectList, projectPayload, checkProject, projectDraft, projectDecisions, resetProjectDecisions, exportProject, showcaseOnly } from './projects.mjs'
 import { LIMITS } from '../frontend/src/dashboard/features/docs/import-rules.mjs'
+import { docTypeOrder, docTypes } from '../frontend/src/dashboard/features/docs/vocabulary.ts'
 import { log, logError } from './log.mjs'
-import { proposals as exampleProposals } from '../frontend/src/dashboard/features/docs/showcase-data.ts'
 import { projectTools, projectTool } from './project-mcp.mjs'
 import { projectUsage } from './project-usage.mjs'
 
-export const TOKEN = process.env.NEURALDOC_MCP_TOKEN ?? 'nd_demo_mobiq_2b7f9c41e8'
+// The MOBIQ showcase reads its dataset (datasets/) as soon as it is loaded, so only showcase mode imports it.
+let showcaseModules
+const mobiq = () => showcaseModules ??= Promise.all([import('./core.mjs'), import('./prompts.mjs'), import('./usage.mjs'), import('../frontend/src/dashboard/features/docs/showcase-data.ts')])
+  .then(([core, prompts, usage, data]) => ({ ...core, ...prompts, usage: usage.usage, exampleProposals: data.proposals }))
+
+// The public showcase keeps the documented demo token; every other installation gets its own.
+export const TOKEN = process.env.NEURALDOC_MCP_TOKEN?.trim() || (process.env.NEURALDOC_MODE === 'showcase' ? 'nd_demo_mobiq_2b7f9c41e8' : installToken())
 const SUPPORTED = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']
 const SERVER_INFO = { name: 'neuraldoc', title: 'neuraldoc', version: '0.2.1' }
+const STDIO = path.join(path.dirname(fileURLToPath(import.meta.url)), 'stdio.mjs').split(path.sep).join('/')
 const INSTRUCTIONS = [
   'neuraldoc kennt die Produktdoku von MOBIQ und prüft sie gegen den Code (GitLab, Jira, Confluence, SharePoint). Drei Werkzeuge:',
   '1. ticket_context zu Beginn der Arbeit an einem Ticket: Regeln aus dem Code, wie die Doku es heute beschreibt, offene Fragen.',
@@ -43,7 +50,7 @@ export async function handleMessage(msg, ctx = {}) {
         protocolVersion: SUPPORTED.includes(requested) ? requested : SUPPORTED[0],
         capabilities: { tools: { listChanged: false }, prompts: { listChanged: false } },
         serverInfo: SERVER_INFO,
-        instructions: activeProject() ? 'neuraldoc liest den hochgeladenen Code-Stand und die Dokumente. Fundstellen sind keine Bestätigung der Dokumentrichtigkeit. Freigabe und Export erfolgen im Dashboard.' : INSTRUCTIONS,
+        instructions: showcaseOnly() ? INSTRUCTIONS : activeProject() ? 'neuraldoc liest den hochgeladenen Code-Stand und die Dokumente. Fundstellen sind keine Bestätigung der Dokumentrichtigkeit. Freigabe und Export erfolgen im Dashboard.' : 'Noch kein Projekt importiert. Im neuraldoc-Dashboard ein Repository importieren, dann stehen die Werkzeuge zur Verfügung.',
       })
     }
     case 'notifications/initialized':
@@ -52,23 +59,23 @@ export async function handleMessage(msg, ctx = {}) {
     case 'ping':
       return reply({})
     case 'tools/list':
-      return reply({ tools: activeProject() ? projectTools : toolList() })
+      return reply({ tools: showcaseOnly() ? (await mobiq()).toolList() : projectTools })
     case 'prompts/list':
       // The prepared prompts describe the MOBIQ showcase; own projects have none yet.
-      return reply({ prompts: activeProject() ? [] : promptList() })
+      return reply({ prompts: showcaseOnly() ? (await mobiq()).promptList() : [] })
     case 'prompts/get':
-      if (activeProject()) return fail(-32602, 'Für eigene Projekte gibt es keine vorbereiteten Prompts.')
+      if (!showcaseOnly()) return fail(-32602, 'Für eigene Projekte gibt es keine vorbereiteten Prompts.')
       try {
-        return reply(getPrompt(msg.params?.name, msg.params?.arguments))
+        return reply((await mobiq()).getPrompt(msg.params?.name, msg.params?.arguments))
       } catch (e) {
         return fail(-32602, e.message)
       }
     case 'tools/call': {
       const { name, arguments: args } = msg.params ?? {}
       log.info('mcp', `Werkzeug ${name}`, { client: ctx.client })
-      if (activeProject()) return reply(await projectTool(name, args ?? {}))
-      if (name === 'check_change' && args?.draft_id) return reply({ content: [{ type: 'text', text: 'Der Showcase verwendet vorbereitete Entwürfe. Eigene Daten unter Daten → Eigenes Projekt importieren.' }], isError: true })
-      return reply(await callTool(name, args ?? {}, { client: ctx.client ?? 'unbekannt', origin: ctx.origin }))
+      if (!showcaseOnly()) return reply(await projectTool(name, args ?? {}))
+      if (name === 'check_change' && args?.draft_id) return reply({ content: [{ type: 'text', text: 'Der Showcase verwendet vorbereitete Entwürfe. Eigene Projekte prüfst du in deiner eigenen neuraldoc-Installation.' }], isError: true })
+      return reply(await (await mobiq()).callTool(name, args ?? {}, { client: ctx.client ?? 'unbekannt', origin: ctx.origin }))
     }
     default:
       return isNotification ? null : fail(-32601, `Method not found: ${msg.method}`)
@@ -141,7 +148,7 @@ async function api(req, res, path) {
       const sameOrigin = req.headers.origin === `http://${req.headers.host}` || req.headers.origin === `https://${req.headers.host}`
       if (!sameOrigin && req.headers.authorization !== `Bearer ${TOKEN}`) throw new DraftError('Lokale Projektaktionen benötigen dieselbe Herkunft oder einen MCP-Token.', 403)
     }
-    if (req.method === 'GET' && path === '/api/mcp/project') return send(res, 200, { ...projectPayload(), projects: projectList() }, { 'Cache-Control': 'no-store' })
+    if (req.method === 'GET' && path === '/api/mcp/project') return send(res, 200, { ...projectPayload(), projects: projectList(), profile: showcaseOnly() ? null : profile() },{ 'Cache-Control': 'no-store' })
     if (path.startsWith('/api/mcp/project/') && req.method === 'POST') {
       localMutation()
       if (path === '/api/mcp/project/import') return send(res, 200, await addProject(await readRaw(req, LIMITS.uploadBytes)))
@@ -151,48 +158,69 @@ async function api(req, res, path) {
     if (req.method === 'GET' && path === '/api/mcp/project/export') {
       return send(res, 200, exportProject(), { 'Content-Disposition': 'attachment; filename="neuraldoc-dokumentaenderungen.json"', 'Cache-Control': 'no-store' })
     }
-    const project = activeProject()
-    if (project) {
+    if (req.method === 'GET' && path === '/api/mcp/setup') return send(res, 200, { ...setupStatus(), settings: publicSettings(), editable: !showcaseOnly() }, { 'Cache-Control': 'no-store' })
+    if (req.method === 'POST' && path === '/api/mcp/settings') {
+      localMutation()
+      if (showcaseOnly()) throw new DraftError('Im Showcase lassen sich keine Keys hinterlegen.', 403)
+      const settings = saveSettings(await readJsonBody(req, 65536))
+      log.info('setup', 'Einstellungen gespeichert', { keys: Object.entries(settings.secrets).filter(([, s]) => s.set).map(([k, s]) => `${k} (${s.source})`).join(', ') || 'keine' })
+      return send(res, 200, { ...setupStatus(), settings, editable: true })
+    }
+
+    if (!showcaseOnly()) {
+      // The normal app: the active project, or the empty start before the first import.
+      const project = activeProject()
+      const approvers = (value) => Object.fromEntries(docTypeOrder.map((id) => [id, value]))
+      const local = () => ({ id: 'local', name: reviewer(), role: profile().role || 'Prüfung & Freigabe' })
       if (req.method === 'GET' && path === '/api/mcp/usage') return send(res, 200, projectUsage(new URL(req.url, 'http://localhost').searchParams))
-      if (req.method === 'GET' && path === '/api/mcp/drafts') return send(res, 200, project.generated)
+      if (req.method === 'GET' && path === '/api/mcp/drafts') return send(res, 200, project?.generated ?? {})
       if (req.method === 'POST' && path === '/api/mcp/drafts/generate') { localMutation(); const body = await readJsonBody(req); return send(res, 200, await projectDraft(body.id, body.answer)) }
-      if (req.method === 'GET' && path === '/api/mcp/decisions') return send(res, 200, project.decisions)
+      if (req.method === 'GET' && path === '/api/mcp/decisions') return send(res, 200, project?.decisions ?? {})
       if (req.method === 'POST' && path === '/api/mcp/decisions') { localMutation(); return send(res, 200, projectDecisions(await readJsonBody(req))) }
       if (req.method === 'POST' && path === '/api/mcp/decisions/reset') { localMutation(); return send(res, 200, resetProjectDecisions()) }
-      if (req.method === 'GET' && /^\/api\/mcp\/changes\//.test(path)) return send(res, 200, { checks: [], mrComment: null, approvers: Object.fromEntries(['nutzer','dialog','parameter','technik','installation','architektur'].map((id) => [id, { id: 'local', name: 'Lokaler Nutzer', role: 'Prüfung & Freigabe', self: true }])), writeBack: false, writebacks: [], targets: {} })
+      if (req.method === 'GET' && /^\/api\/mcp\/changes\//.test(path)) return send(res, 200, { checks: [], mrComment: null, approvers: approvers({ ...local(), self: true }), writeBack: false, writebacks: [], targets: {} })
       if (req.method === 'GET' && path === '/api/mcp/activity') return send(res, 200, { log: [], checks: [], questions: [], writebacks: [], mrComments: [], stats: { calls: 0, answer: 0, raw: 0, perTool: {} } })
       if (req.method === 'POST' && path === '/api/mcp/rules') throw new DraftError('Lokale Projekte verwenden persönliche Freigaben und Dokumentexport.', 400)
-      if (req.method === 'GET' && path === '/api/mcp/info') return send(res, 200, { server: SERVER_INFO, token: TOKEN, protocol: SUPPORTED[0], ...info(), tools: projectTools, people: [{ id: 'local', name: 'Lokaler Nutzer', role: 'Prüfung & Freigabe' }], rules: { writeBack: false, mrComment: false, approvers: Object.fromEntries(['nutzer','dialog','parameter','technik','installation','architektur'].map((id) => [id, 'local'])) }, sources: [{ id: 'git', name: 'Repository', items: `${project.files.length} Code-Dateien · ${project.name}` }, { id: 'documents', name: 'Dokumente', items: `${project.docSources.length} Dokumente · ${project.docFiles.length} Abschnitte` }] })
+      if (req.method === 'GET' && path === '/api/mcp/info') return send(res, 200, {
+        server: SERVER_INFO, token: TOKEN, protocol: SUPPORTED[0], drafting: draftingStatus(), stdioPath: STDIO,
+        tools: projectTools, surfaceTokens: Math.ceil(JSON.stringify(projectTools).length / 4),
+        docTypes: docTypeOrder.map((t) => ({ type: t, label: docTypes[t].label, audience: 'Leser der importierten Dokumentation' })),
+        people: [local()], rules: { writeBack: false, mrComment: false, approvers: approvers('local') },
+        sources: project ? [{ id: 'git', name: 'Repository', items: `${project.files.length} Code-Dateien · ${project.name}` }, { id: 'documents', name: 'Dokumente', items: `${project.docSources.length} Dokumente · ${project.docFiles.length} Abschnitte` }] : [],
+      })
+      return send(res, 404, { error: 'Nicht gefunden' })
     }
-    if (!project && req.method === 'POST' && path === '/api/mcp/drafts/generate') {
+
+    // Showcase mode: the prepared MOBIQ example, no model calls.
+    const showcase = await mobiq()
+    if (req.method === 'POST' && path === '/api/mcp/drafts/generate') {
       // The showcase never calls a paid model: prepared examples only, free contexts are refused.
       localMutation(); const body = await readJsonBody(req, 65536)
-      if (body.context) throw new DraftError('Der Showcase erzeugt keine Modelltexte. Eigenes Projekt importieren, um Entwürfe zu formulieren.', 403)
-      const proposal = exampleProposals.find((p) => p.id === body.id)
+      if (body.context) throw new DraftError('Der Showcase erzeugt keine Modelltexte. Eigene Projekte prüfst du in deiner eigenen neuraldoc-Installation.', 403)
+      const proposal = showcase.exampleProposals.find((p) => p.id === body.id)
       if (!proposal) throw new Error('Unbekannter Beispielvorschlag.')
       const patch = { text: proposal.text, blocks: proposal.blocks, rows: proposal.rows, why: proposal.why, confidence: proposal.confidence, question: proposal.question, generation: { status: 'draft', id: proposal.id, model: 'Vorbereitetes Beispiel', createdAt: '2026-10-01T00:00:00Z', evidenceIds: [], usage: { inputTokens: null, outputTokens: 0, costUsd: null } } }
       return send(res, 200, { proposal: patch, result: { status: 'draft', question: proposal.question || '' } })
     }
-    if (!project && req.method === 'GET' && path === '/api/mcp/drafts') return send(res, 200, {})
-    if (req.method === 'GET' && path === '/api/mcp/setup') return send(res, 200, setupStatus(), { 'Cache-Control': 'no-store' })
+    if (req.method === 'GET' && path === '/api/mcp/drafts') return send(res, 200, {})
     if (req.method === 'GET' && path === '/api/mcp/usage') {
       const params = new URL(req.url, 'http://localhost').searchParams
-      return send(res, 200, usage(params), params.has('download') ? { 'Content-Disposition': 'attachment; filename="neuraldoc-nutzungsverlauf.json"' } : {})
+      return send(res, 200, showcase.usage(params), params.has('download') ? { 'Content-Disposition': 'attachment; filename="neuraldoc-nutzungsverlauf.json"' } : {})
     }
-    if (req.method === 'GET' && path === '/api/mcp/info') return send(res, 200, { server: SERVER_INFO, token: TOKEN, protocol: SUPPORTED[0], ...info() })
-    if (req.method === 'POST' && path === '/api/mcp/rules') return send(res, 200, setRules(await readJsonBody(req)))
-    if (req.method === 'GET' && path === '/api/mcp/activity') return send(res, 200, activity())
+    if (req.method === 'GET' && path === '/api/mcp/info') return send(res, 200, { server: SERVER_INFO, token: TOKEN, protocol: SUPPORTED[0], ...showcase.info() })
+    if (req.method === 'POST' && path === '/api/mcp/rules') return send(res, 200, showcase.setRules(await readJsonBody(req)))
+    if (req.method === 'GET' && path === '/api/mcp/activity') return send(res, 200, showcase.activity())
 
-    if (req.method === 'GET' && path === '/api/mcp/decisions') return send(res, 200, decisions())
+    if (req.method === 'GET' && path === '/api/mcp/decisions') return send(res, 200, showcase.decisions())
     if (req.method === 'POST' && path === '/api/mcp/decisions') {
       const body = await readJsonBody(req)
-      for (const id of body.ids ?? [body.id]) setDecision(id, body.decision ?? null, body.by)
-      return send(res, 200, decisions())
+      for (const id of body.ids ?? [body.id]) showcase.setDecision(id, body.decision ?? null, body.by)
+      return send(res, 200, showcase.decisions())
     }
-    if (req.method === 'POST' && path === '/api/mcp/decisions/reset') return send(res, 200, resetDecisions())
+    if (req.method === 'POST' && path === '/api/mcp/decisions/reset') return send(res, 200, showcase.resetDecisions())
 
     const change = path.match(/^\/api\/mcp\/changes\/([\w-]+)$/)
-    if (req.method === 'GET' && change) return send(res, 200, changeStatus(change[1]))
+    if (req.method === 'GET' && change) return send(res, 200, showcase.changeStatus(change[1]))
     return send(res, 404, { error: 'Nicht gefunden' })
   } catch (e) {
     const status = e instanceof DraftError ? e.status : 400

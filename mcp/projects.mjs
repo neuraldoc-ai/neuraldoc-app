@@ -7,6 +7,7 @@ import { createJevClient, MODEL } from './semantic-mapping.mjs'
 import { codeChunks, createRetriever, pick } from './retrieval.mjs'
 import { DraftError, draftingConfig, generateDraft } from './drafting.mjs'
 import { log } from './log.mjs'
+import { profile, reviewer, runtimeEnv } from './settings.mjs'
 
 export const projectsDir = path.join(process.env.NEURALDOC_STATE_DIR || fileURLToPath(new URL('./state/', import.meta.url)), 'projects')
 const activePath = path.join(projectsDir, 'active.json')
@@ -26,8 +27,15 @@ export function activeProject() {
 }
 export function projectPayload(project = activeProject()) {
   const mapping = project?.mapping ? (({ records, ...rest }) => rest)(project.mapping) : null
-  return { mode: project ? 'working' : 'showcase', canImport: !showcaseOnly(), project: project ? { id: project.id, name: project.name, sources: project.sources, createdAt: project.createdAt, warnings: project.warnings, mapping, files: project.files.map(({ text, ...rest }) => rest), documents: project.docFiles.map(({ text, ...rest }) => rest), moduleDefs: project.moduleDefs } : null, dataset: project?.dataset ?? null, graph: project?.graph ?? null }
+  // The prepared MOBIQ showcase exists only in showcase mode; the normal app starts empty.
+  return { mode: showcaseOnly() ? 'showcase' : project ? 'working' : 'empty', canImport: !showcaseOnly(), project: project ? { id: project.id, name: project.name, sources: project.sources, createdAt: project.createdAt, warnings: project.warnings, mapping, files: project.files.map(({ text, ...rest }) => rest), documents: project.docFiles.map(({ text, ...rest }) => rest), moduleDefs: project.moduleDefs } : null, dataset: project?.dataset ? withReviewer(project.dataset) : null, graph: project?.graph ?? null }
 }
+// Approvals carry the name from the settings, also for projects imported before it was entered.
+function withReviewer(dataset) {
+  const { name, role } = profile(), local = { name: name || 'Lokaler Nutzer', role: role || 'Prüfung & Freigabe' }
+  return { ...dataset, currentUser: { ...local, initials: initials(local.name) }, people: { ...dataset.people, local } }
+}
+const initials = (name) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || 'DU'
 async function exclusive(run) {
   if (busy) throw new DraftError('Ein Import oder Modelllauf läuft bereits. Bitte warten.', 409)
   busy = true
@@ -59,7 +67,7 @@ export function projectList() {
 }
 const save = (p) => write(fileFor(p.id), p)
 const requireProject = () => { const project = activeProject(); if (!project) throw new Error('Zuerst ein eigenes Projekt importieren.'); return project }
-const key = () => { const value = process.env.TYPESAFE_API_KEY || process.env.JEV_API_KEY; if (!value?.trim()) throw new DraftError('Jev-Key fehlt. TYPESAFE_API_KEY in .env setzen und neu starten.', 503); return value.trim() }
+const key = (env) => { const value = env.TYPESAFE_API_KEY || env.JEV_API_KEY; if (!value?.trim()) throw new DraftError('Jev-Key fehlt. Unter Einstellungen hinterlegen.', 503); return value.trim() }
 
 export { codeChunks }
 const passes = (answer, choice) => !!answer && answer.choice === choice && answer.confidence >= .8 && answer.probabilities[choice] >= .9
@@ -82,7 +90,7 @@ const CRITERIA = {
 export async function checkProject({ createClient = createJevClient, k = 6 } = {}) {
   return exclusive(async () => {
     const p = requireProject(), started = Date.now()
-    const client = createClient({ key: key(), cachePath: path.join(projectsDir, p.id, 'jev-cache.json'), budget: Number(process.env.NEURALDOC_JEV_BUDGET_USD || .25) })
+    const env = runtimeEnv(), client = createClient({ key: key(env), cachePath: path.join(projectsDir, p.id, 'jev-cache.json'), budget: Number(env.NEURALDOC_JEV_BUDGET_USD || .25) })
     const retriever = createRetriever(p.files), chunks = retriever.chunks, records = []
     log.info('check', 'Erstprüfung gestartet', { project: p.name, sections: p.docFiles.length, excerpts: chunks.length })
     for (const [n, doc] of p.docFiles.entries()) {
@@ -158,7 +166,7 @@ export async function projectDraft(id, answer, { generate = generateDraft } = {}
     if (answer) evidence.push({ id: 'editorial-answer', source: 'Antwort der prüfenden Person (kein Codebeleg)', text: answer })
     const context = { change: { id: BUNDLE_ID, title: 'Erstprüfung gegen den aktuellen Code' }, document: { id: doc.id, title: doc.title, type: TYPE_LABELS[doc.type] || 'Dokumentation', audience: 'Leser dieser Dokumentation', section: doc.title, before: doc.text, surrounding: '' }, target: { id, op: 'patch', preserve: true, instruction: 'Dieser Abschnitt widerspricht laut Prüfung dem aktuellen Code oder lässt aus, was der Code heute tut. Korrigiere nur die Aussagen, die die Codebelege widerlegen, ergänze nur belegte fehlende Angaben und lass alles andere wortgleich. Behalte Aufbau, Sprache und Format bei. Zeigen die Belege keinen Widerspruch: status=no_change. Bei unzureichendem Beleg Rückfrage statt Vermutung.' }, evidence }
     const started = Date.now()
-    const draft = await generate(context, { config: draftingConfig({ ...process.env, NEURALDOC_STATE_DIR: path.join(projectsDir, p.id) }) })
+    const draft = await generate(context, { config: draftingConfig({ ...runtimeEnv(), NEURALDOC_STATE_DIR: path.join(projectsDir, p.id) }) })
     const status = draft.result.status
     const patch = { ...(status === 'draft' ? { text: draft.result.text } : {}), why: draft.result.reason, confidence: 'pruefen', question: status === 'no_change' ? 'Laut Modell stimmt der Abschnitt mit dem Code überein. Vorschlag verwerfen?' : draft.result.question || '', generation: { status, recommendation: draft.result.reason, answer, id: draft.id, model: draft.model, createdAt: draft.createdAt, evidenceIds: draft.result.evidenceIds, findings: draft.result.findings, usage: draft.usage } }
     p.generated[id] = patch; p.events.push({ at: new Date().toISOString(), kind: 'draft', title: doc.title, usage: draft.usage }); save(p)
@@ -180,8 +188,8 @@ export function projectDecisions(input) {
       const text = decision.edited?.text ?? p.generated[id].text
       if (typeof text !== 'string' || !text.trim() || text.length > 20000) throw new Error('Ungültiger freizugebender Text.')
       // Only a real edit is stored as one; the dashboard labels it "angepasst".
-      p.decisions[id] = { state: decision.state, ...(text !== p.generated[id].text ? { edited: { text } } : {}), at: new Date().toISOString(), by: 'Lokaler Nutzer' }
-    } else p.decisions[id] = { state: decision.state, at: new Date().toISOString(), by: 'Lokaler Nutzer' }
+      p.decisions[id] = { state: decision.state, ...(text !== p.generated[id].text ? { edited: { text } } : {}), at: new Date().toISOString(), by: reviewer() }
+    } else p.decisions[id] = { state: decision.state, at: new Date().toISOString(), by: reviewer() }
     p.events.push({ at: new Date().toISOString(), kind: 'decision', title: proposal.title, action: decision.state })
   }
   save(p); return p.decisions

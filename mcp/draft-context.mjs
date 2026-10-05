@@ -1,4 +1,5 @@
 // Adapter for the existing demo targets. The generator itself accepts arbitrary project contexts.
+import './showcase-init.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import { bundles, docs, docTypes, proposals } from '../frontend/src/dashboard/features/docs/data.ts'

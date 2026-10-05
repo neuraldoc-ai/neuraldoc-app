@@ -13,6 +13,13 @@ All notable changes to this project are documented here. The format follows [Kee
 - Drafts can answer "no change needed". Corrections that drop most of a section or paste source code are rejected.
 - Initial check also reports omissions (code behaviour the documentation does not mention).
 - Container logs for start, configuration, imports, checks, drafts and every error (`docker logs`).
+- Keys and model in the app (Einstellungen): Jev, OpenAI, Claude, Gemini, Vertex AI or a local LLM. Stored in `/data/settings.json`, applied without a restart, never returned to the browser; `--env-file` still works as a fallback.
+- Einstellungen page in the sidebar: profile (name, company, role) shown in the sidebar and on approvals, keys and model, GitHub token for private repositories.
+- Each installation gets its own random MCP token; only the public showcase keeps the demo token.
+- Sidebar links to the GitHub repository unless `VITE_LANDING_URL` is set. The overview leads to the settings when the Jev key is missing.
+- The app starts empty and contains no sample data; a start screen offers your own project or **Beispielprojekt laden**, which clones `mobiq-code` and `mobiq-docs` from GitHub and imports them like any project. The app image builds without submodules.
+- The prepared MOBIQ showcase is its own image: `docker build --target showcase`.
+- Confluence pages in storage format (`.xml`) are read as documentation.
 - CI for tests, build, lint and a Docker smoke test.
 - `ARCHITECTURE.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, guides under `docs/`.
 - Evaluation of the initial check in `mcp/eval`: MOBIQ plus three open-source benchmarks from real project history (httpx, zx, cobra), item-level scoring, a calibrated LLM judge for drafts, cost and time per variant.

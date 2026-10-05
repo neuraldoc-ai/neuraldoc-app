@@ -13,7 +13,7 @@ npm ci
 npm run dev        # http://localhost:5173/app/
 ```
 
-On Windows, clone with `git -c core.autocrlf=false clone --recursive …` so the sample code keeps its line endings. If you cloned without `--recursive`, run `git submodule update --init`.
+The submodules hold the MOBIQ showcase; tests, type checks and `npm run dev:showcase` need them, the app itself does not (`npm run build:app` builds without them). On Windows, clone with `git -c core.autocrlf=false clone --recursive …` so the sample code keeps its line endings. If you cloned without `--recursive`, run `git submodule update --init`.
 
 ## Checks
 

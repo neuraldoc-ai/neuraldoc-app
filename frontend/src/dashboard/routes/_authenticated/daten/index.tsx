@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { DatasetPage, type DataTab } from '@/features/docs/dataset'
+import type { DataTab } from '@/features/docs/dataset'
+import { DataPage } from '@/features/docs/project-data'
 
 const TABS: DataTab[] = ['gitlab', 'jira', 'confluence', 'dokumente', 'doku-arten', 'datenbank']
 
@@ -10,6 +11,6 @@ export const Route = createFileRoute('/_authenticated/daten/')({
   component: function DatenRoute() {
     const { tab = 'gitlab' } = Route.useSearch()
     const navigate = Route.useNavigate()
-    return <DatasetPage tab={tab} onTab={(next) => navigate({ search: { tab: next }, replace: true })} />
+    return <DataPage tab={tab} onTab={(next) => navigate({ search: { tab: next }, replace: true })} />
   },
 })

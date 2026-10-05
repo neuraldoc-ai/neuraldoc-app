@@ -5,6 +5,8 @@
  * Numbers on screen are derived from this file by model.ts — never typed into a page.
  */
 
+import type { Bundle, Doc, DocTypeId, ModuleId, PersonId, Proposal, Sensitivity } from './vocabulary.ts'
+
 export const TODAY = '2026-10-01'
 
 export const company = {
@@ -16,83 +18,24 @@ export const company = {
 
 export const release = { id: '26.4', freeze: '2026-10-09', ship: '2026-10-27' }
 
-/* ---------- Kinds of documentation and who reads them ---------- */
-
-export type DocTypeId = 'nutzer' | 'dialog' | 'parameter' | 'technik' | 'installation' | 'architektur'
-
-/** What a change touches. A doc type is only checked when it reacts to one of these. */
-export type ChangeKind = 'prozess' | 'feld' | 'label' | 'parameter' | 'schnittstelle' | 'datenbank' | 'betrieb' | 'intern'
-
-export const changeKinds: Record<ChangeKind, { label: string; nature: Nature }> = {
-  prozess: { label: 'Prozessschritt', nature: 'fachlich' },
-  feld: { label: 'Feld oder Dialog', nature: 'fachlich' },
-  label: { label: 'Umbenennung', nature: 'umbenennung' },
-  parameter: { label: 'Parameter', nature: 'technisch' },
-  schnittstelle: { label: 'Schnittstelle', nature: 'technisch' },
-  datenbank: { label: 'Datenbank', nature: 'technisch' },
-  betrieb: { label: 'Installation und Update', nature: 'technisch' },
-  intern: { label: 'Intern (Umbau, Tests)', nature: 'intern' },
+/** Who reads each kind of documentation at MOBIQ, and a sentence in its voice. */
+export const docTypeReaders: Record<DocTypeId, { audience: string; voice: string }> = {
+  nutzer: { audience: 'Verkauf, Disposition, Kasse und Buchhaltung im Möbelhaus', voice: 'Sie können einen Kaufvertrag jetzt in Teile aufteilen.' },
+  dialog: { audience: 'Fachberatung, Support und Schulung', voice: 'Im Register Lieferung gibt es das neue Feld Teillieferung erlaubt.' },
+  parameter: { audience: 'Fachberatung bei der Einrichtung, Support', voice: 'TEILLIEF_MAX_ANZAHL: zulässiger Wertebereich 2 bis 5.' },
+  technik: { audience: 'Entwicklung, Support und Partner', voice: 'Neue Tabelle lieferteil; Teilrechnungen werden mit Belegart TR exportiert.' },
+  installation: { audience: 'Administratoren beim Kunden und Cloud-Betrieb', voice: 'Nach dem Update müssen eigene Belegvorlagen einmal konvertiert werden.' },
+  architektur: { audience: 'Architektur, Entwicklung und IT beim Kunden', voice: 'Neuer Datenfluss: Lieferteil → Teilrechnung → Fibu-Export.' },
 }
 
-export type Nature = 'fachlich' | 'technisch' | 'umbenennung' | 'intern'
-
-export const natures: Record<Nature, string> = {
-  fachlich: 'Fachlich',
-  technisch: 'Technisch',
-  umbenennung: 'Umbenennung',
-  intern: 'Intern',
+/** Examples for the MCP playground: merge requests, branches and tickets of the release. */
+export const mcpInputs: Record<'check_change' | 'ask' | 'ticket_context', { key: string; label: string; placeholder: string; examples: string[] }> = {
+  check_change: { key: 'merge_request', label: 'Merge-Request, Branch oder Ticket', placeholder: '!1287, feature/MOB-4835-lieferstopp oder MOB-4812', examples: ['!1287', 'feature/MOB-4835-lieferstopp', 'MOB-4815'] },
+  ask: { key: 'question', label: 'Frage', placeholder: 'Wie wird die Anzahlung bei einer Teillieferung verrechnet?', examples: ['Wie wird die Anzahlung bei einer Teillieferung verrechnet?', 'Kann ein Gutschein teilweise eingelöst werden?', 'Wie plane ich eine Tour?'] },
+  ticket_context: { key: 'ticket', label: 'Jira-Ticket', placeholder: 'MOB-4844', examples: ['MOB-4844', 'MOB-4808', 'MOB-4850'] },
 }
-
-export const docTypes: Record<DocTypeId, { label: string; plural: string; audience: string; reactsTo: ChangeKind[]; voice: string }> = {
-  nutzer: {
-    label: 'Nutzerhandbuch',
-    plural: 'Nutzerhandbücher',
-    audience: 'Verkauf, Disposition, Kasse und Buchhaltung im Möbelhaus',
-    reactsTo: ['prozess', 'feld', 'label'],
-    voice: 'Sie können einen Kaufvertrag jetzt in Teile aufteilen.',
-  },
-  dialog: {
-    label: 'Dialogbeschreibung',
-    plural: 'Dialogbeschreibungen',
-    audience: 'Fachberatung, Support und Schulung',
-    reactsTo: ['feld', 'label'],
-    voice: 'Im Register Lieferung gibt es das neue Feld Teillieferung erlaubt.',
-  },
-  parameter: {
-    label: 'Parametertabelle',
-    plural: 'Parametertabellen',
-    audience: 'Fachberatung bei der Einrichtung, Support',
-    reactsTo: ['parameter'],
-    voice: 'TEILLIEF_MAX_ANZAHL: zulässiger Wertebereich 2 bis 5.',
-  },
-  technik: {
-    label: 'Technische Doku',
-    plural: 'Technische Dokus',
-    audience: 'Entwicklung, Support und Partner',
-    reactsTo: ['schnittstelle', 'datenbank'],
-    voice: 'Neue Tabelle lieferteil; Teilrechnungen werden mit Belegart TR exportiert.',
-  },
-  installation: {
-    label: 'Installationsdoku',
-    plural: 'Installationsdokus',
-    audience: 'Administratoren beim Kunden und Cloud-Betrieb',
-    reactsTo: ['betrieb'],
-    voice: 'Nach dem Update müssen eigene Belegvorlagen einmal konvertiert werden.',
-  },
-  architektur: {
-    label: 'Architekturbild',
-    plural: 'Architekturbilder',
-    audience: 'Architektur, Entwicklung und IT beim Kunden',
-    reactsTo: ['schnittstelle'],
-    voice: 'Neuer Datenfluss: Lieferteil → Teilrechnung → Fibu-Export.',
-  },
-}
-
-export const docTypeOrder: DocTypeId[] = ['nutzer', 'dialog', 'parameter', 'technik', 'installation', 'architektur']
 
 /* ---------- Product modules ---------- */
-
-export type ModuleId = string
 
 export const modules: Record<ModuleId, string> = {
   kaufvertrag: 'Kaufvertrag',
@@ -104,8 +47,6 @@ export const modules: Record<ModuleId, string> = {
 }
 
 /* ---------- People ---------- */
-
-export type PersonId = string
 
 export const people: Record<PersonId, { name: string; role: string }> = {
   kroeger: { name: 'Sabine Kröger', role: 'Redaktion Nutzerdoku' },
@@ -119,26 +60,6 @@ export const people: Record<PersonId, { name: string; role: string }> = {
 export const currentUser = { name: 'Produktmanagement', role: 'ERP & Finance', initials: 'PM' }
 
 /* ---------- Documents ---------- */
-
-export type Block =
-  | { kind: 'h'; text: string }
-  | { kind: 'p'; text: string }
-  | { kind: 'table'; head: string[]; rows: string[][] }
-  | { kind: 'figure'; caption: string }
-
-export type Doc = {
-  id: string
-  title: string
-  type: DocTypeId
-  modules: ModuleId[]
-  owner: PersonId
-  version: string
-  updated: string
-  pages: number
-  /** Not written yet — neuraldoc proposes the first version. */
-  planned?: boolean
-  blocks: Block[]
-}
 
 export const docs: Doc[] = [
   {
@@ -415,50 +336,6 @@ export const docs: Doc[] = [
 
 /* ---------- Commits and the changes they form ---------- */
 
-export type CommitKind = ChangeKind | 'fix' | 'test'
-
-export const commitKinds: Record<CommitKind, string> = {
-  ...Object.fromEntries(Object.entries(changeKinds).map(([k, v]) => [k, v.label])),
-  fix: 'Fehlerbehebung',
-  test: 'Tests',
-} as Record<CommitKind, string>
-
-export type Commit = {
-  hash: string
-  date: string
-  author: string
-  message: string
-  kind: CommitKind
-  files: string[]
-  /** A later commit in the same change replaced this intermediate state. */
-  supersededBy?: string
-  note?: string
-}
-
-export type Step = { text: string; mark?: 'neu' | 'geändert' }
-
-export type Aspect = { kind: ChangeKind; module: ModuleId; text: string; commits: string[] }
-
-export type Bundle = {
-  id: string
-  title: string
-  ticket: string
-  epic?: string
-  mr: string
-  merged: string
-  /** Where this change sits in the product, read from the existing documentation. */
-  path: string[]
-  alsoAffects?: string[]
-  classifiedVia: string[]
-  summary: string
-  before?: Step[]
-  after?: Step[]
-  aspects: Aspect[]
-  commits: Commit[]
-  /** Nothing visible changes for readers — shown so it is clear the change was checked. */
-  noDocsReason?: string
-}
-
 export const bundles: Bundle[] = [
   {
     id: 'teillieferung',
@@ -657,48 +534,6 @@ export const bundles: Bundle[] = [
 ]
 
 /* ---------- Proposals ---------- */
-
-export type Size = 'satz' | 'absatz' | 'kapitel' | 'seite' | 'tabelle' | 'bild'
-
-export const sizes: Record<Size, string> = {
-  satz: 'Satz',
-  absatz: 'Absatz',
-  kapitel: 'Neues Kapitel',
-  seite: 'Neue Seite',
-  tabelle: 'Tabellenzeilen',
-  bild: 'Bild',
-}
-
-export type Confidence = 'hoch' | 'mittel' | 'pruefen'
-
-export const confidences: Record<Confidence, string> = { hoch: 'Sicher', mittel: 'Wahrscheinlich', pruefen: 'Kurz prüfen' }
-
-/**
- * One proposed edit. `at` is the block it refers to (-1 = start of the document).
- * replace: swap `find` for `text` inside that block (in a table: in every cell).
- * insert:  new blocks after it. rows: new rows at the end of that table.
- * note:    a task for a person (e.g. redraw a picture), optionally with text to insert.
- */
-export type Proposal = {
-  id: string
-  bundle: string
-  doc: string
-  at: number
-  op: 'replace' | 'insert' | 'rows' | 'note'
-  find?: string
-  text?: string
-  blocks?: Block[]
-  rows?: string[][]
-  size: Size
-  title: string
-  why: string
-  confidence: Confidence
-  commits: string[]
-  /** A question to a person, when the code alone does not answer it. */
-  question?: string
-  /** What a person still has to do by hand. */
-  task?: string
-}
 
 export const proposals: Proposal[] = [
   /* — Teillieferung: Nutzerhandbuch Kaufvertrag — */
@@ -1189,8 +1024,6 @@ export const backtest = [
   { release: '26.2', needed: 29, found: 28, falseAlarms: 2 },
   { release: '26.3', needed: 26, found: 25, falseAlarms: 3 },
 ]
-
-export type Sensitivity = 'streng' | 'ausgewogen' | 'gruendlich'
 
 export const sensitivities: Record<Sensitivity, { label: string; found: number; falseAlarms: number; text: string }> = {
   streng: { label: 'Streng', found: 119, falseAlarms: 6, text: 'Wenig Klicks, mehr bleibt liegen.' },

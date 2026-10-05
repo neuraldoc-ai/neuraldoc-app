@@ -5,7 +5,7 @@ neuraldoc needs two services for your own projects:
 - **Jev** (`TYPESAFE_API_KEY`) maps documents to the changed code. It is required and stays an external API, even with a local LLM.
 - **One LLM** drafts the text changes. You choose the provider.
 
-Set the variables in `.env` and pass it with `docker run --env-file .env`, or put them into `frontend/.env.local` when running without Docker. Never use a `VITE_` prefix for keys: those values end up in the browser bundle. The **Architektur** page in the app shows whether Jev and the LLM are configured (configuration only, no paid connection test). The status API `/api/mcp/setup` only reports whether keys are present.
+The easiest way: open **Einstellungen** in the app, choose the provider and paste the keys. They are saved in the state directory (`/data/settings.json` in Docker), apply without a restart and are never returned to the browser. Alternatively set the variables in `.env` and pass it with `docker run --env-file .env`, or put them into `frontend/.env.local` when running without Docker; values saved in the interface take precedence. Never use a `VITE_` prefix for keys: those values end up in the browser bundle. The **Einstellungen** page in the app shows whether Jev and the LLM are configured (configuration only, no paid connection test). The status API `/api/mcp/setup` only reports whether keys are present.
 
 ## Providers
 

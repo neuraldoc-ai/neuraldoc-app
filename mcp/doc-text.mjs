@@ -67,6 +67,11 @@ export async function documentText(file, bytes) {
     }
     // Text formats stay exact, so the export can put approved sections back into the original file.
     const text = Buffer.from(bytes).toString('utf8').replace(/^﻿/, '')
+    // Confluence storage format: XHTML with ac:/ri: macros. An export comment "<!-- SPACE / Title (Version n) -->" names the page.
+    if (/\.xml$/i.test(file)) {
+      const title = text.match(/^\s*<!--[^>]*?\/\s*([^>]+?)\s*(?:\(Version \d+\))?\s*-->/)?.[1]
+      return (title ? `# ${title}\n\n` : '') + await documentText(file.replace(/\.xml$/i, '.html'), Buffer.from(text.replace(/^\s*<!--[\s\S]*?-->/, '').replace(/<ac:parameter\b[^>]*>[\s\S]*?<\/ac:parameter>/gi, '')))
+    }
     if (/\.html?$/i.test(file)) return tidy(entities(text.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<h([1-4])[^>]*>/gi, (_, n) => `\n${'#'.repeat(Number(n))} `).replace(/<\/(p|h\d|li|tr|div)>/gi, '\n').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ')))
     return text
   } catch (error) {

@@ -4,6 +4,7 @@ import path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { PATCH_PROMPT, PATCH_PROMPT_VERSION, PROMPT_VERSION, responseSchema, SYSTEM_PROMPT } from './draft-prompt.mjs'
+import { runtimeEnv } from './settings.mjs'
 import { compatibleBase, DEFAULT_MODELS, PROVIDER_LABELS, providerRequest, providerResponse } from './llm-providers.mjs'
 
 const DEFAULT_STATE = fileURLToPath(new URL('./state/', import.meta.url))
@@ -137,7 +138,7 @@ export function validateDraft(value, context) {
 
 export const draftStateDir = (env = process.env) => path.resolve(env.NEURALDOC_STATE_DIR || DEFAULT_STATE)
 
-export function draftingConfig(env = process.env) {
+export function draftingConfig(env = runtimeEnv()) {
   const provider = env.NEURALDOC_DRAFT_PROVIDER === 'claude' ? 'anthropic' : env.NEURALDOC_DRAFT_PROVIDER || 'vertex'
   if (!Object.hasOwn(PROVIDER_LABELS, provider)) throw new DraftError('Anbieter muss vertex, gemini, openai, anthropic oder local sein.')
   const google = ['vertex', 'gemini'].includes(provider)
@@ -168,7 +169,8 @@ export function draftingConfig(env = process.env) {
 
 // Cache identity includes the provider/project, never credentials.
 export const draftConnection = ({ provider, project, location, mode, baseUrl, format }) => ({ provider, ...(provider === 'vertex' ? { project, location, mode } : {}), ...(['openai', 'local'].includes(provider) ? { baseUrl, format } : {}) })
-export function draftingStatus(env = process.env) {
+export function draftingStatus(env = runtimeEnv()) {
+  if (!env.NEURALDOC_DRAFT_PROVIDER && !env.NEURALDOC_LLM_MODEL && !env.GOOGLE_CLOUD_PROJECT) return { configured: false, error: 'Noch kein LLM gewählt.' }
   try {
     const config = draftingConfig(env)
     return { ...draftConnection(config), label: PROVIDER_LABELS[config.provider], model: config.model, configured: config.provider === 'local' || !!config.apiKey, verification: 'configuration-only' }
@@ -197,7 +199,7 @@ export function generateDraft(input, options = {}) {
 
 /** One JSON call to the configured provider: { value, inputTokens, outputTokens, costUsd }. Used for drafts and for check findings. */
 export async function callModel(config, { system, content, schema, fetchImpl = fetch, price = modelPrice(config), temperature = 0.2, outputLimit = OUTPUT_LIMIT }) {
-  if (config.provider !== 'local' && !config.apiKey) throw new DraftError('Texterstellung ist noch nicht eingerichtet. API-Key serverseitig setzen.', 503)
+  if (config.provider !== 'local' && !config.apiKey) throw new DraftError('Texterstellung ist noch nicht eingerichtet. LLM-Key unter Einstellungen hinterlegen.', 503)
   const google = ['vertex', 'gemini'].includes(config.provider), label = PROVIDER_LABELS[config.provider]
   const request = google ? {
     systemInstruction: { parts: [{ text: system }] },

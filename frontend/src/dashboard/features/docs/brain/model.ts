@@ -1,6 +1,4 @@
-﻿import source from "./source-graph.json";
-
-export type NodeType =
+﻿export type NodeType =
   | "feature"
   | "commit"
   | "ticket"
@@ -137,7 +135,7 @@ export const overviewTypes: NodeType[] = [
   "database",
   "doc",
 ];
-export let brain = source as unknown as {
+export type Brain = {
   nodes: BrainNode[];
   edges: BrainEdge[];
   metadata: {
@@ -146,11 +144,15 @@ export let brain = source as unknown as {
     semantic?: { status: string; model?: string; createdAt?: string; subjects?: number; edges?: number; deferred?: string[]; message?: string; usage?: { requests: number; cached: number; inputTokens: number; estimatedUsd: number } };
   };
 };
-export let nodeById = Object.fromEntries(brain.nodes.map((n) => [n.id, n]));
-export function installBrain(graph: typeof brain | null) {
-  brain = graph || source as unknown as typeof brain;
+// Empty until a project is imported; the MOBIQ graph (source-graph.json) is loaded only in showcase mode.
+export let brain: Brain = { nodes: [], edges: [], metadata: { snapshot: "", sources: [], method: "" } };
+export let nodeById: Record<string, BrainNode> = {};
+export function installBrain(graph: Brain | null) {
+  if (graph) brain = graph;
   nodeById = Object.fromEntries(brain.nodes.map((n) => [n.id, n]));
 }
+/** The prepared MOBIQ graph, as its own chunk. */
+export const showcaseBrain = async () => (await import("./source-graph.json")).default as unknown as Brain;
 export const neighbours = (id: string) =>
   brain.edges
     .filter((e) => e.source === id || e.target === id)

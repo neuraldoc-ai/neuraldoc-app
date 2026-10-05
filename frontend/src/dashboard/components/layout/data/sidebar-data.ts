@@ -1,8 +1,7 @@
-import { BrainCircuit, Database, GitMerge, LayoutDashboard, Plug, ChartNoAxesCombined, Network } from 'lucide-react'
+import { BrainCircuit, Database, GitMerge, LayoutDashboard, Plug, ChartNoAxesCombined, Network, Settings } from 'lucide-react'
 import { type SidebarData } from '../types'
 
 export const sidebarData: SidebarData = {
-  user: { name: 'Produktmanagement', email: 'ERP & Finance', avatar: '' },
   navGroups: [
     {
       title: 'Überblick',
@@ -24,6 +23,7 @@ export const sidebarData: SidebarData = {
         { title: 'MCP', url: '/mcp', icon: Plug },
         { title: 'Analytics', url: '/analytics', icon: ChartNoAxesCombined },
         { title: 'Architektur', url: '/architektur', icon: Network },
+        { title: 'Einstellungen', url: '/einstellungen', icon: Settings },
       ],
     },
   ],

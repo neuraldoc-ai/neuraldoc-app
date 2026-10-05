@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { defineConfig, loadEnv, type Plugin, type ViteDevServer } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -5,6 +6,20 @@ import tailwindcss from '@tailwindcss/vite'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 
 const projectPath = (path: string) => fileURLToPath(new URL(path, import.meta.url))
+
+// The MOBIQ showcase needs the dataset submodules under datasets/. Without them (the normal app),
+// everything that belongs to the showcase is built from an empty stand-in that the app never loads.
+const showcaseData = existsSync(projectPath('../datasets/mobiq/data/dashboard.json'))
+const missing = projectPath('./src/dashboard/features/docs/showcase-missing.ts')
+const datasetAliases = showcaseData
+  ? [
+      // Example dataset: four MOBIQ submodules under datasets/, imported in the original dataset layout
+      // (same mapping as mcp/dataset.mjs). Shown on the Daten page.
+      { find: /^@dataset\/(confluence|dokumente)\//, replacement: projectPath('../datasets/mobiq-docs/') + '$1/' },
+      { find: /^@dataset\/postgres\//, replacement: projectPath('../datasets/mobiq-db/') },
+      { find: '@dataset', replacement: projectPath('../datasets/mobiq/data') },
+    ]
+  : [{ find: /^@dataset\/.*$/, replacement: missing }, { find: /^\.\/(showcase-data\.ts|showcase-commits|dataset|source-graph\.json)$/, replacement: missing }]
 
 // Match the directory-index behavior of a static host in dev and preview.
 function serveFrontendPages(server: Pick<ViteDevServer, 'middlewares'>) {
@@ -64,12 +79,8 @@ export default defineConfig(({ mode }) => {
   resolve: {
     dedupe: ['react', 'react-dom'],
     alias: [
+      ...datasetAliases,
       { find: '@', replacement: projectPath('./src/dashboard') },
-      // Example dataset: four MOBIQ submodules under datasets/, imported in the original dataset layout
-      // (same mapping as mcp/dataset.mjs). Shown on the Daten page.
-      { find: /^@dataset\/(confluence|dokumente)\//, replacement: projectPath('../datasets/mobiq-docs/') + '$1/' },
-      { find: /^@dataset\/postgres\//, replacement: projectPath('../datasets/mobiq-db/') },
-      { find: '@dataset', replacement: projectPath('../datasets/mobiq/data') },
     ],
   },
   plugins: [

@@ -1,6 +1,6 @@
 // Which code excerpts belong to a documentation section. Project-neutral: no language, domain or dataset rules.
 // BM25 over excerpts won against an identifier index and code-graph expansion on four benchmarks (mcp/eval/README.md).
-import { bm25 } from './sources.mjs'
+import { bm25 } from './search.mjs'
 
 /** Code in excerpts of about 60 lines: Jev and the drafting model see the relevant place, not the file head. */
 export function codeChunks(files, size = 60) {
