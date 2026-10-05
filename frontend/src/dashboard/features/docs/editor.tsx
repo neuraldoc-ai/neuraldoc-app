@@ -124,9 +124,7 @@ export function EditorPage({ id, focus }: { id: string; focus?: string }) {
     setActive(openIds[next]);
     setTimeout(
       () =>
-        document
-          .getElementById(`s-${openIds[next]}`)
-          ?.scrollIntoView({ behavior: "smooth", block: "center" }),
+        reveal(openIds[next]),
       30,
     );
   };
@@ -143,9 +141,7 @@ export function EditorPage({ id, focus }: { id: string; focus?: string }) {
     setActive(next);
     const t = setTimeout(
       () =>
-        document
-          .getElementById(`s-${next}`)
-          ?.scrollIntoView({ behavior: "smooth", block: "center" }),
+        reveal(next),
       60,
     );
     return () => clearTimeout(t);
@@ -177,9 +173,7 @@ export function EditorPage({ id, focus }: { id: string; focus?: string }) {
     if (!start) return;
     const t = setTimeout(
       () =>
-        document
-          .getElementById(`s-${start}`)
-          ?.scrollIntoView({ behavior: "smooth", block: "center" }),
+        reveal(start),
       80,
     );
     return () => clearTimeout(t);
@@ -263,13 +257,19 @@ export function EditorPage({ id, focus }: { id: string; focus?: string }) {
             ))}
           </article>
         </Card>
-        <aside className="grid content-start gap-4 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:overscroll-contain">
+        <aside className="grid min-w-0 content-start gap-4">
           <SidePanel ps={ps} ctx={ctx} />
           <EvidenceCard p={shown} />
         </aside>
       </div>
     </Frame>
   );
+}
+
+/** Scrolls to a place: short ones to the middle, a whole section to its start so its actions follow below. */
+function reveal(id: string) {
+  const el = document.getElementById(`s-${id}`);
+  el?.scrollIntoView({ behavior: "smooth", block: el.offsetHeight > window.innerHeight * 0.4 ? "start" : "center" });
 }
 
 type Ctx = {
@@ -339,6 +339,8 @@ function BlockView({
         <Inline text={block.text} replaces={replaces} ctx={ctx} />
       </h2>
     );
+  const whole = block.kind === "p" ? replaces.find((r) => r.find?.trim() === block.text.trim()) : undefined;
+  if (whole) return <SectionReplace p={whole} ctx={ctx} />;
   if (block.kind === "p")
     return (
       <div className="grid gap-2">
@@ -461,6 +463,103 @@ function ReplaceMark({ p, ctx }: { p: LiveProposal; ctx: Ctx }) {
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/* ---------- A whole section replaced (own projects): line diff, actions right below ---------- */
+
+type DiffLine = { kind: "same" | "del" | "add"; text: string };
+
+/** Line diff by longest common subsequence; sections are at most a few thousand characters. */
+function diffLines(before: string, after: string): DiffLine[] {
+  const a = before.replace(/\s+$/, "").split("\n"), b = after.replace(/\s+$/, "").split("\n");
+  const n = a.length, m = b.length;
+  const lcs = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) lcs[i][j] = a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+  const out: DiffLine[] = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { out.push({ kind: "same", text: a[i] }); i++; j++ }
+    else if (lcs[i + 1][j] >= lcs[i][j + 1]) out.push({ kind: "del", text: a[i++] });
+    else out.push({ kind: "add", text: b[j++] });
+  }
+  while (i < n) out.push({ kind: "del", text: a[i++] });
+  while (j < m) out.push({ kind: "add", text: b[j++] });
+  return out;
+}
+
+/** One line of a section as it reads: Markdown headings and list items formatted, blank lines as space. */
+function SectionLine({ text, className }: { text: string; className?: string }) {
+  if (!text.trim()) return <div className="h-3" aria-hidden />;
+  const heading = text.match(/^(#{1,6})\s+(.*)$/);
+  if (heading) return <p className={cn("mt-2 font-medium tracking-tight", heading[1].length <= 2 ? "text-xl" : "text-lg", className)}>{heading[2]}</p>;
+  const item = text.match(/^(\s*)([-*•]|\d+[.)])\s+(.*)$/);
+  if (item) return <p className={cn("flex gap-2", className)} style={{ paddingInlineStart: item[1].length * 8 }}><span className="text-muted-foreground">{/\d/.test(item[2]) ? item[2] : "•"}</span><span>{item[3]}</span></p>;
+  return <p className={className}>{text}</p>;
+}
+
+function SectionText({ text }: { text: string }) {
+  return <div className="grid">{text.replace(/\s+$/, "").split("\n").map((line, i) => <SectionLine key={i} text={line} />)}</div>;
+}
+
+function SectionReplace({ p, ctx }: { p: LiveProposal; ctx: Ctx }) {
+  const decide = useDecisions((s) => s.decide);
+  const fresh = useJustDecided(p.state);
+  if (p.state === "verworfen") return <SectionText text={p.find ?? ""} />;
+  if (p.state !== "offen")
+    return (
+      <div className={cn("rounded-lg", fresh && "nd-keep")} title={p.state === "angepasst" ? "Von dir angepasst übernommen" : "Übernommen"}>
+        <SectionText text={finalText(p)} />
+      </div>
+    );
+  const isActive = ctx.active === p.id;
+  const isEditing = ctx.editing === p.id;
+  // Without a draft the new text equals the old one: show the section as it is and say what is missing.
+  const drafted = p.text !== undefined && p.text !== p.find;
+  const lines = drafted ? diffLines(p.find ?? "", p.text ?? "") : [];
+  return (
+    <section
+      id={`s-${p.id}`}
+      onClick={() => ctx.setActive(p.id)}
+      className={cn("-mx-4 grid scroll-mt-32 gap-3 rounded-xl px-4 py-3 transition-colors", isActive ? "bg-brand-50/60 ring-2 ring-brand-200 dark:bg-brand-500/10 dark:ring-brand-500/30" : "hover:bg-muted/40")}
+    >
+      {drafted ? (
+        <div className="grid" aria-label="Änderungen im Abschnitt">
+          {lines.map((l, i) =>
+            l.kind === "same" ? (
+              <SectionLine key={i} text={l.text} />
+            ) : !l.text.trim() ? null : (
+              <SectionLine
+                key={i}
+                text={l.text}
+                className={cn("-mx-2 rounded-sm px-2", l.kind === "del" ? "bg-red-500/10 text-red-700 line-through decoration-1 dark:text-red-300" : "bg-emerald-500/15 text-emerald-900 dark:text-emerald-100")}
+              />
+            ),
+          )}
+        </div>
+      ) : (
+        <SectionText text={p.find ?? ""} />
+      )}
+      {isEditing ? (
+        <ReplaceEditor p={p} ctx={ctx} />
+      ) : (
+        // Stays at the bottom of the window while the section is read, so the decision is always at hand.
+        <div className="sticky bottom-4 z-10 grid gap-3 rounded-xl border bg-card p-4 shadow-md" onClick={(e) => e.stopPropagation()}>
+          <SuggestionHeader p={p} />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" disabled={!drafted || p.generation?.status === "needs_context" || !!p.question} onClick={() => decide(p.id, { state: "uebernommen" }, `Übernommen: ${p.title}`)}>
+              <Check /> Übernehmen
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => ctx.setEditing(p.id)}>
+              <Pencil /> Ändern
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => decide(p.id, { state: "verworfen" }, `Verworfen: ${p.title}`)}>
+              <X /> Verwerfen
+            </Button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -1100,9 +1199,7 @@ function SidePanel({ ps, ctx }: { ps: LiveProposal[]; ctx: Ctx }) {
   const jump = (id: string) => {
     ctx.setEditing(undefined);
     ctx.setActive(id);
-    document
-      .getElementById(`s-${id}`)
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    reveal(id);
   };
   return (
     <Collapsible open={panelOpen} onOpenChange={setPanelOpen}>

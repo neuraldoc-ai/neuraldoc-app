@@ -46,7 +46,7 @@ function checksFor(p: LiveProposal): Check[] {
     const against = jevLinks(p).filter((e) => e.evidence.decision?.verdict !== "consistent");
     return [
       place,
-      { label: "Widerspruch zum aktuellen Code", detail: against.length ? `Laut Jev passt der Text nicht zu ${against.map((e) => e.target.slice(5)).join(", ")} oder lässt etwas davon aus.` : "Kein belegter Widerspruch.", state: against.length ? "ok" : "no" },
+      { label: "Widerspruch zum aktuellen Code", detail: against.length ? `Laut Jev passt der Text nicht zu ${against.map((e) => e.target.slice(5).split("/").pop()).join(", ")} oder lässt etwas davon aus.` : "Kein belegter Widerspruch.", state: against.length ? "ok" : "no" },
       { label: "Korrektur aus Belegen", detail: p.generation?.status === "draft" ? `Mit ${p.generation.model} formuliert.` : p.generation?.status === "no_change" ? "Laut Modell stimmt der Text." : "Noch nicht formuliert.", state: p.generation?.status === "draft" ? "ok" : "no" },
       { label: "Keine offene Frage", detail: p.question || "Fachliche Prüfung des Texts steht aus.", state: p.question ? "no" : "na" },
     ];
@@ -358,7 +358,7 @@ export function EvidenceCard({ p }: { p?: LiveProposal }) {
         </CardHeader>
         <CollapsibleContent>
           {p && (
-            <CardContent className="grid gap-4">
+            <CardContent className="grid min-w-0 gap-4 [overflow-wrap:anywhere]">
               <span className="flex flex-wrap items-center gap-1.5">
                 <ConfidenceBadge confidence={p.confidence} />
                 {p.commits.length > 0 && <Button
