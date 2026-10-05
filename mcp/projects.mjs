@@ -12,6 +12,7 @@ import { profile, reviewer, runtimeEnv } from './settings.mjs'
 export const projectsDir = path.join(process.env.NEURALDOC_STATE_DIR || fileURLToPath(new URL('./state/', import.meta.url)), 'projects')
 const activePath = path.join(projectsDir, 'active.json')
 let busy = false
+let drafting = 0 // drafts run side by side; imports, checks, switches and resets wait for all of them
 const fileFor = (id) => {
   if (!/^[a-f0-9]{20}$/.test(id)) throw new Error('Ungültige Projekt-ID.')
   return path.join(projectsDir, id, 'project.json')
@@ -39,9 +40,14 @@ function withReviewer(dataset) {
 }
 const initials = (name) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || 'DU'
 async function exclusive(run) {
-  if (busy) throw new DraftError('Es läuft schon ein Import oder Modelllauf. Versuch es gleich noch einmal.', 409)
+  if (busy || drafting) throw new DraftError('Es läuft schon ein Import oder Modelllauf. Versuch es gleich noch einmal.', 409)
   busy = true
   try { return await run() } finally { busy = false }
+}
+async function concurrent(run) {
+  if (busy) throw new DraftError('Es läuft schon ein Import oder Modelllauf. Versuch es gleich noch einmal.', 409)
+  drafting++
+  try { return await run() } finally { drafting-- }
 }
 
 /** Imports an upload (ZIP from the browser, optionally with Git URLs in its manifest). */
@@ -58,7 +64,7 @@ export async function addProject(zip) {
   })
 }
 export function activateProject(id) {
-  if (busy) throw new DraftError('Du kannst das Projekt wechseln, sobald der laufende Import oder Modelllauf fertig ist.', 409)
+  if (busy || drafting) throw new DraftError('Du kannst das Projekt wechseln, sobald der laufende Import oder Modelllauf fertig ist.', 409)
   if (showcaseOnly()) throw new DraftError('Der Showcase verwendet nur Beispieldaten.', 403)
   if (id && !fs.existsSync(fileFor(id))) throw new Error('Projekt nicht gefunden.')
   write(activePath, { id: id || null }); return projectPayload()
@@ -66,7 +72,7 @@ export function activateProject(id) {
 /** Deletes every imported project with its check, drafts, decisions and caches; the app starts empty again. */
 export function resetProjects() {
   if (showcaseOnly()) throw new DraftError('Im Showcase gibt es nichts zurückzusetzen.', 403)
-  if (busy) throw new DraftError('Es läuft gerade ein Import oder Modelllauf. Setz danach zurück.', 409)
+  if (busy || drafting) throw new DraftError('Es läuft gerade ein Import oder Modelllauf. Setz danach zurück.', 409)
   const count = projectList().length
   fs.rmSync(projectsDir, { recursive: true, force: true })
   log.info('reset', 'Projekte gelöscht', { projects: count })
@@ -159,7 +165,7 @@ const TYPE_LABELS = { nutzer: 'Nutzerhandbuch', dialog: 'Dialogbeschreibung', pa
 const VERDICT_LABELS = { contradicts: 'widerspricht dem Abschnitt', incomplete: 'fehlt im Abschnitt', consistent: 'passt zum Abschnitt' }
 /** Line edits with quoted findings (target.op patch); the approved text is the section with the edits applied. */
 export async function projectDraft(id, answer, { generate = generateDraft } = {}) {
-  return exclusive(async () => {
+  return concurrent(async () => {
     const p = requireProject(), proposal = p.dataset.proposals.find((x) => x.id === id)
     if (!proposal) throw new Error('Unbekannter Entwurf.')
     if (p.decisions[id]) throw new DraftError('Entschiedene Vorschläge zuerst zurücknehmen.', 409)
@@ -183,14 +189,16 @@ export async function projectDraft(id, answer, { generate = generateDraft } = {}
     const draft = await generate(context, { config: draftingConfig({ ...runtimeEnv(), NEURALDOC_STATE_DIR: path.join(projectsDir, p.id) }) })
     const status = draft.result.status
     const patch = { ...(status === 'draft' ? { text: draft.result.text } : {}), why: draft.result.reason, confidence: 'pruefen', question: status === 'no_change' ? 'Laut Modell stimmt der Abschnitt mit dem Code überein. Vorschlag verwerfen?' : draft.result.question || '', generation: { status, recommendation: draft.result.reason, answer, id: draft.id, model: draft.model, createdAt: draft.createdAt, evidenceIds: draft.result.evidenceIds, findings: draft.result.findings, usage: draft.usage } }
-    p.generated[id] = patch; p.events.push({ at: new Date().toISOString(), kind: 'draft', title: doc.title, usage: draft.usage }); save(p)
+    // Other drafts may have been saved meanwhile: read, change and write without awaiting in between.
+    const fresh = requireProject()
+    fresh.generated[id] = patch; fresh.events.push({ at: new Date().toISOString(), kind: 'draft', title: doc.title, usage: draft.usage }); save(fresh)
     log.info('draft', 'Entwurf erstellt', { doc: doc.path, status, model: draft.model, cached: draft.cached || undefined, ms: Date.now() - started })
     return { ...draft, proposal: patch }
   })
 }
 export function projectDecisions(input) {
   const p = requireProject()
-  if (busy) throw new DraftError('Gerade werden Texte formuliert. Entscheide, sobald das fertig ist.', 409)
+  if (busy || drafting) throw new DraftError('Gerade werden Texte formuliert. Entscheide, sobald das fertig ist.', 409)
   for (const id of input.ids || [input.id]) {
     const proposal = p.dataset.proposals.find((x) => x.id === id)
     if (!proposal) throw new Error('Unbekannter Vorschlag.')
@@ -208,7 +216,7 @@ export function projectDecisions(input) {
   }
   save(p); return p.decisions
 }
-export function resetProjectDecisions() { const p = requireProject(); if (busy) throw new DraftError('Gerade werden Texte formuliert. Versuch es danach noch einmal.', 409); p.decisions = {}; save(p); return {} }
+export function resetProjectDecisions() { const p = requireProject(); if (busy || drafting) throw new DraftError('Gerade werden Texte formuliert. Versuch es danach noch einmal.', 409); p.decisions = {}; save(p); return {} }
 
 /** Approved sections merged back into their documents. PDF, Office and HTML come back as Markdown text. */
 export function exportProject() {

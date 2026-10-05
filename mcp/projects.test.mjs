@@ -245,6 +245,22 @@ test('drafts: question, "no change" and a validated correction from the current 
   assert.equal(cached.cached, true)
 })
 
+test('drafts for different places run side by side and are all kept', async () => {
+  const ids = projects.activeProject().dataset.proposals.map((p) => p.id)
+  assert.equal(ids.length, 2)
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  const slow = { generate: async (context, options) => { await gate; return llm(questionReply).generate(context, options) } }
+  const running = ids.map((id) => projects.projectDraft(id, 'Parallel.', slow))
+  await assert.rejects(projects.checkProject(jev(async () => { throw new Error('must not run') })), /läuft schon/)
+  release()
+  await Promise.all(running)
+  const p = projects.activeProject()
+  for (const id of ids) assert.equal(p.generated[id].generation.answer, 'Parallel.', 'no draft overwrites another')
+  // Back to the validated correction the following tests approve.
+  await projects.projectDraft(proposal.id, 'Netto.', llm(() => { throw new Error('must use cache') }))
+})
+
 test('"no change" is only valid where the task allows it', async () => {
   const context = { change: { id: 'c', title: 'c' }, document: { id: 'd', title: 'd', type: 't', audience: 'a', section: 's', before: 'Alt', surrounding: '' }, target: { id: 't', op: 'replace', instruction: 'Formuliere neu.' }, evidence: [{ id: 'e', source: 's', text: 'x' }] }
   const noChangeFull = (sent) => ({ status: 'no_change', text: '', blocks: [], rows: [], reason: 'Der Code bestätigt den Text.', question: '', evidenceIds: [sent.evidence[0].id] })

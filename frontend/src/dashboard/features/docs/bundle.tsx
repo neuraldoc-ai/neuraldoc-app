@@ -121,7 +121,7 @@ export function BundlePage({ id }: { id: string }) {
           </Button>
         ) : open.length > 0 ? (
           <>
-            {own && withoutDraft.length > 0 && <StartReview proposals={b.proposals} first={withoutDraft[0]} label={`${withoutDraft.length} Entwürfe erstellen`} />}
+            {own && withoutDraft.length > 0 && <StartReview proposals={b.proposals} first={first} />}
             {first && <Button asChild size='sm' variant={own && withoutDraft.length ? 'outline' : 'default'}><Link to='/dokumente/$id' params={{ id: first.doc }} search={{ p: first.id }}>Vorschläge prüfen</Link></Button>}
           </>
         ) : null
