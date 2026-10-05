@@ -59,9 +59,10 @@ export function OverviewPage() {
         ...(history ? [`${plural(features.reduce((n, b) => n + b.commits.length, 0), "Commit", "Commits")} ${projectState.history?.tag ? `seit ${projectState.history.tag} ` : ""}zu ${plural(features.length, "Feature", "Features")} gebündelt`] : []),
         `${plural(project.files.length, "Code-Datei", "Code-Dateien")} und ${plural(documentCount, "Dokument", "Dokumente")} importiert`,
         ...(project.mapping ? [
-          `${plural(project.mapping.subjects, "Doku-Abschnitt", "Doku-Abschnitte")} mit Jev gegen den aktuellen Code geprüft`,
-          `${plural(project.mapping.consistent, "Abschnitt passt", "Abschnitte passen")} laut Jev zum Code`,
-          `${plural(project.mapping.deferred.length - project.mapping.consistent, "Abschnitt", "Abschnitte")} ohne erkennbaren Bezug zum Code, bleiben unverändert`,
+          `${plural(project.mapping.subjects, "Doku-Abschnitt", "Doku-Abschnitte")} gegen den aktuellen Code geprüft`,
+          `${plural(project.mapping.consistent, "Abschnitt passt", "Abschnitte passen")} zum Code`,
+          ...(project.mapping.findings ? [`${plural(project.mapping.findings, "Änderung", "Änderungen")} mit Begründung und Codebeleg vorbereitet`] : []),
+          ...(project.mapping.skipped ? [`${plural(project.mapping.skipped, "Abschnitt", "Abschnitte")} ohne prüfbaren Inhalt (Logos, Links), bleiben unverändert`] : []),
           ...(history && done.length ? [`${plural(done.length, "Feature", "Features")} ohne nötige Textänderung (${done.map((d) => d.title).join(", ")})`] : []),
         ] : []),
       ]
@@ -111,8 +112,8 @@ export function OverviewPage() {
                   ? unmapped
                     ? "Die Erstprüfung vergleicht jedes Dokument mit dem aktuellen Code, als wäre das letzte Release gerade fertig, und zeigt jede Abweichung."
                     : mismatches
-                      ? "„Starten“ formuliert die Korrekturen aus dem Code. Du prüfst jede Stelle und gibst sie frei."
-                      : "Jev hat keinen Widerspruch zwischen Doku und Code gefunden."
+                      ? "Zu jeder Abweichung steht die Korrektur mit Begründung und Codebeleg bereit. Du prüfst jede Stelle und gibst sie frei."
+                      : "Die Prüfung hat keine Abweichung zwischen Doku und Code gefunden."
                   : <>neuraldoc hat {plural(history ? features.reduce((n, b) => n + b.commits.length, 0) : sum.commits, "Commit", "Commits")} zu{" "}
                     {plural(history ? features.length : sum.bundles, "Feature", "Features")} gebündelt. „Starten“ formuliert die
                     Vorschläge für die betroffenen Dokumente.</>}

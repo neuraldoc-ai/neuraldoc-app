@@ -81,6 +81,9 @@ import {
 import { locationOf } from "./logic";
 import { GenerateText } from './generate-text';
 import { ProposalQuestion } from './proposal-question';
+import { changeRows, editsBetween, wordDiff } from './line-diff';
+import { Markdown, MarkdownRows } from './markdown';
+import { SectionReview } from './section-review';
 
 export function EditorPage({ id, focus }: { id: string; focus?: string }) {
   const doc = docOf(id);
@@ -419,16 +422,16 @@ function ReplaceMark({ p, ctx }: { p: LiveProposal; ctx: Ctx }) {
               "bg-brand-50 ring-2 ring-brand-200 dark:bg-brand-500/15 dark:ring-brand-500/30",
           )}
         >
-          <del className={diffDel}>{p.find}</del>
-          <ins
-            className={cn(
-              diffAdd,
-              p.confidence === "pruefen" &&
-                "underline decoration-late decoration-wavy decoration-1 underline-offset-4",
-            )}
-          >
-            {p.text}
-          </ins>
+          {/* Only the words that change are marked; a sentence that stays mostly the same stays one sentence. */}
+          {wordDiff(p.find ?? "", p.text ?? "").map((seg, i) =>
+            seg.kind === "same" ? (
+              <Fragment key={i}>{seg.text}</Fragment>
+            ) : seg.kind === "del" ? (
+              <del key={i} className={diffDel}>{seg.text}</del>
+            ) : (
+              <ins key={i} className={cn(diffAdd, p.confidence === "pruefen" && "underline decoration-late decoration-wavy decoration-1 underline-offset-4")}>{seg.text}</ins>
+            ),
+          )}
         </button>
       </PopoverAnchor>
       <PopoverContent
@@ -468,50 +471,10 @@ function ReplaceMark({ p, ctx }: { p: LiveProposal; ctx: Ctx }) {
   );
 }
 
-/* ---------- A whole section replaced (own projects): line diff, actions right below ---------- */
-
-type DiffLine = { kind: "same" | "del" | "add"; text: string };
-
-/** Line diff by longest common subsequence; sections are at most a few thousand characters. */
-function diffLines(before: string, after: string): DiffLine[] {
-  const a = before.replace(/\s+$/, "").split("\n"), b = after.replace(/\s+$/, "").split("\n");
-  const n = a.length, m = b.length;
-  const lcs = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
-  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) lcs[i][j] = a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
-  const out: DiffLine[] = [];
-  let i = 0, j = 0;
-  while (i < n && j < m) {
-    if (a[i] === b[j]) { out.push({ kind: "same", text: a[i] }); i++; j++ }
-    else if (lcs[i + 1][j] >= lcs[i][j + 1]) out.push({ kind: "del", text: a[i++] });
-    else out.push({ kind: "add", text: b[j++] });
-  }
-  while (i < n) out.push({ kind: "del", text: a[i++] });
-  while (j < m) out.push({ kind: "add", text: b[j++] });
-  return out;
-}
-
-/** One line of a section as it reads: Markdown headings and list items formatted, blank lines as space. */
-function SectionLine({ text, className }: { text: string; className?: string }) {
-  if (!text.trim()) return <div className="h-3" aria-hidden />;
-  // Markdown table rows (the import writes tables this way): one grid row per line, the separator line hidden.
-  if (/^\s*\|.*\|\s*$/.test(text)) {
-    if (/^\s*\|[\s:|-]+\|\s*$/.test(text)) return null;
-    const cells = text.trim().slice(1, -1).split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, "|"));
-    return (
-      <div className={cn("grid border-b text-[14px] leading-6", className)} style={{ gridTemplateColumns: `repeat(${cells.length}, minmax(0, 1fr))` }}>
-        {cells.map((c, i) => <span key={i} className="px-2 py-1 [overflow-wrap:anywhere]">{c}</span>)}
-      </div>
-    );
-  }
-  const heading = text.match(/^(#{1,6})\s+(.*)$/);
-  if (heading) return <p className={cn("mt-2 font-medium tracking-tight", heading[1].length <= 2 ? "text-xl" : "text-lg", className)}>{heading[2]}</p>;
-  const item = text.match(/^(\s*)([-*•]|\d+[.)])\s+(.*)$/);
-  if (item) return <p className={cn("flex gap-2", className)} style={{ paddingInlineStart: item[1].length * 8 }}><span className="text-muted-foreground">{/\d/.test(item[2]) ? item[2] : "•"}</span><span>{item[3]}</span></p>;
-  return <p className={className}>{text}</p>;
-}
+/* ---------- A whole section replaced (own projects): the section as it will read, actions right below ---------- */
 
 function SectionText({ text }: { text: string }) {
-  return <div className="grid">{text.replace(/\s+$/, "").split("\n").map((line, i) => <SectionLine key={i} text={line} />)}</div>;
+  return <Markdown text={text} />;
 }
 
 function SectionReplace({ p, ctx }: { p: LiveProposal; ctx: Ctx }) {
@@ -526,32 +489,28 @@ function SectionReplace({ p, ctx }: { p: LiveProposal; ctx: Ctx }) {
     );
   const isActive = ctx.active === p.id;
   const isEditing = ctx.editing === p.id;
+  // The initial check: every change numbered in place, with its reason and evidence below.
+  if (p.generation?.findings?.length)
+    return (
+      <SectionReview
+        key={p.generation.id}
+        p={p}
+        active={isActive}
+        onActivate={() => ctx.setActive(p.id)}
+        editing={isEditing}
+        onEdit={() => ctx.setEditing(p.id)}
+        editor={(text) => <ReplaceEditor p={p} ctx={ctx} initial={text} />}
+      />
+    );
   // Without a draft the new text equals the old one: show the section as it is and say what is missing.
   const drafted = p.text !== undefined && p.text !== p.find;
-  const lines = drafted ? diffLines(p.find ?? "", p.text ?? "") : [];
   return (
     <section
       id={`s-${p.id}`}
       onClick={() => ctx.setActive(p.id)}
       className={cn("-mx-4 grid scroll-mt-32 gap-3 rounded-xl px-4 py-3 transition-colors", isActive ? "bg-brand-50/60 ring-2 ring-brand-200 dark:bg-brand-500/10 dark:ring-brand-500/30" : "hover:bg-muted/40")}
     >
-      {drafted ? (
-        <div className="grid" aria-label="Änderungen im Abschnitt">
-          {lines.map((l, i) =>
-            l.kind === "same" ? (
-              <SectionLine key={i} text={l.text} />
-            ) : !l.text.trim() ? null : (
-              <SectionLine
-                key={i}
-                text={l.text}
-                className={cn("-mx-2 rounded-sm px-2", l.kind === "del" ? "bg-red-500/10 text-red-700 line-through decoration-1 dark:text-red-300" : "bg-emerald-500/15 text-emerald-900 dark:text-emerald-100")}
-              />
-            ),
-          )}
-        </div>
-      ) : (
-        <SectionText text={p.find ?? ""} />
-      )}
+      {drafted ? <MarkdownRows rows={changeRows(p.find ?? "", [{ edits: editsBetween(p.find ?? "", p.text ?? "") }])} /> : <SectionText text={p.find ?? ""} />}
       {isEditing ? (
         <ReplaceEditor p={p} ctx={ctx} />
       ) : (
@@ -575,9 +534,9 @@ function SectionReplace({ p, ctx }: { p: LiveProposal; ctx: Ctx }) {
   );
 }
 
-function ReplaceEditor({ p, ctx }: { p: LiveProposal; ctx: Ctx }) {
+function ReplaceEditor({ p, ctx, initial }: { p: LiveProposal; ctx: Ctx; initial?: string }) {
   const decide = useDecisions((s) => s.decide);
-  const [text, setText] = useState(p.text ?? "");
+  const [text, setText] = useState(initial ?? p.text ?? "");
   return (
     <EditFrame
       p={p}
@@ -598,8 +557,8 @@ function ReplaceEditor({ p, ctx }: { p: LiveProposal; ctx: Ctx }) {
         autoFocus
         value={text}
         onChange={(e) => setText(e.target.value)}
-        rows={Math.max(2, Math.ceil(text.length / 80))}
-        className="text-[15px] leading-7"
+        rows={Math.min(30, Math.max(2, text.split("\n").length + Math.ceil(text.length / 120)))}
+        className="font-mono text-[13px] leading-6"
       />
     </EditFrame>
   );

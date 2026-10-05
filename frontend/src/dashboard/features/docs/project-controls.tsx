@@ -1,4 +1,4 @@
-import { useRef, useState, type DragEvent } from 'react'
+import { useEffect, useRef, useState, type DragEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Download, FileText, FolderGit2, FolderOpen, GitBranch, KeyRound, LoaderCircle, Upload, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -6,7 +6,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
-import { importProject, importSample, projectAction, projectState } from './project'
+import { importProject, importSample, loadCheckStatus, projectAction, projectState, startCheck, type CheckStatus } from './project'
+import { Progress } from '@/components/ui/progress'
 import { archive, candidates, pick, type Picked, type Role } from './upload'
 import { repoUrl } from './import-rules.mjs'
 import { loadSetup } from '@/features/settings/api'
@@ -89,15 +90,38 @@ export function ProjectControls({ prominent }: { prominent?: boolean }) {
 export function StartCheck() {
   const [pending, setPending] = useState(false), [error, setError] = useState('')
   const setup = useQuery({ queryKey: ['setup'], queryFn: loadSetup })
+  // The check runs on the server; the page asks how far it is and reloads when the proposals are ready.
+  const status = useQuery({ queryKey: ['check-status'], queryFn: loadCheckStatus, refetchInterval: (q) => (q.state.data?.running || pending ? 1500 : false) })
+  const wasRunning = useRef(false)
+  useEffect(() => {
+    if (status.data?.running) wasRunning.current = true
+    else if (wasRunning.current && status.data?.phase === 'done') window.location.reload()
+  }, [status.data])
   // The check only makes sense when its findings can be turned into corrections: Jev and an LLM first.
   const missing = setup.data ? [!setup.data.jev.configured && 'Jev-Key', !setup.data.drafting.configured && 'LLM'].filter(Boolean) : []
   if (missing.length) return <div className='grid justify-items-start gap-2 md:justify-items-end'>
     <Button size='lg' asChild><Link to='/einstellungen'><KeyRound />Einrichtung abschließen</Link></Button>
     <p className='max-w-[42ch] text-xs text-muted-foreground md:text-right'>Für die Erstprüfung fehlt noch: {missing.join(' und ')}.</p>
   </div>
+  const running = pending || status.data?.running
   return <div className='grid justify-items-start gap-2 md:justify-items-end'>
-    <Button size='lg' disabled={pending} onClick={() => { setPending(true); setError(''); projectAction('check').catch((cause: unknown) => { setError(cause instanceof Error ? cause.message : 'Die Erstprüfung wurde abgebrochen. Versuch es noch einmal.'); setPending(false) }) }}>{pending ? <LoaderCircle className='animate-spin' /> : <FolderGit2 />}{pending ? 'Prüft …' : 'Erstprüfung starten'}</Button>
-    {error && <p role='alert' className='max-w-[42ch] text-xs text-destructive md:text-right'>{error}</p>}
+    {running ? <CheckProgress status={status.data} /> : (
+      <Button size='lg' onClick={() => { setPending(true); setError(''); startCheck().then(() => void status.refetch()).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Die Erstprüfung wurde abgebrochen. Versuch es noch einmal.')).finally(() => setPending(false)) }}><FolderGit2 />Erstprüfung starten</Button>
+    )}
+    {(error || status.data?.phase === 'failed') && <p role='alert' className='max-w-[42ch] text-xs text-destructive md:text-right'>{error || `Die Erstprüfung wurde abgebrochen: ${status.data?.error}`}</p>}
+  </div>
+}
+
+const phaseLabel = { sections: 'Abschnitte werden mit dem Code verglichen', lists: 'Listen werden auf Vollständigkeit geprüft', jev: 'Jev prüft die Befunde gegen' } as const
+
+/** While the check runs: how far it is. It takes about two to five seconds per section. */
+function CheckProgress({ status }: { status?: CheckStatus }) {
+  const share = status?.total ? (status.done / status.total) * 100 : 0
+  const phase = status?.phase && status.phase in phaseLabel ? phaseLabel[status.phase as keyof typeof phaseLabel] : 'Prüfung startet'
+  return <div className='grid w-72 gap-2' role='status' aria-live='polite'>
+    <span className='flex items-center gap-2 text-sm font-medium'><LoaderCircle className='size-4 animate-spin text-brand-600' />{phase} …</span>
+    <Progress value={status?.phase === 'sections' ? share : status?.phase ? 100 : 0} className='h-2' />
+    <span className='text-xs text-muted-foreground'>{status?.total ? `${status.done} von ${status.total} Abschnitten geprüft` : 'Gleich geht es los.'} Du kannst die Seite offen lassen.</span>
   </div>
 }
 

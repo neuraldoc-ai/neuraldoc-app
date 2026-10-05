@@ -9,7 +9,12 @@ export type ProjectState = {
   project: null | {
     id: string; name: string; createdAt: string; warnings: string[]
     sources: { repo: Source; docs: Source | null }
-    mapping: null | { subjects: number; mismatches: number; consistent: number; deferred: string[]; usage: { requests: number; estimatedUsd: number } }
+    mapping: null | {
+      subjects: number; mismatches: number; consistent: number; deferred: string[]; model?: string
+      /** Section check (since October 2026): sections without prose, open questions, failed sections, all findings. */
+      skipped?: number; unclear?: number; errors?: number; findings?: number
+      usage: { requests: number; estimatedUsd: number; llm?: { calls: number; cached: number; usd: number } }
+    }
     files: { id: string; path: string }[]
     documents: { id: string; title: string; path: string; origin: 'repo' | 'docs'; format: string; part: number; parts: number }[]
   }
@@ -42,11 +47,21 @@ async function result(response: Response) {
   const body = await response.json().catch(() => ({ error: `Der Server meldet HTTP ${response.status}.` })) as { error?: string }
   if (!response.ok) throw new Error(body.error || 'Das hat nicht geklappt. Versuch es noch einmal.')
 }
-export async function projectAction(action: 'activate' | 'check', body: unknown = {}) {
+export async function projectAction(action: 'activate', body: unknown = {}) {
   await result(await fetch(`/api/mcp/project/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }))
   // A new dataset invalidates document and change ids of the previous one.
-  if (action === 'check') window.location.reload()
-  else window.location.assign(`${import.meta.env.BASE_URL}`)
+  window.location.assign(`${import.meta.env.BASE_URL}`)
+}
+
+/** The initial check runs on the server in the background: sections, then completeness of lists, then Jev. */
+export type CheckStatus = { running: boolean; phase: 'sections' | 'lists' | 'jev' | 'done' | 'failed' | null; done: number; total: number; findings: number; error: string | null; finishedAt: string | null }
+export async function startCheck() {
+  await result(await fetch('/api/mcp/project/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }))
+}
+export async function loadCheckStatus(): Promise<CheckStatus> {
+  const response = await fetch('/api/mcp/project/check', { cache: 'no-store' })
+  if (!response.ok) throw new Error('Der Stand der Erstprüfung ist nicht abrufbar.')
+  return response.json() as Promise<CheckStatus>
 }
 export async function importProject(archive: Uint8Array) {
   await result(await fetch('/api/mcp/project/import', { method: 'POST', headers: { 'Content-Type': 'application/zip' }, body: archive as Uint8Array<ArrayBuffer> }))

@@ -1,6 +1,18 @@
 import { create } from 'zustand'
 import type { Proposal } from './data'
 
+/** One deviation the initial check found in a section, with its reason, its evidence and the line edits that fix it. */
+export type Finding = {
+  kind: "contradicts" | "removed" | "missing"
+  doc_quote: string
+  explanation: string
+  evidence: { id: string; quote: string; source: string; file: string }[]
+  absent: string[]
+  edits: { op: "replace" | "insert_after" | "delete"; start: number; end: number; text: string }[]
+  /** Jev confirmed the finding. */
+  sure: boolean
+  jev: { verdict: string; probability: number } | null
+}
 export type Generation = {
   status?: "draft" | "needs_context" | "no_change"
   recommendation?: string
@@ -9,6 +21,8 @@ export type Generation = {
   model: string
   createdAt: string
   evidenceIds: string[]
+  /** Own projects: the findings behind the correction, one per marked change. */
+  findings?: Finding[]
   usage: { inputTokens: number | null; outputTokens: number; costUsd: number | null }
 }
 export type GeneratedPatch = Pick<Proposal, 'text' | 'blocks' | 'rows' | 'why' | 'confidence' | 'question'> & { generation: Generation }

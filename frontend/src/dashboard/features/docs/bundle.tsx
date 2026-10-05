@@ -151,7 +151,8 @@ export function BundlePage({ id }: { id: string }) {
 
 function CheckSignals({ b, subjects }: { b: LiveBundle; subjects: number }) {
   const total = b.proposals.length
-  const drafted = b.proposals.filter((p) => p.generation?.status === 'draft').length
+  const findings = b.proposals.reduce((n, p) => n + (p.generation?.findings?.length ?? 0), 0)
+  const sure = b.proposals.reduce((n, p) => n + (p.generation?.findings?.filter((f) => f.sure).length ?? 0), 0)
   const questions = b.proposals.filter((p) => p.state === 'offen' && (p.generation?.status === 'needs_context' || p.question)).length
   const done = total - b.open
   return (
@@ -168,7 +169,7 @@ function CheckSignals({ b, subjects }: { b: LiveBundle; subjects: number }) {
             {total > 0 && <Progress value={(done / total) * 100} className='h-1.5' indicatorClassName={done === total ? 'bg-emerald-500' : 'bg-brand-500'} />}
           </div>
         </div>
-        <Signal icon={Sparkles} tile='bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200' label='Entwürfe' value={`${drafted} von ${total}`} hint={drafted ? 'von deinem LLM formuliert' : 'noch keiner erstellt'} />
+        <Signal icon={Sparkles} tile='bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200' label='Änderungen' value={plural(findings, 'Änderung', 'Änderungen')} hint={findings ? `${sure} von Jev bestätigt, jede mit Codebeleg` : 'keine'} />
         <Signal
           icon={questions ? CircleHelp : Check}
           tile={questions ? 'bg-late-soft text-late-fg' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'}
@@ -189,12 +190,13 @@ function Checked({ className }: { className?: string }) {
     ? [
         { n: m.subjects, label: 'Abschnitte geprüft' },
         { n: m.consistent, label: 'passen zum Code' },
-        { n: Math.max(0, m.deferred.length - m.consistent), label: 'ohne Bezug zum Code' },
+        { n: m.mismatches, label: 'weichen ab' },
+        ...(m.skipped ? [{ n: m.skipped, label: 'ohne prüfbaren Inhalt' }] : []),
       ]
     : []
   return (
     <Panel className={className} title='Was geprüft wurde'>
-      <div className='grid gap-2 sm:grid-cols-3'>
+      <div className={cn('grid gap-2 sm:grid-cols-3', stats.length > 3 && 'sm:grid-cols-4')}>
         {stats.map((s) => (
           <div key={s.label} className='grid gap-0.5 rounded-xl border p-3'>
             <span className='text-2xl leading-none font-medium tabular-nums'>{s.n}</span>
@@ -439,8 +441,12 @@ const opIcon = { replace: PenLine, insert: Plus, rows: Rows3, note: MessageSquar
 const confDot: Record<Confidence, string> = { hoch: 'bg-emerald-500', mittel: 'bg-brand-400', pruefen: 'bg-late' }
 
 /** Own projects: how far the correction is. Approval needs a draft. */
-const draftLabel = (p: LiveProposal) =>
-  p.generation?.status === 'draft' ? `Entwurf von ${p.generation.model}` : p.generation?.status === 'no_change' ? 'Laut LLM stimmt der Text' : p.generation?.status === 'needs_context' ? 'Rückfrage vom LLM' : 'Noch kein Entwurf'
+const KIND_WORD = { contradicts: 'stimmt nicht mehr', removed: 'gibt es nicht mehr', missing: 'fehlt' } as const
+const draftLabel = (p: LiveProposal) => {
+  const f = p.generation?.findings
+  if (f?.length) return `${plural(f.length, 'Änderung', 'Änderungen')}: ${[...new Set(f.map((x) => KIND_WORD[x.kind]))].join(', ')}`
+  return p.generation?.status === 'draft' ? `Entwurf von ${p.generation.model}` : p.generation?.status === 'no_change' ? 'Laut Prüfung stimmt der Text' : p.generation?.status === 'needs_context' ? 'Rückfrage' : 'Noch kein Entwurf'
+}
 
 function ProposalRow({ p, written }: { p: LiveProposal; written?: ChangeStatus['writebacks'][number] }) {
   const decide = useDecisions((s) => s.decide)
