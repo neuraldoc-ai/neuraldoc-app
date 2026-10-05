@@ -17,13 +17,15 @@ export function StartReview({ proposals, first, label = "Starten" }: { proposals
   const [count, setCount] = useState({ completed: 0, total: 0 })
   async function start() {
     if (running.current || !first) return
+    // Only places without a draft; existing drafts stay as they are.
+    const targets = proposals.filter((p) => p.state === 'offen' && p.op !== 'note' && !p.task && !p.generation)
+    // Everything is drafted already: nothing to wait for, go straight to the changes.
+    if (!targets.length) { void navigate({ to: '/aenderungen' }); return }
     running.current = true
     setPending(true)
     setOpen(true)
     setError('')
     try {
-      // Only places without a draft; existing drafts stay as they are.
-      const targets = proposals.filter((p) => p.state === 'offen' && p.op !== 'note' && !p.task && !p.generation)
       setCount({ completed: 0, total: targets.length })
       await prepareReview(targets, generateProposal, (completed, total) => setCount({ completed, total }))
       // Nothing came through (no key, provider down): say why instead of jumping to an empty review.
