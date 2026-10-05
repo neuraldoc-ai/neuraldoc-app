@@ -1,10 +1,22 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { FolderGit2, HardDrive, KeyRound, RefreshCw, Save, UserRound } from "lucide-react";
+import { toast } from "sonner";
+import { FolderGit2, HardDrive, KeyRound, LoaderCircle, RefreshCw, RotateCcw, Save, UserRound } from "lucide-react";
 import { AppHeader } from "@/components/layout/app-header";
 import { Main } from "@/components/layout/main";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -139,6 +151,71 @@ function Status({ setup, refresh, fetching }: { setup: Setup; refresh: () => voi
   );
 }
 
+const resets = {
+  projects: {
+    label: "Projekte zurücksetzen",
+    title: "Alle Projekte löschen?",
+    text: "Importierte Projekte, Erstprüfungen, Entwürfe und Freigaben werden gelöscht. Profil und Keys bleiben. Deine Originaldateien sind nicht betroffen.",
+  },
+  all: {
+    label: "Alles zurücksetzen",
+    title: "Alles löschen?",
+    text: "Zusätzlich zu allen Projekten werden Profil, Keys und Modellwahl gelöscht. neuraldoc startet danach wie frisch installiert. Deine Originaldateien sind nicht betroffen.",
+  },
+} as const;
+
+function ResetCard() {
+  const [pending, setPending] = useState<keyof typeof resets | null>(null);
+  async function reset(scope: keyof typeof resets) {
+    setPending(scope);
+    try {
+      const response = await fetch("/api/mcp/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scope }) });
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) throw new Error(body.error || "Zurücksetzen fehlgeschlagen.");
+      // A fresh start: every page reloads its data.
+      window.location.assign(import.meta.env.BASE_URL);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Zurücksetzen fehlgeschlagen.");
+      setPending(null);
+    }
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <RotateCcw className="size-4" />
+          Zurücksetzen
+        </CardTitle>
+        <CardDescription>Neu anfangen, ohne den Container neu aufzusetzen.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-wrap gap-2">
+        {(Object.keys(resets) as (keyof typeof resets)[]).map((scope) => (
+          <AlertDialog key={scope}>
+            <AlertDialogTrigger asChild>
+              <Button variant={scope === "all" ? "destructive" : "outline"} size="sm" disabled={!!pending}>
+                {pending === scope ? <LoaderCircle className="animate-spin" /> : <RotateCcw />}
+                {resets[scope].label}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{resets[scope].title}</AlertDialogTitle>
+                <AlertDialogDescription>{resets[scope].text}</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+                <AlertDialogAction className={scope === "all" ? buttonVariants({ variant: "destructive" }) : undefined} onClick={() => void reset(scope)}>
+                  {resets[scope].label}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
 function Storage() {
   return (
     <Card>
@@ -210,6 +287,7 @@ export function SettingsPage() {
             <div className="grid gap-5">
               <Status setup={setup} refresh={() => void query.refetch()} fetching={query.isFetching} />
               <GitForm setup={setup} />
+              <ResetCard />
               <Storage />
             </div>
           </div>

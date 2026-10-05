@@ -178,7 +178,7 @@ A local LLM on the same computer is reached from the container at `http://host.d
 - **What leaves your machine:** document text and code excerpts go to Jev (TypeSafe API) when you start the initial check, and to your LLM provider when you draft. With a local LLM, only the Jev request leaves your machine. A GitHub URL is cloned directly from GitHub.
 - **Beispielprojekt laden** clones two public GitHub repositories. The **showcase image** makes no external calls at all.
 - **No telemetry**, no analytics, no tracking. Keys are read at runtime and never written to the image, the caches or the export.
-- Projects, decisions and caches live in the Docker volume `neuraldoc-data`. `docker volume rm neuraldoc-data` deletes everything.
+- Projects, decisions and caches live in the Docker volume `neuraldoc-data`. **Einstellungen → Zurücksetzen** deletes all projects, or everything including profile and keys; `docker volume rm neuraldoc-data` deletes the volume.
 
 neuraldoc is built for local use by one person or a small team. There is no user management; do not expose it on a public network.
 

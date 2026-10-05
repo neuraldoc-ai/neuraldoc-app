@@ -61,6 +61,15 @@ export function activateProject(id) {
   if (id && !fs.existsSync(fileFor(id))) throw new Error('Projekt nicht gefunden.')
   write(activePath, { id: id || null }); return projectPayload()
 }
+/** Deletes every imported project with its check, drafts, decisions and caches; the app starts empty again. */
+export function resetProjects() {
+  if (showcaseOnly()) throw new DraftError('Im Showcase gibt es nichts zurückzusetzen.', 403)
+  if (busy) throw new DraftError('Ein Import oder Modelllauf läuft gerade. Bitte danach zurücksetzen.', 409)
+  const count = projectList().length
+  fs.rmSync(projectsDir, { recursive: true, force: true })
+  log.info('reset', 'Projekte gelöscht', { projects: count })
+  return projectPayload()
+}
 export function projectList() {
   if (showcaseOnly()) return []
   return fs.existsSync(projectsDir) ? fs.readdirSync(projectsDir).filter((id) => /^[a-f0-9]{20}$/.test(id)).map((id) => read(fileFor(id), null)).filter((p) => p?.docSources).map((p) => ({ id: p.id, name: p.name, createdAt: p.createdAt })) : []

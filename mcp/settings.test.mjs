@@ -34,6 +34,14 @@ test('profile names the reviewer; the MCP token is random per installation and s
   assert.match(token, /^nd_[\w-]{24}$/)
   assert.equal(installToken(), token)
 })
+test('resetting the settings forgets profile and keys; the environment still applies', async () => {
+  const { resetSettings } = await import('./settings.mjs')
+  saveSettings({ NEURALDOC_USER_NAME: 'Erika Muster', TYPESAFE_API_KEY: 'ui-jev-1234' })
+  resetSettings()
+  assert.equal(profile().name, '')
+  assert.deepEqual(publicSettings().secrets.TYPESAFE_API_KEY, { set: false })
+  assert.equal(runtimeEnv().OPENAI_API_KEY, 'env-openai')
+})
 test('unknown fields and multi-line values are refused', () => {
   assert.throws(() => saveSettings({ PATH: '/tmp' }), /Unbekanntes Feld/)
   assert.throws(() => saveSettings({ OPENAI_API_KEY: 'a\nb' }), /Ungültiger Wert/)

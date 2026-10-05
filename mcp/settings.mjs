@@ -45,6 +45,12 @@ export function saveSettings(input) {
   return publicSettings()
 }
 
+/** Forgets everything entered in the interface: profile, keys, model. Environment variables still apply. */
+export function resetSettings() {
+  fs.rmSync(file(), { force: true })
+  return publicSettings()
+}
+
 /** The person using this installation, as entered in the settings. */
 export function profile(env = runtimeEnv()) {
   const name = env.NEURALDOC_USER_NAME?.trim() || ''

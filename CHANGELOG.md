@@ -20,6 +20,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - The app starts empty and contains no sample data; a start screen offers your own project or **Beispielprojekt laden**, which clones `mobiq-code` and `mobiq-docs` from GitHub and imports them like any project. The app image builds without submodules.
 - The prepared MOBIQ showcase is its own image: `docker build --target showcase`.
 - Confluence pages in storage format (`.xml`) are read as documentation.
+- Einstellungen → Zurücksetzen: delete all projects, or everything including profile and keys.
 - CI for tests, build, lint and a Docker smoke test.
 - `ARCHITECTURE.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, guides under `docs/`.
 - Evaluation of the initial check in `mcp/eval`: MOBIQ plus three open-source benchmarks from real project history (httpx, zx, cobra), item-level scoring, a calibrated LLM judge for drafts, cost and time per variant.

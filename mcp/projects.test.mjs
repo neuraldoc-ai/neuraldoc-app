@@ -357,3 +357,13 @@ test('a correction may not drop most of the section or paste source code', async
   assert.throws(() => validateDraft(draft(before + "<Checkbox label={t('kv.teil')} onChange={(v) => set(v)} />\n<Button disabled={!kv.teil} onClick={() => open(kv)}>Aufteilen</Button>\n"), context), /Quellcode/)
   assert.doesNotThrow(() => validateDraft(draft('# Neu\n\nAlles anders.\n'), { ...context, target: { op: 'replace', instruction: 'x' } }), 'only corrections with preserve are checked')
 })
+
+test('reset deletes every project; the app starts empty; the showcase refuses', async () => {
+  process.env.NEURALDOC_MODE = 'showcase'
+  try { assert.throws(() => projects.resetProjects(), /Showcase/) } finally { delete process.env.NEURALDOC_MODE }
+  assert.ok(projects.projectList().length > 0)
+  const payload = projects.resetProjects()
+  assert.equal(payload.mode, 'empty')
+  assert.deepEqual(projects.projectList(), [])
+  assert.equal(projects.activeProject(), null)
+})

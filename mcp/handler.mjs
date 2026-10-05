@@ -7,8 +7,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DraftError, draftingStatus } from './drafting.mjs'
 import { setupStatus } from './setup.mjs'
-import { installToken, profile, publicSettings, reviewer, saveSettings } from './settings.mjs'
-import { activeProject, addProject, activateProject, projectList, projectPayload, checkProject, projectDraft, projectDecisions, resetProjectDecisions, exportProject, showcaseOnly } from './projects.mjs'
+import { installToken, profile, publicSettings, resetSettings, reviewer, saveSettings } from './settings.mjs'
+import { activeProject, addProject, activateProject, projectList, projectPayload, checkProject, projectDraft, projectDecisions, resetProjectDecisions, resetProjects, exportProject, showcaseOnly } from './projects.mjs'
 import { LIMITS } from '../frontend/src/dashboard/features/docs/import-rules.mjs'
 import { docTypeOrder, docTypes } from '../frontend/src/dashboard/features/docs/vocabulary.ts'
 import { log, logError } from './log.mjs'
@@ -165,6 +165,15 @@ async function api(req, res, path) {
       const settings = saveSettings(await readJsonBody(req, 65536))
       log.info('setup', 'Einstellungen gespeichert', { keys: Object.entries(settings.secrets).filter(([, s]) => s.set).map(([k, s]) => `${k} (${s.source})`).join(', ') || 'keine' })
       return send(res, 200, { ...setupStatus(), settings, editable: true })
+    }
+    if (req.method === 'POST' && path === '/api/mcp/reset') {
+      // scope projects: imported projects only; all: also profile, keys and model. The MCP token stays, so agents stay connected.
+      localMutation()
+      const { scope } = await readJsonBody(req, 1024)
+      if (!['projects', 'all'].includes(scope)) throw new Error('scope muss projects oder all sein.')
+      resetProjects()
+      if (scope === 'all') { resetSettings(); log.info('reset', 'Profil und Keys gelöscht') }
+      return send(res, 200, { ok: true, scope })
     }
 
     if (!showcaseOnly()) {
