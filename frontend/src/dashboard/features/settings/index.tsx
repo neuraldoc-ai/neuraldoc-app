@@ -129,7 +129,7 @@ function Status({ setup, refresh, fetching }: { setup: Setup; refresh: () => voi
       <CardHeader className="flex flex-row items-start justify-between gap-3">
         <div className="grid gap-1">
           <CardTitle className="text-base">Bereit für eigene Projekte?</CardTitle>
-          <CardDescription>Prüft die Einrichtung</CardDescription>
+          <CardDescription>Was schon eingerichtet ist</CardDescription>
         </div>
         <Button variant="outline" size="sm" onClick={refresh} disabled={fetching}>
           <RefreshCw />
@@ -175,7 +175,7 @@ function ResetCard() {
       // A fresh start: every page reloads its data.
       window.location.assign(import.meta.env.BASE_URL);
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : "Zurücksetzen fehlgeschlagen.");
+      toast.error(cause instanceof Error ? cause.message : "Zurücksetzen hat nicht geklappt. Versuch es noch einmal.");
       setPending(null);
     }
   }
@@ -264,7 +264,7 @@ export function SettingsPage() {
           <p className="text-sm text-muted-foreground">Wird geladen …</p>
         ) : query.isError || !setup || !v ? (
           <p role="alert" className="text-sm text-muted-foreground">
-            Einstellungen nicht erreichbar. Läuft der Container? Protokoll: docker logs neuraldoc
+            Die Einstellungen konnten nicht geladen werden. Läuft der Container? Details zeigt docker logs neuraldoc.
           </p>
         ) : !setup.editable ? (
           <Card>

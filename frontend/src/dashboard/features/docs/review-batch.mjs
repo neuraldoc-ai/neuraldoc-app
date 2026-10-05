@@ -10,7 +10,7 @@ export async function prepareReview(targets, generate, progress) {
         const draft = await generate(target.id)
         if (draft.result.status === 'needs_context') issues.push({ id: target.id, title: target.title, message: draft.result.question })
       } catch (error) {
-        issues.push({ id: target.id, title: target.title, message: error instanceof Error ? error.message : 'Texterstellung fehlgeschlagen.' })
+        issues.push({ id: target.id, title: target.title, message: error instanceof Error ? error.message : 'Der Text konnte nicht formuliert werden.' })
       }
       progress(++completed, targets.length)
     }

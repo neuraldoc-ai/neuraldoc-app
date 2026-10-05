@@ -25,7 +25,7 @@ function Dropzone({ role, value, url, onPicked, onUrl, disabled }: { role: Role;
     try {
       const picked = await pick(await source, role)
       if (role === 'repo' && !picked.code) throw new Error('Keine Code-Dateien gefunden. Bitte den Ordner des Repositories wählen.')
-      if (role === 'docs' && !picked.docs) throw new Error('Keine unterstützten Dokumente gefunden.')
+      if (role === 'docs' && !picked.docs) throw new Error('Keine unterstützten Dokumente gefunden. Möglich sind PDF, Word, Excel, PowerPoint, Markdown, Text und HTML.')
       onPicked(picked); onUrl('')
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Dateien konnten nicht gelesen werden.') } finally { setReading(false) }
   }
@@ -57,7 +57,7 @@ export function ProjectControls({ prominent }: { prominent?: boolean }) {
   const [repo, setRepo] = useState<Picked | null>(null), [docsPicked, setDocs] = useState<Picked | null>(null), [repoLink, setRepoLink] = useState(''), [docsLink, setDocsLink] = useState('')
   async function run(action: string, work: () => Promise<void>) {
     setPending(action); setError('')
-    try { await work() } catch (cause) { setError(cause instanceof Error ? cause.message : 'Aktion fehlgeschlagen.') } finally { setPending('') }
+    try { await work() } catch (cause) { setError(cause instanceof Error ? cause.message : 'Das hat nicht geklappt. Versuch es noch einmal.') } finally { setPending('') }
   }
   if (!projectState?.canImport) return null
   const repoValid = !!repo || !!repoUrl(repoLink), docsValid = !docsLink.trim() || !!repoUrl(docsLink)
@@ -82,7 +82,7 @@ export function ProjectControls({ prominent }: { prominent?: boolean }) {
           {!!projectState.projects?.length && <div className='grid gap-1 border-t pt-3'><p className='text-xs text-muted-foreground'>Bisherige Projekte</p>{projectState.projects.map((project) => <Button key={project.id} variant='ghost' className='justify-between' disabled={!!pending} onClick={() => void run('activate', () => projectAction('activate', { id: project.id }))}><span>{project.name}</span><span className='text-xs text-muted-foreground'>{new Date(project.createdAt).toLocaleDateString('de-DE')}</span></Button>)}</div>}
         </DialogContent>
       </Dialog>
-      {projectState.project && <Button variant='outline' size='sm' onClick={() => void downloadExport().catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Export fehlgeschlagen.'))}><Download />Freigaben exportieren</Button>}
+      {projectState.project && <Button variant='outline' size='sm' onClick={() => void downloadExport().catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Der Export hat nicht geklappt. Versuch es noch einmal.'))}><Download />Freigaben exportieren</Button>}
     </div>
     {error && !open && <p role='alert' className='text-sm text-destructive'>{error}</p>}
   </div>
@@ -99,7 +99,7 @@ export function StartCheck() {
     <p className='max-w-[42ch] text-xs text-muted-foreground md:text-right'>Für die Erstprüfung fehlt noch: {missing.join(' und ')}.</p>
   </div>
   return <div className='grid justify-items-start gap-2 md:justify-items-end'>
-    <Button size='lg' disabled={pending} onClick={() => { setPending(true); setError(''); projectAction('check').catch((cause: unknown) => { setError(cause instanceof Error ? cause.message : 'Erstprüfung fehlgeschlagen.'); setPending(false) }) }}>{pending ? <LoaderCircle className='animate-spin' /> : <FolderGit2 />}{pending ? 'Prüft …' : 'Erstprüfung starten'}</Button>
+    <Button size='lg' disabled={pending} onClick={() => { setPending(true); setError(''); projectAction('check').catch((cause: unknown) => { setError(cause instanceof Error ? cause.message : 'Die Erstprüfung wurde abgebrochen. Versuch es noch einmal.'); setPending(false) }) }}>{pending ? <LoaderCircle className='animate-spin' /> : <FolderGit2 />}{pending ? 'Prüft …' : 'Erstprüfung starten'}</Button>
     {error && <p role='alert' className='max-w-[42ch] text-xs text-destructive md:text-right'>{error}</p>}
   </div>
 }
@@ -107,8 +107,8 @@ export function StartCheck() {
 async function downloadExport() {
   const response = await fetch('/api/mcp/project/export')
   const result = await response.json() as { error?: string; files: { path: string; content: string; beforeSha256: string }[] }
-  if (!response.ok) throw new Error(result.error || 'Export fehlgeschlagen.')
-  if (!result.files.length) throw new Error('Noch keine Dokumentänderung freigegeben.')
+  if (!response.ok) throw new Error(result.error || 'Der Export hat nicht geklappt. Versuch es noch einmal.')
+  if (!result.files.length) throw new Error('Noch nichts zu exportieren. Übernimm zuerst mindestens einen Vorschlag.')
   const { zipSync, strToU8 } = await import('fflate')
   const files: Record<string, Uint8Array> = { 'neuraldoc-export.json': strToU8(JSON.stringify(result, null, 2)) }
   for (const file of result.files) files[file.path] = strToU8(file.content)

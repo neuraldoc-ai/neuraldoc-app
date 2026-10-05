@@ -53,7 +53,7 @@ export function UsageSection() {
       {period === 'custom' && <><div className='grid gap-1.5'><Label htmlFor='usage-from'>Von</Label><Input id='usage-from' type='date' value={from} onChange={(e) => setFrom(e.target.value)} /></div><div className='grid gap-1.5'><Label htmlFor='usage-until'>Bis</Label><Input id='usage-until' type='date' value={until} min={from} onChange={(e) => setUntil(e.target.value)} /></div></>}
       <p className='ms-auto text-xs text-muted-foreground'>Zeitangaben: Berlin{data ? ` · Stand ${dateTime(data.generatedAt)}` : ''}</p>
     </CardContent></Card>
-    {query.isPending ? <Skeleton className='h-72' /> : query.isError ? <Blank title='Verlauf nicht erreichbar'>Server und gewählten Zeitraum prüfen. <Button variant='link' onClick={() => void query.refetch()}>Erneut laden</Button></Blank> : data && <>
+    {query.isPending ? <Skeleton className='h-72' /> : query.isError ? <Blank title='Verlauf konnte nicht geladen werden'>Prüf, ob der Server läuft, oder wähl einen anderen Zeitraum. <Button variant='link' onClick={() => void query.refetch()}>Erneut laden</Button></Blank> : data && <>
       {data.warnings.length > 0 && <Card className='border-late/40'><CardContent className='pt-5 text-sm' role='alert'><strong>Ein Teil des Protokolls konnte nicht geprüft werden.</strong>{data.warnings.map((w) => <p key={w}>{w}</p>)}</CardContent></Card>}
       <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
         <Stat label='MCP-Aufrufe' value={num(data.estimated.totals.calls)} hint={`${num(data.estimated.totals.successful)} erfolgreich · ${num(data.estimated.totals.failed)} fehlgeschlagen`} />
@@ -98,7 +98,7 @@ function CallTable({ calls }: { calls: Usage['estimated']['calls'] }) {
 }
 
 const eventLabel = (event: HistoryEvent) => event.kind === 'call' ? toolLabel(event.tool ?? '') : ({ decision: 'Entscheidung', writeback: 'Rückschreibung', comment: 'MR-Kommentar' })[event.kind]
-const actionLabel = (event: HistoryEvent) => ({ uebernommen: 'Freigegeben', verworfen: 'Verworfen', undo: 'Zurückgenommen', reset: 'Zurückgesetzt', write: 'Demo-Rückschreibung' })[event.action ?? ''] ?? (event.kind === 'call' ? event.ok ? 'Erfolgreich' : 'Fehler' : 'Protokolliert')
+const actionLabel = (event: HistoryEvent) => ({ uebernommen: 'Übernommen', verworfen: 'Verworfen', undo: 'Zurückgenommen', reset: 'Zurückgesetzt', write: 'Demo-Rückschreibung' })[event.action ?? ''] ?? (event.kind === 'call' ? event.ok ? 'Erfolgreich' : 'Fehler' : 'Protokolliert')
 
 function EventTable({ events }: { events: HistoryEvent[] }) {
   const [kind, setKind] = useState('all'), [by, setBy] = useState('all'), [search, setSearch] = useState(''), [page, setPage] = useState(0), [selected, setSelected] = useState<HistoryEvent | null>(null)
@@ -136,7 +136,7 @@ function EventDialog({ event, close }: { event: HistoryEvent | null; close: () =
 function Method({ data }: { data: Usage }) {
   return <Card><CardHeader><CardTitle>Was wird gezählt?</CardTitle><CardDescription>Aufrufe und Antwortzeiten stammen aus dem MCP-Protokoll. Tokenzahlen sind Schätzungen.</CardDescription></CardHeader><CardContent className='grid gap-5'>
     <Table><TableHeader><TableRow><TableHead>Wert</TableHead><TableHead>Herkunft</TableHead><TableHead>Aussage</TableHead></TableRow></TableHeader><TableBody>
-      <TableRow><TableCell>Werkzeugtexte</TableCell><TableCell>MCP-Protokoll: Zeichen ÷ 4</TableCell><TableCell>Schätzung f?r Antwort und intern gelesenen Text, kein Agenten-Gesamtverbrauch</TableCell></TableRow>
+      <TableRow><TableCell>Werkzeugtexte</TableCell><TableCell>MCP-Protokoll: Zeichen ÷ 4</TableCell><TableCell>Schätzung für Antwort und intern gelesenen Text, kein Agenten-Gesamtverbrauch</TableCell></TableRow>
       <TableRow><TableCell>Aufrufe und Antwortzeit</TableCell><TableCell>MCP-Protokoll</TableCell><TableCell>Tatsächliche Anzahl und Dauer in Millisekunden</TableCell></TableRow>
       <TableRow><TableCell>Entscheidungen und Rückschreibungen</TableCell><TableCell>Ereignisprotokoll</TableCell><TableCell>Protokollierte Freigaben, Ablehnungen, Rücknahmen und Demo-Rückschreibungen</TableCell></TableRow>
     </TableBody></Table>

@@ -389,7 +389,7 @@ function ReplaceMark({ p, ctx }: { p: LiveProposal; ctx: Ctx }) {
           className={cn("rounded-sm bg-muted px-0.5", fresh && "nd-keep")}
           title={
             p.state === "angepasst"
-              ? "Von Ihnen angepasst übernommen"
+              ? "Von dir angepasst übernommen"
               : "Übernommen"
           }
         >

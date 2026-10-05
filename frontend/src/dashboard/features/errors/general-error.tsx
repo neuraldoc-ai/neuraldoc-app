@@ -31,5 +31,5 @@ type GeneralErrorProps = React.HTMLAttributes<HTMLDivElement> & {
 }
 
 export function GeneralError({ className, minimal = false }: GeneralErrorProps) {
-  return <ErrorScreen code={minimal ? undefined : '500'} title='Da ist etwas schiefgelaufen.' body='Bitte versuchen Sie es gleich noch einmal.' actions={!minimal} className={className} />
+  return <ErrorScreen code={minimal ? undefined : '500'} title='Da ist etwas schiefgelaufen.' body='Versuch es gleich noch einmal.' actions={!minimal} className={className} />
 }

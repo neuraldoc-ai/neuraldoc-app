@@ -16,7 +16,7 @@ export const useGenerated = create<{ proposals: Record<string, GeneratedPatch>; 
 
 export async function refreshGenerated() {
   const response = await fetch('/api/mcp/drafts')
-  if (!response.ok) throw new Error('Erzeugte Texte konnten nicht geladen werden.')
+  if (!response.ok) throw new Error('Die formulierten Texte konnten nicht geladen werden.')
   useGenerated.setState({ proposals: await response.json() as Record<string, GeneratedPatch> })
 }
 
@@ -25,7 +25,7 @@ export async function generateProposal(id: string, answer?: string) {
   const response = await fetch('/api/mcp/drafts/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, answer }) })
   const result = await response.json() as { error?: string; result: { status: 'draft' | 'needs_context' | 'no_change'; question: string }; proposal?: GeneratedPatch }
   if (!response.ok) {
-    const message = result.error || 'Texterstellung fehlgeschlagen.'
+    const message = result.error || 'Der Text konnte nicht formuliert werden.'
     useGenerated.setState((s) => ({ errors: { ...s.errors, [id]: message } }))
     throw new Error(message)
   }
@@ -33,7 +33,7 @@ export async function generateProposal(id: string, answer?: string) {
   if (result.proposal) useGenerated.setState((s) => ({ proposals: { ...s.proposals, [id]: result.proposal! } }))
   return result
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Texterstellung fehlgeschlagen.'
+    const message = error instanceof Error ? error.message : 'Der Text konnte nicht formuliert werden.'
     useGenerated.setState((s) => ({ errors: { ...s.errors, [id]: message } }))
     throw error
   }

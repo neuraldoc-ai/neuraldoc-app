@@ -51,5 +51,5 @@ async function start(root: ReactDOM.Root) {
 const rootElement = document.getElementById('root')!
 if (!rootElement.innerHTML) {
   const root = ReactDOM.createRoot(rootElement)
-  start(root).catch(() => root.render(<div className='mx-auto mt-20 max-w-lg rounded-xl border p-6'><h1 className='text-xl font-medium'>neuraldoc-Server nicht erreichbar</h1><p className='mt-3 text-sm text-muted-foreground'>Läuft der Container? Protokoll: docker logs neuraldoc. Danach die Seite neu laden.</p><button className='mt-4 underline' onClick={() => window.location.reload()}>Erneut laden</button></div>))
+  start(root).catch(() => root.render(<div className='mx-auto mt-20 max-w-lg rounded-xl border p-6'><h1 className='text-xl font-medium'>neuraldoc-Server antwortet nicht</h1><p className='mt-3 text-sm text-muted-foreground'>Läuft der Container? Details zeigt docker logs neuraldoc. Lade die Seite danach neu.</p><button className='mt-4 underline' onClick={() => window.location.reload()}>Erneut laden</button></div>))
 }

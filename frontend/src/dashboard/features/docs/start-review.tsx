@@ -36,13 +36,13 @@ export function StartReview({ proposals, first, label = "Starten" }: { proposals
     <Dialog open={open} onOpenChange={(value) => { if (!running.current) setOpen(value) }}>
       <DialogContent showCloseButton={!pending}>
         <DialogHeader>
-          <DialogTitle>{error ? 'Übersicht öffnen' : 'Doku-Vorschläge werden vorbereitet'}</DialogTitle>
+          <DialogTitle>{error ? 'Vorbereitung abgebrochen' : 'Vorschläge werden vorbereitet'}</DialogTitle>
           <DialogDescription>Danach öffnet sich die Übersicht der Änderungen.</DialogDescription>
         </DialogHeader>
         <div role='status' aria-live='polite' className='grid gap-3'>
           {pending && <LoaderCircle className='size-6 animate-spin' />}
           <Progress value={count.total ? count.completed / count.total * 100 : 0} />
-          <p className='text-sm text-muted-foreground'>{count.completed} von {count.total} Textstellen bearbeitet</p>
+          <p className='text-sm text-muted-foreground'>{count.completed} von {count.total} Stellen formuliert</p>
         </div>
         {error && <><p role='alert' className='text-sm'>{error}</p><Button onClick={() => void navigate({ to: '/aenderungen' }).then(() => setOpen(false))}>Zur Übersicht</Button></>}
       </DialogContent>

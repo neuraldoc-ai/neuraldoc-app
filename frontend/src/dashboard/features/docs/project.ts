@@ -21,7 +21,7 @@ export type ProjectState = {
 export let projectState: ProjectState
 export async function loadProject() {
   const response = await fetch('/api/mcp/project', { cache: 'no-store' })
-  if (!response.ok) throw new Error('neuraldoc-Server ist nicht erreichbar.')
+  if (!response.ok) throw new Error('Der neuraldoc-Server antwortet nicht. Läuft der Container?')
   projectState = await response.json() as ProjectState
   useProfile.getState().set(projectState.profile ?? null)
   if (projectState.mode === 'showcase') {
@@ -37,8 +37,8 @@ export async function loadProject() {
 }
 
 async function result(response: Response) {
-  const body = await response.json().catch(() => ({ error: `Server antwortet mit HTTP ${response.status}.` })) as { error?: string }
-  if (!response.ok) throw new Error(body.error || 'Projektaktion fehlgeschlagen.')
+  const body = await response.json().catch(() => ({ error: `Der Server meldet HTTP ${response.status}.` })) as { error?: string }
+  if (!response.ok) throw new Error(body.error || 'Das hat nicht geklappt. Versuch es noch einmal.')
 }
 export async function projectAction(action: 'activate' | 'check', body: unknown = {}) {
   await result(await fetch(`/api/mcp/project/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }))

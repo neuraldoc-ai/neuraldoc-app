@@ -102,7 +102,7 @@ export function setDecision(id, decision, by = 'neuraldoc') {
   else {
     if (!['uebernommen', 'verworfen'].includes(decision.state)) throw new Error('Ungültige Entscheidung')
     const generated = generatedProposals()[id]
-    if (decision.state === "uebernommen" && generated?.generation.status === "needs_context" && !decision.edited) throw new Error("Bitte die Rückfrage an dieser Stelle beantworten.")
+    if (decision.state === "uebernommen" && generated?.generation.status === "needs_context" && !decision.edited) throw new Error("Beantworte zuerst die Rückfrage an dieser Stelle.")
     if (decision.state === 'uebernommen' && !decision.edited && generated) {
       decision = { ...decision, edited: { ...(generated.text !== undefined ? { text: generated.text } : {}), ...(generated.blocks ? { blocks: generated.blocks } : {}), ...(generated.rows ? { rows: generated.rows } : {}) } }
     }

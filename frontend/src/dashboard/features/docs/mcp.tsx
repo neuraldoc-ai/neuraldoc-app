@@ -146,8 +146,8 @@ export function McpPage() {
       <Frame title='MCP'>
         <Empty className='border'>
           <EmptyHeader>
-            <EmptyTitle>MCP-Server nicht erreichbar</EmptyTitle>
-            <EmptyDescription>Die App mit npm run dev starten; der Server läuft unter /mcp mit.</EmptyDescription>
+            <EmptyTitle>MCP-Server antwortet nicht</EmptyTitle>
+            <EmptyDescription>Prüf, ob neuraldoc läuft. Der Server ist dann unter /mcp erreichbar.</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </Frame>
@@ -227,7 +227,7 @@ codex mcp add neuraldoc --url ${url} --bearer-token-env-var NEURALDOC_MCP_TOKEN`
       <CardHeader>
         <CardTitle>Verbinden</CardTitle>
         <CardDescription className='flex flex-wrap items-center gap-1.5'>
-          <KeyRound className='size-3.5' /> Ein Endpunkt, Zugangsdaten zu {info.sources.map((s) => s.name).join(', ')} bleiben in neuraldoc
+          <KeyRound className='size-3.5' /> Ein Endpunkt. Zugangsdaten zu {info.sources.map((s) => s.name).join(', ')} bleiben in neuraldoc.
         </CardDescription>
       </CardHeader>
       <CardContent className='grid gap-3'>
@@ -573,7 +573,7 @@ function CheckView({ data, onSource, loadingSource }: { data: CheckData; onSourc
                     )}
                   </span>
                   <span className={cn('text-sm leading-tight font-medium', t.status === 'nicht' && 'font-normal')}>{t.label}</span>
-                  <span className='truncate text-[11px] opacity-80'>{t.status === 'vorschlaege' ? (t.approver.self ? 'Entwickler gibt frei' : t.approver.name) : look.short}</span>
+                  <span className='truncate text-[11px] opacity-80'>{t.status === 'vorschlaege' ? (t.approver.self ? 'Entwicklung gibt frei' : t.approver.name) : look.short}</span>
                 </div>
               </TooltipTrigger>
               <TooltipContent className='max-w-xs'>{t.status === 'vorschlaege' ? `${t.reason}. Freigabe: ${t.approver.name} (${t.approver.role})` : t.reason}</TooltipContent>

@@ -230,7 +230,7 @@ test('drafts: question, "no change" and a validated correction from the current 
   const same = await projects.projectDraft(proposal.id, 'Prüfen.', llm(noChangeReply))
   assert.equal(same.proposal.generation.status, 'no_change')
   assert.match(same.proposal.question, /verwerfen/)
-  assert.throws(() => projects.projectDecisions({ id: proposal.id, decision: { state: 'uebernommen' } }), /Textentwurf/)
+  assert.throws(() => projects.projectDecisions({ id: proposal.id, decision: { state: 'uebernommen' } }), /Entwurf formulieren/)
   await assert.rejects(projects.projectDraft(proposal.id, 'Brutto.', llm(() => draftReply({ evidence: [{ id: 'invented' }] }))), /unbekannte Belege/)
   await assert.rejects(projects.projectDraft(proposal.id, 'Ohne Beleg.', llm((sent) => ({ ...draftReply(sent), findings: [{ ...finding(sent), code_quote: 'total * 0.20' }] }))), /Kein Befund/)
   const draft = await projects.projectDraft(proposal.id, 'Netto.', llm(draftReply))

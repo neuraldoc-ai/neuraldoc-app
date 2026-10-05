@@ -77,8 +77,8 @@ export function SecretField({
 }) {
   const placeholder = secret?.set
     ? secret.source === "ui"
-      ? `Hinterlegt (${secret.hint}). Leer lassen = behalten`
-      : "Aus .env übernommen. Hier eintragen, um zu ersetzen"
+      ? `Hinterlegt (${secret.hint}). Leer lassen, um ihn zu behalten`
+      : "Aus .env übernommen. Neuen Key eintragen, um ihn zu ersetzen"
     : "Key einfügen";
   return (
     <div className="grid gap-2">
@@ -211,8 +211,7 @@ export function SetupForm({ setup }: { setup: Setup }) {
         <CardHeader>
           <CardTitle className="text-base">Keys & Modell</CardTitle>
           <CardDescription>
-            Im Showcase werden keine Keys gebraucht und keine Modelle
-            aufgerufen.
+            Der Showcase braucht keine Keys und ruft keine Modelle auf.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -226,7 +225,7 @@ export function SetupForm({ setup }: { setup: Setup }) {
           Keys & Modell
         </CardTitle>
         <CardDescription>
-          Deine eigenen Keys. Bleiben in deinem Container.
+          Deine Keys bleiben in deinem Container.
         </CardDescription>
       </CardHeader>
       <CardContent>

@@ -20,7 +20,7 @@ export function ProposalQuestion({ p }: { p: LiveProposal }) {
     try {
       await generateProposal(p.id, text)
       setEditing(false)
-    } catch (e) { setError(e instanceof Error ? e.message : 'Antwort konnte nicht verarbeitet werden.') }
+    } catch (e) { setError(e instanceof Error ? e.message : 'Deine Antwort konnte nicht verarbeitet werden. Versuch es noch einmal.') }
     finally { setPending(false) }
   }
   return <div className='grid gap-2 rounded-lg border border-late/30 bg-late-soft p-3 text-sm' onClick={(e) => e.stopPropagation()}>
@@ -37,7 +37,7 @@ export function ProposalQuestion({ p }: { p: LiveProposal }) {
         <Textarea aria-label='Antwort zur Rückfrage' placeholder='Wie soll der Vorschlag angepasst werden?' value={answer} maxLength={2000} onChange={(e) => setAnswer(e.target.value)} />
         <Button size='sm' className='w-fit' disabled={pending || !answer.trim()} onClick={() => void respond(answer)}>Mit Antwort formulieren</Button>
       </div>}
-    </> : <><p>Text konnte noch nicht vorbereitet werden: {preparationError}</p><Button size='sm' className='w-fit' disabled={pending} onClick={() => void respond('Bitte den belegten Stand für diese Stelle formulieren.')}>Erneut formulieren</Button></>}
+    </> : <><p>Der Text konnte nicht formuliert werden: {preparationError}</p><Button size='sm' className='w-fit' disabled={pending} onClick={() => void respond('Bitte den belegten Stand für diese Stelle formulieren.')}>Erneut formulieren</Button></>}
     {(error || (p.question && preparationError)) && <p role='alert'>{error || preparationError}</p>}
   </div>
 }

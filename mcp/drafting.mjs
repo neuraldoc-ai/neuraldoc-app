@@ -201,7 +201,7 @@ export function generateDraft(input, options = {}) {
 
 /** One JSON call to the configured provider: { value, inputTokens, outputTokens, costUsd }. Used for drafts and for check findings. */
 export async function callModel(config, { system, content, schema, fetchImpl = fetch, price = modelPrice(config), temperature = 0.2, outputLimit = OUTPUT_LIMIT }) {
-  if (config.provider !== 'local' && !config.apiKey) throw new DraftError('Texterstellung ist noch nicht eingerichtet. LLM-Key unter Einstellungen hinterlegen.', 503)
+  if (config.provider !== 'local' && !config.apiKey) throw new DraftError('Es ist noch kein LLM eingerichtet. Hinterleg unter Einstellungen einen Key.', 503)
   const google = ['vertex', 'gemini'].includes(config.provider), label = PROVIDER_LABELS[config.provider]
   const request = google ? {
     systemInstruction: { parts: [{ text: system }] },
@@ -213,7 +213,7 @@ export async function callModel(config, { system, content, schema, fetchImpl = f
     try { response = await fetchImpl(google ? draftEndpoint(config, method) : request.url, { method: 'POST', headers: google ? { 'Content-Type': 'application/json', 'x-goog-api-key': config.apiKey } : request.headers, body: JSON.stringify(google ? body : request.body), signal: AbortSignal.timeout(config.provider === 'local' ? 120000 : 45000) }) }
     catch { throw new DraftError(`${label} ist nicht erreichbar. Kein automatischer Wiederholungsversuch.`, 502) }
     // Provider bodies can include prompts or credentials. Only expose a safe status.
-    if (!response.ok) throw new DraftError(`${label}-Anfrage fehlgeschlagen (HTTP ${response.status}). Modellzugriff und API-Key prüfen; kein automatischer Modellwechsel.`, 502)
+    if (!response.ok) throw new DraftError(`${label} hat die Anfrage abgelehnt (HTTP ${response.status}). Prüf den API-Key und ob dein Konto das Modell nutzen darf.`, 502)
     try { return await response.json() } catch { throw new DraftError(`${label} hat eine unlesbare Antwort geliefert.`, 502) }
   }
   const raw = await call('generateContent', request)

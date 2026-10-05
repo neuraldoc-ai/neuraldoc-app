@@ -24,7 +24,7 @@ const explanations: Explanation[] = [
     summary: "Eine Änderung wird zusammen mit ihrem Kontext betrachtet.",
     result:
       "Zum Beispiel: Ein Commit verändert den Druck. Das Ticket und die bestehende Druck-Dokumentation liefern den fachlichen Kontext.",
-    note: "Die aktuelle App zeigt den MOBIQ-Beispieldatensatz. Eigene Quellen benötigen einen Import oder Connector.",
+    note: "Im Showcase sind das MOBIQ-Beispieldaten. Eigene Projekte kommen per Import dazu, weitere Quellen per Connector.",
   },
   {
     title: "Technischer Graph",
@@ -55,12 +55,12 @@ const explanations: Explanation[] = [
       "Du entscheidest, ob der Vorschlag fachlich stimmt und übernommen werden soll.",
     result:
       "Zum Beispiel: Du vergleichst den neuen Druck-Abschnitt mit den Quellen, korrigierst ihn bei Bedarf und gibst ihn frei.",
-    note: "Jeder Entwurf braucht deine Prüfung. Externe Rückschreibungen sind in der aktuellen App Demo-Abläufe.",
+    note: "Jeder Entwurf braucht deine Prüfung. Das Zurückschreiben in externe Systeme ist bisher nur eine Demo.",
   },
   {
     title: "Nachvollziehbar statt blind übernehmen",
     summary:
-      "Jede Verbindung und jeder Vorschlag soll sich anhand seiner Herkunft prüfen lassen.",
+      "Jede Verbindung und jeder Vorschlag lässt sich bis zur Quelle zurückverfolgen.",
     result:
       "Im Company Brain kannst du Belege öffnen und erkennen, welche Beziehungen aus Code stammen und welche Jev vorgeschlagen hat.",
     note: "Eine Modellzuordnung ist ein Vorschlag. Fehlende Belege werden nicht als sichere Fakten dargestellt.",

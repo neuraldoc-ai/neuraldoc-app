@@ -39,7 +39,7 @@ function withReviewer(dataset) {
 }
 const initials = (name) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || 'DU'
 async function exclusive(run) {
-  if (busy) throw new DraftError('Ein Import oder Modelllauf läuft bereits. Bitte warten.', 409)
+  if (busy) throw new DraftError('Es läuft schon ein Import oder Modelllauf. Versuch es gleich noch einmal.', 409)
   busy = true
   try { return await run() } finally { busy = false }
 }
@@ -58,7 +58,7 @@ export async function addProject(zip) {
   })
 }
 export function activateProject(id) {
-  if (busy) throw new DraftError('Projektwechsel erst nach dem laufenden Import oder Modelllauf.', 409)
+  if (busy) throw new DraftError('Du kannst das Projekt wechseln, sobald der laufende Import oder Modelllauf fertig ist.', 409)
   if (showcaseOnly()) throw new DraftError('Der Showcase verwendet nur Beispieldaten.', 403)
   if (id && !fs.existsSync(fileFor(id))) throw new Error('Projekt nicht gefunden.')
   write(activePath, { id: id || null }); return projectPayload()
@@ -66,7 +66,7 @@ export function activateProject(id) {
 /** Deletes every imported project with its check, drafts, decisions and caches; the app starts empty again. */
 export function resetProjects() {
   if (showcaseOnly()) throw new DraftError('Im Showcase gibt es nichts zurückzusetzen.', 403)
-  if (busy) throw new DraftError('Ein Import oder Modelllauf läuft gerade. Bitte danach zurücksetzen.', 409)
+  if (busy) throw new DraftError('Es läuft gerade ein Import oder Modelllauf. Setz danach zurück.', 409)
   const count = projectList().length
   fs.rmSync(projectsDir, { recursive: true, force: true })
   log.info('reset', 'Projekte gelöscht', { projects: count })
@@ -190,7 +190,7 @@ export async function projectDraft(id, answer, { generate = generateDraft } = {}
 }
 export function projectDecisions(input) {
   const p = requireProject()
-  if (busy) throw new DraftError('Modelllauf läuft. Bitte danach entscheiden.', 409)
+  if (busy) throw new DraftError('Gerade werden Texte formuliert. Entscheide, sobald das fertig ist.', 409)
   for (const id of input.ids || [input.id]) {
     const proposal = p.dataset.proposals.find((x) => x.id === id)
     if (!proposal) throw new Error('Unbekannter Vorschlag.')
@@ -198,7 +198,7 @@ export function projectDecisions(input) {
     if (!decision) { delete p.decisions[id]; continue }
     if (!['uebernommen', 'verworfen'].includes(decision.state)) throw new Error('Ungültige Entscheidung.')
     if (decision.state === 'uebernommen') {
-      if (p.generated[id]?.generation.status !== 'draft') throw new Error('Zuerst einen belegten Textentwurf erzeugen. Eine offene Rückfrage kann nicht freigegeben werden.')
+      if (p.generated[id]?.generation.status !== 'draft') throw new Error('Lass zuerst einen Entwurf formulieren. Eine offene Rückfrage lässt sich nicht übernehmen.')
       const text = decision.edited?.text ?? p.generated[id].text
       if (typeof text !== 'string' || !text.trim() || text.length > 20000) throw new Error('Ungültiger freizugebender Text.')
       // Only a real edit is stored as one; the dashboard labels it "angepasst".
@@ -208,7 +208,7 @@ export function projectDecisions(input) {
   }
   save(p); return p.decisions
 }
-export function resetProjectDecisions() { const p = requireProject(); if (busy) throw new DraftError('Modelllauf läuft.', 409); p.decisions = {}; save(p); return {} }
+export function resetProjectDecisions() { const p = requireProject(); if (busy) throw new DraftError('Gerade werden Texte formuliert. Versuch es danach noch einmal.', 409); p.decisions = {}; save(p); return {} }
 
 /** Approved sections merged back into their documents. PDF, Office and HTML come back as Markdown text. */
 export function exportProject() {

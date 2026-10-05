@@ -87,8 +87,8 @@ export function OverviewPage() {
                 {project
                   ? "„Freigaben exportieren“ lädt die korrigierten Dokumente als ZIP herunter. Deine Originaldateien bleiben unverändert."
                   : <>Die Vorschläge für {plural(sum.docsTouched, "Dokument", "Dokumente")}{" "}
-                    sind übernommen oder verworfen. Für einen neuen Demo-Durchlauf
-                    kannst du die Entscheidungen oben rechts zurücksetzen.</>}
+                    sind übernommen oder verworfen. Um von vorn zu beginnen, setz die
+                    Entscheidungen oben rechts zurück.</>}
               </p>
             </div>
           </div>
@@ -99,7 +99,7 @@ export function OverviewPage() {
                 {datasetMode === 'working' ? `Eigenes Projekt · importiert am ${fmtDate(release.freeze)}` : `Release ${release.id} · Code-Freeze am ${fmtDate(release.freeze)}`}
               </span>
               <p className="text-[26px] leading-tight font-medium tracking-tight">
-                {project ? (unmapped ? "Doku noch nicht geprüft." : mismatches ? `${plural(mismatches, "Doku-Abschnitt weicht", "Doku-Abschnitte weichen")} vom Code ab.` : "Keine Abweichung gefunden.") : <>Für {plural(sum.withDocs, "Feature", "Features")} liegen Doku-Änderungen vor.</>}
+                {project ? (unmapped ? "Doku noch nicht geprüft." : mismatches ? `${plural(mismatches, "Doku-Abschnitt weicht", "Doku-Abschnitte weichen")} vom Code ab.` : "Keine Abweichung gefunden.") : <>Bei {plural(sum.withDocs, "Feature", "Features")} muss die Doku angepasst werden.</>}
               </p>
               <p className="max-w-[64ch] text-sm text-muted-foreground">
                 {project
@@ -109,8 +109,8 @@ export function OverviewPage() {
                       ? "„Starten“ formuliert die Korrekturen aus dem Code. Du prüfst jede Stelle und gibst sie frei."
                       : "Jev hat keinen Widerspruch zwischen Doku und Code gefunden."
                   : <>neuraldoc hat {plural(sum.commits, "Commit", "Commits")} zu{" "}
-                    {plural(sum.bundles, "Feature", "Features")} gebündelt. Beim Start werden die
-                    Textvorschläge für die betroffenen Dokumente vorbereitet.</>}
+                    {plural(sum.bundles, "Feature", "Features")} gebündelt. „Starten“ formuliert die
+                    Vorschläge für die betroffenen Dokumente.</>}
               </p>
             </div>
             {unmapped ? <StartCheck /> : <div className="grid justify-items-start gap-3 md:justify-items-end">
@@ -226,7 +226,7 @@ export function OverviewPage() {
                 <CircleHelp className="mt-0.5 size-5 text-late-fg" />
                 <span className="grid gap-1">
                   <span className="font-medium">
-                    {plural(questions.length, "offener Klärpunkt", "offene Klärpunkte")}
+                    {plural(questions.length, "offene Rückfrage", "offene Rückfragen")}
                   </span>
                   {questions.map((q) => (
                     <span key={q.id} className="text-sm">
@@ -245,14 +245,14 @@ export function OverviewPage() {
         <Card className="h-fit">
           <CardHeader>
             <CardTitle>Bereits geprüft</CardTitle>
-            <CardDescription>Was neuraldoc für die Textprüfung vorbereitet hat.</CardDescription>
+            <CardDescription>Was neuraldoc schon erledigt hat.</CardDescription>
           </CardHeader>
           <CardContent>
             <ul className="grid gap-3 text-sm">
               {(checked ?? [
                 `${plural(sum.commits, "Commit", "Commits")} zu ${plural(sum.bundles, "Feature", "Features")} zusammengefasst`,
                 `${plural(superseded, "überholten Zwischenstand", "überholte Zwischenstände")} bei den Vorschlägen ausgelassen`,
-                `${plural(sum.skipped, "Doku-Prüfung", "Doku-Prüfungen")} ausgelassen, weil die Änderung die jeweiligen Leser nicht betrifft`,
+                `${plural(sum.skipped, "Doku-Prüfung", "Doku-Prüfungen")} übersprungen, weil die Änderung die Leser nicht betrifft`,
                 `${plural(done.length, "Feature", "Features")} ohne nötige Textänderung (${done.map((d) => d.title).join(", ")})`,
                 ...(tl ? [`Teillieferung im Ablauf zugeordnet: ${tl.path.slice(-2).join(" › ")}`, `Vorschläge zur Teillieferung für ${plural(routing(tl).filter((r) => r.status === "vorschlaege").length, "Doku-Art", "Doku-Arten")} vorbereitet`] : []),
               ]).map((t) => (

@@ -40,7 +40,7 @@ function ImportedCommit({ hash }: { hash: string }) {
         const body = await response.json() as { commit: SourceCommit; files: FileDiff[]; error?: string }
         if (live) setLoaded(response.ok ? body : { error: body.error || 'Commit konnte nicht geladen werden.' })
       })
-      .catch(() => { if (live) setLoaded({ error: 'Lokaler Server nicht erreichbar.' }) })
+      .catch(() => { if (live) setLoaded({ error: 'Der lokale Server antwortet nicht.' }) })
     return () => { live = false }
   }, [hash])
   if (!loaded) return <p role='status' className='p-6 text-sm text-muted-foreground'>Commit wird geladen …</p>

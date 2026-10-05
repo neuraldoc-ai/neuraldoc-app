@@ -18,7 +18,7 @@ function extract(zip, dir) {
   const entries = unzipSync(new Uint8Array(zip), {
     filter: (file) => {
       total += file.originalSize
-      if (total > LIMITS.uploadBytes * 3) throw new DraftError('Upload entpackt zu groß.', 413)
+      if (total > LIMITS.uploadBytes * 3) throw new DraftError('Der Upload ist entpackt zu groß.', 413)
       return !file.name.endsWith('/') && file.originalSize <= LIMITS.fileBytes
     },
   })
@@ -46,7 +46,7 @@ async function clone(value, dir, label) {
   } catch (error) {
     const detail = String(error.stderr || error.message).replace(/Authorization: \S+ \S+/g, 'Authorization: ***').trim().split('\n').pop()
     log.warn('import', `${label}: git clone fehlgeschlagen`, { url: parsed.url, detail })
-    if (error.killed) throw new DraftError(`${label}: Klonen dauerte länger als 3 Minuten.`, 504)
+    if (error.killed) throw new DraftError(`${label}: Das Klonen hat länger als 3 Minuten gedauert und wurde abgebrochen.`, 504)
     if (/not found|could not read Username|Authentication failed|403|401/i.test(detail)) throw new DraftError(`${label}: Repository nicht gefunden oder privat. Für private GitHub-Repositories einen GitHub-Token unter Einstellungen hinterlegen.`, 400)
     throw new DraftError(`${label}: Klonen fehlgeschlagen (${detail.slice(0, 160)}).`, 502)
   }

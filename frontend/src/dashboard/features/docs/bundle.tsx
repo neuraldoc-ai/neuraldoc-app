@@ -91,7 +91,7 @@ function FromAgent({ b, status }: { b: LiveBundle; status?: ChangeStatus }) {
         </span>
         <span className='text-xs opacity-80'>
           {status.mrComment ? `Link im Merge-Request ${status.mrComment.mr} kommentiert. ` : ''}
-          {status.writeBack ? `Jede übernommene Stelle schreibt neuraldoc nach ${list(systems)} zurück.` : 'Zurückschreiben ist aus.'}
+          {status.writeBack ? `Jede übernommene Stelle schreibt neuraldoc nach ${list(systems)} zurück.` : 'Zurückschreiben ist ausgeschaltet.'}
         </span>
       </span>
     </div>
