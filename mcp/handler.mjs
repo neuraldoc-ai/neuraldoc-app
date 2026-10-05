@@ -7,6 +7,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DraftError, draftingStatus } from './drafting.mjs'
 import { setupStatus } from './setup.mjs'
+import { listModels } from './models.mjs'
 import { installToken, profile, publicSettings, resetSettings, reviewer, saveSettings } from './settings.mjs'
 import { activeProject, addProject, activateProject, projectList, projectPayload, checkProject, projectDraft, projectDecisions, resetProjectDecisions, resetProjects, exportProject, showcaseOnly } from './projects.mjs'
 import { LIMITS } from '../frontend/src/dashboard/features/docs/import-rules.mjs'
@@ -165,6 +166,13 @@ async function api(req, res, path) {
       const settings = saveSettings(await readJsonBody(req, 65536))
       log.info('setup', 'Einstellungen gespeichert', { keys: Object.entries(settings.secrets).filter(([, s]) => s.set).map(([k, s]) => `${k} (${s.source})`).join(', ') || 'keine' })
       return send(res, 200, { ...setupStatus(), settings, editable: true })
+    }
+    if (req.method === 'POST' && path === '/api/mcp/models') {
+      // POST with origin check: the server fetches the local model server's address given in the form.
+      localMutation()
+      if (showcaseOnly()) throw new DraftError('Im Showcase werden keine Modelle gewählt.', 403)
+      const { provider, baseUrl } = await readJsonBody(req, 4096)
+      return send(res, 200, await listModels(String(provider), { baseUrl: baseUrl ? String(baseUrl) : undefined }), { 'Cache-Control': 'no-store' })
     }
     if (req.method === 'POST' && path === '/api/mcp/reset') {
       // scope projects: imported projects only; all: also profile, keys and model. The MCP token stays, so agents stay connected.

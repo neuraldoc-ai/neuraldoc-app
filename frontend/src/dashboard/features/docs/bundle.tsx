@@ -22,6 +22,7 @@ import {
   PenLine,
   Plus,
   Rows3,
+  Sparkles,
   Type,
   Undo2,
   Upload,
@@ -35,7 +36,9 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/u
 import { Progress } from '@/components/ui/progress'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { changeKinds, confidences, docTypeOrder, docTypes, modules, natures, sizes, type Confidence, type DocTypeId, type Nature } from './data'
+import { changeKinds, confidences, datasetMode, docTypeOrder, docTypes, modules, natures, sizes, type Confidence, type DocTypeId, type Nature } from './data'
+import { projectState } from './project'
+import { StartReview } from './start-review'
 import { docOf, fmtDate, fmtDay, list, plural, routing, useBundles, type LiveBundle, type LiveProposal, type Route } from './model'
 import { locationOf } from './logic'
 import { blueSoft, typeIcon } from './overview-icons'
@@ -103,32 +106,114 @@ export function BundlePage({ id }: { id: string }) {
 
   const open = b.proposals.filter((p) => p.state === 'offen')
   const first = b.docs.map((d) => open.find((p) => p.doc === d)).find(Boolean)
+  // An imported project has one change, its initial check: no commits, tickets or merge requests.
+  const own = datasetMode === 'working' ? projectState.project : null
+  const withoutDraft = open.filter((p) => !p.generation && p.op !== 'note' && !p.task)
   return (
     <Frame
       title={b.title}
-      crumbs={[{ label: 'Änderungen', to: '/aenderungen' }, { label: b.title }]}
-      lead={`${b.ticket} · ${b.mr} · gemergt ${fmtDate(b.merged)}`}
+      crumbs={own ? [{ label: b.title }] : [{ label: 'Änderungen', to: '/aenderungen' }, { label: b.title }]}
+      lead={own ? `${plural(own.files.length, 'Code-Datei', 'Code-Dateien')} · ${plural(new Set(own.documents.map((d) => d.path)).size, 'Dokument', 'Dokumente')} · geprüft am ${fmtDate(b.merged)}` : `${b.ticket} · ${b.mr} · gemergt ${fmtDate(b.merged)}`}
       actions={
         b.nature === 'umbenennung' && open.length > 0 ? (
           <Button size='sm' onClick={() => decideMany(open.map((p) => p.id), 'uebernommen', `${b.title}: alle ${open.length} Stellen übernommen`)}>
             <CheckCheck /> Alle {open.length} Stellen übernehmen
           </Button>
         ) : open.length > 0 ? (
-          first && <Button asChild size='sm'><Link to='/dokumente/$id' params={{ id: first.doc }} search={{ p: first.id }}>Vorschläge prüfen</Link></Button>
+          <>
+            {own && withoutDraft.length > 0 && <StartReview proposals={b.proposals} first={withoutDraft[0]} label={`${withoutDraft.length} Entwürfe erstellen`} />}
+            {first && <Button asChild size='sm' variant={own && withoutDraft.length ? 'outline' : 'default'}><Link to='/dokumente/$id' params={{ id: first.doc }} search={{ p: first.id }}>Vorschläge prüfen</Link></Button>}
+          </>
         ) : null
       }
     >
-      <FromAgent b={b} status={status} />
-      <Signals b={b} />
-      <div className='grid gap-4 lg:grid-cols-3 [&>*]:min-w-0'>
-        <Change b={b} className='lg:col-span-2' />
+      {!own && <FromAgent b={b} status={status} />}
+      {own ? <CheckSignals b={b} subjects={own.mapping?.subjects ?? 0} /> : <Signals b={b} />}
+      <div className={cn('grid gap-4 lg:grid-cols-3 [&>*]:min-w-0', own && 'items-start')}>
+        {own ? <Checked className='lg:col-span-2' /> : <Change b={b} className='lg:col-span-2' />}
         <Readers routes={routing(b)} />
       </div>
-      <div className='grid gap-4 lg:grid-cols-3 [&>*]:min-w-0'>
-        <Proposals b={b} status={status} className='lg:col-span-2' />
-        <Commits b={b} />
-      </div>
+      {own ? (
+        <Proposals b={b} />
+      ) : (
+        <div className='grid gap-4 lg:grid-cols-3 [&>*]:min-w-0'>
+          <Proposals b={b} status={status} className='lg:col-span-2' />
+          <Commits b={b} />
+        </div>
+      )}
     </Frame>
+  )
+}
+
+/* ---------- Own project: what the initial check found and did ---------- */
+
+function CheckSignals({ b, subjects }: { b: LiveBundle; subjects: number }) {
+  const total = b.proposals.length
+  const drafted = b.proposals.filter((p) => p.generation?.status === 'draft').length
+  const questions = b.proposals.filter((p) => p.state === 'offen' && (p.generation?.status === 'needs_context' || p.question)).length
+  const done = total - b.open
+  return (
+    <Card className='py-0'>
+      <CardContent className='grid divide-y px-0 sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-4 lg:divide-x'>
+        <Signal icon={FileText} tile='bg-brand-600 text-white' label='Abweichungen' value={plural(total, 'Abschnitt', 'Abschnitte')} hint={subjects ? `von ${subjects} geprüften` : 'aus der Erstprüfung'} />
+        <div className='flex items-center gap-3 px-5 py-4'>
+          <span className={cn('flex size-10 shrink-0 items-center justify-center rounded-xl', b.open ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300')}>
+            {b.open || !total ? <PenLine className='size-5' /> : <Check className='size-5' />}
+          </span>
+          <div className='grid flex-1 gap-1.5'>
+            <span className='text-xs text-muted-foreground'>Entschieden</span>
+            <span className='text-lg leading-none font-medium tabular-nums'>{done} von {total}</span>
+            {total > 0 && <Progress value={(done / total) * 100} className='h-1.5' indicatorClassName={done === total ? 'bg-emerald-500' : 'bg-brand-500'} />}
+          </div>
+        </div>
+        <Signal icon={Sparkles} tile='bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200' label='Entwürfe' value={`${drafted} von ${total}`} hint={drafted ? 'von deinem LLM formuliert' : 'noch keiner erstellt'} />
+        <Signal
+          icon={questions ? CircleHelp : Check}
+          tile={questions ? 'bg-late-soft text-late-fg' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'}
+          label='Rückfragen'
+          value={questions ? `${questions} offen` : 'Keine'}
+          hint={questions ? 'Code allein reicht nicht' : 'bisher keine'}
+        />
+      </CardContent>
+    </Card>
+  )
+}
+
+function Checked({ className }: { className?: string }) {
+  const p = projectState.project!
+  const m = p.mapping
+  const source = (s: { label: string; source: 'upload' | 'url' } | null) => s && `${s.label} · ${s.source === 'url' ? 'von GitHub' : 'hochgeladen'}`
+  const stats = m
+    ? [
+        { n: m.subjects, label: 'Abschnitte geprüft' },
+        { n: m.consistent, label: 'passen zum Code' },
+        { n: Math.max(0, m.deferred.length - m.consistent), label: 'ohne Bezug zum Code' },
+      ]
+    : []
+  return (
+    <Panel className={className} title='Was geprüft wurde'>
+      <div className='grid gap-2 sm:grid-cols-3'>
+        {stats.map((s) => (
+          <div key={s.label} className='grid gap-0.5 rounded-xl border p-3'>
+            <span className='text-2xl leading-none font-medium tabular-nums'>{s.n}</span>
+            <span className='text-xs text-muted-foreground'>{s.label}</span>
+          </div>
+        ))}
+      </div>
+      <div className='grid gap-2 sm:grid-cols-2'>
+        {[{ icon: Code2, label: 'Code', value: source(p.sources.repo) }, { icon: FileText, label: 'Doku', value: source(p.sources.docs) ?? 'aus dem Repository' }].map((s) => (
+          <div key={s.label} className='flex items-center gap-3 rounded-xl border p-3'>
+            <span className={cn('flex size-8 shrink-0 items-center justify-center rounded-lg border', blueSoft)}>
+              <s.icon className='size-4' />
+            </span>
+            <span className='grid min-w-0 gap-0.5'>
+              <span className='text-xs text-muted-foreground'>{s.label}</span>
+              <span className='truncate text-sm'>{s.value}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </Panel>
   )
 }
 
@@ -351,6 +436,10 @@ function Proposals({ b, status, className }: { b: LiveBundle; status?: ChangeSta
 const opIcon = { replace: PenLine, insert: Plus, rows: Rows3, note: MessageSquare }
 const confDot: Record<Confidence, string> = { hoch: 'bg-emerald-500', mittel: 'bg-brand-400', pruefen: 'bg-late' }
 
+/** Own projects: how far the correction is. Approval needs a draft. */
+const draftLabel = (p: LiveProposal) =>
+  p.generation?.status === 'draft' ? `Entwurf von ${p.generation.model}` : p.generation?.status === 'no_change' ? 'Laut LLM stimmt der Text' : p.generation?.status === 'needs_context' ? 'Rückfrage vom LLM' : 'Noch kein Entwurf'
+
 function ProposalRow({ p, written }: { p: LiveProposal; written?: ChangeStatus['writebacks'][number] }) {
   const decide = useDecisions((s) => s.decide)
   const undo = useDecisions((s) => s.undo)
@@ -376,12 +465,15 @@ function ProposalRow({ p, written }: { p: LiveProposal; written?: ChangeStatus['
       </span>
       <div className='grid min-w-0 flex-1 gap-1'>
         <span className='flex flex-wrap items-center gap-2'>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className={cn('size-2 shrink-0 rounded-full', confDot[p.confidence])} aria-label={confidences[p.confidence]} />
-            </TooltipTrigger>
-            <TooltipContent>{confidences[p.confidence]}</TooltipContent>
-          </Tooltip>
+          {/* Own projects have no calibrated confidence: every finding of the initial check is to be reviewed. */}
+          {datasetMode !== 'working' && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className={cn('size-2 shrink-0 rounded-full', confDot[p.confidence])} aria-label={confidences[p.confidence]} />
+              </TooltipTrigger>
+              <TooltipContent>{confidences[p.confidence]}</TooltipContent>
+            </Tooltip>
+          )}
           <span className={cn('text-sm font-medium', p.state === 'verworfen' && 'line-through')}>{p.title}</span>
           {big && (
             <Badge variant='outline' className={cn('font-normal', blueSoft)}>
@@ -390,7 +482,7 @@ function ProposalRow({ p, written }: { p: LiveProposal; written?: ChangeStatus['
           )}
         </span>
         <span className='truncate text-xs text-muted-foreground'>
-          {d.title} · {locationOf(p)}
+          {datasetMode === 'working' ? draftLabel(p) : `${d.title} · ${locationOf(p)}`}
         </span>
         {p.question && !done && (
           <span className={cn('flex items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm', lateSoft)}>
@@ -429,9 +521,11 @@ function ProposalRow({ p, written }: { p: LiveProposal; written?: ChangeStatus['
                 Ansehen
               </Link>
             </Button>
-            <Button size='icon' variant='outline' className='size-8 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700' title='Übernehmen' onClick={() => decide(p.id, { state: 'uebernommen' }, `Übernommen: ${p.title}`)}>
-              <Check />
-            </Button>
+            {(datasetMode !== 'working' || p.generation?.status === 'draft') && (
+              <Button size='icon' variant='outline' className='size-8 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700' title='Übernehmen' onClick={() => decide(p.id, { state: 'uebernommen' }, `Übernommen: ${p.title}`)}>
+                <Check />
+              </Button>
+            )}
             <Button size='icon' variant='ghost' className='size-8 text-muted-foreground' title='Verwerfen' onClick={() => decide(p.id, { state: 'verworfen' }, `Verworfen: ${p.title}`)}>
               <X />
             </Button>

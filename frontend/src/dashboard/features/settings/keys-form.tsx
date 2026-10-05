@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { KeyRound, Laptop, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -106,6 +107,59 @@ export function SecretField({
           </Button>
         )}
       </div>
+    </div>
+  );
+}
+
+type ModelList = { models: { id: string; label: string }[]; source: "provider" | "built-in" | "neuraldoc"; error?: string };
+
+/** The models the provider offers. With a saved key the list comes from the provider (no model call, no cost). */
+function ModelSelect({ provider, value, onChange, keySet, baseUrl }: { provider: Provider; value: string; onChange: (v: string) => void; keySet: boolean; baseUrl?: string }) {
+  // The address of a local server is typed in; ask it only once typing pauses.
+  const [base, setBase] = useState(baseUrl);
+  useEffect(() => {
+    const t = setTimeout(() => setBase(baseUrl), 600);
+    return () => clearTimeout(t);
+  }, [baseUrl]);
+  const list = useQuery({
+    queryKey: ["models", provider, keySet, base],
+    queryFn: async (): Promise<ModelList> => {
+      const response = await fetch("/api/mcp/models", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider, baseUrl: base }) });
+      if (!response.ok) throw new Error("Modelle konnten nicht geladen werden.");
+      return response.json() as Promise<ModelList>;
+    },
+    staleTime: 5 * 60_000,
+  });
+  const models = list.data?.models ?? [];
+  // A local server has its own names: take the first one it offers if the saved model is not among them.
+  useEffect(() => {
+    if (provider === "local" && models.length && !models.some((m) => m.id === value)) onChange(models[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, list.data]);
+  const options = value && !models.some((m) => m.id === value) && provider !== "local" ? [{ id: value, label: value }, ...models] : models;
+  const hint = list.isPending
+    ? "Modelle werden geladen …"
+    : list.data?.error
+      ? list.data.error
+      : list.data?.source === "built-in" && provider !== "local"
+        ? "Mit gespeichertem Key siehst du alle Modelle deines Kontos."
+        : null;
+  return (
+    <div className="grid gap-2">
+      <Label htmlFor="setup-model">Modell</Label>
+      <Select value={options.some((m) => m.id === value) ? value : undefined} onValueChange={onChange} disabled={!options.length}>
+        <SelectTrigger id="setup-model">
+          <SelectValue placeholder={list.isPending ? "Wird geladen …" : "Kein Modell gefunden"} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((m) => (
+            <SelectItem key={m.id} value={m.id}>
+              {m.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }
@@ -229,16 +283,6 @@ export function SetupForm({ setup }: { setup: Setup }) {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="setup-model">Modell</Label>
-              <Input
-                id="setup-model"
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                placeholder={p.model}
-                maxLength={200}
-              />
-            </div>
             {provider === "vertex" && (
               <div className="grid gap-2">
                 <Label htmlFor="setup-project">Google-Cloud-Projekt-ID</Label>
@@ -277,15 +321,20 @@ export function SetupForm({ setup }: { setup: Setup }) {
                 onRemove={() => save.mutate({ [p.key!]: null })}
               />
             )}
+            <ModelSelect
+              provider={provider}
+              value={model}
+              onChange={setModel}
+              keySet={!!(p.key && secrets[p.key]?.set)}
+              baseUrl={provider === "local" ? fields.NEURALDOC_LLM_BASE_URL : undefined}
+            />
           </div>
           <div className="flex items-center gap-3">
             <Button type="submit" disabled={save.isPending}>
               <Save />
               {save.isPending ? "Speichert …" : "Speichern"}
             </Button>
-            <span className="text-xs text-muted-foreground">
-              Speichern ruft kein Modell auf und kostet nichts.
-            </span>
+
           </div>
         </form>
       </CardContent>

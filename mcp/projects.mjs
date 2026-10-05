@@ -5,7 +5,7 @@ import { importProject, digest, BUNDLE_ID } from './project-import.mjs'
 import { withUpload } from './project-upload.mjs'
 import { createJevClient, MODEL } from './semantic-mapping.mjs'
 import { codeChunks, createRetriever, pick } from './retrieval.mjs'
-import { DraftError, draftingConfig, generateDraft } from './drafting.mjs'
+import { DraftError, draftingConfig, draftingStatus, generateDraft } from './drafting.mjs'
 import { log } from './log.mjs'
 import { profile, reviewer, runtimeEnv } from './settings.mjs'
 
@@ -33,7 +33,9 @@ export function projectPayload(project = activeProject()) {
 // Approvals carry the name from the settings, also for projects imported before it was entered.
 function withReviewer(dataset) {
   const { name, role } = profile(), local = { name: name || 'Lokaler Nutzer', role: role || 'Prüfung & Freigabe' }
-  return { ...dataset, currentUser: { ...local, initials: initials(local.name) }, people: { ...dataset.people, local } }
+  // Checks before 2026-10-05 stored a placeholder as question and a suffix in the title; a question comes only from the model.
+  const proposals = dataset.proposals.map((p) => ({ ...p, title: p.title.replace(/: weicht vom Code ab$/, ''), question: /^Korrektur noch nicht formuliert/.test(p.question || '') ? '' : p.question }))
+  return { ...dataset, proposals, currentUser: { ...local, initials: initials(local.name) }, people: { ...dataset.people, local } }
 }
 const initials = (name) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || 'DU'
 async function exclusive(run) {
@@ -99,7 +101,10 @@ const CRITERIA = {
 export async function checkProject({ createClient = createJevClient, k = 6 } = {}) {
   return exclusive(async () => {
     const p = requireProject(), started = Date.now()
-    const env = runtimeEnv(), client = createClient({ key: key(env), cachePath: path.join(projectsDir, p.id, 'jev-cache.json'), budget: Number(env.NEURALDOC_JEV_BUDGET_USD || .25) })
+    const env = runtimeEnv()
+    // Findings without an LLM to correct them are a dead end, and Jev costs money: both are set up first.
+    if (!draftingStatus(env).configured) throw new DraftError('Zuerst ein LLM unter Einstellungen einrichten.', 503)
+    const client = createClient({ key: key(env), cachePath: path.join(projectsDir, p.id, 'jev-cache.json'), budget: Number(env.NEURALDOC_JEV_BUDGET_USD || .25) })
     const retriever = createRetriever(p.files), chunks = retriever.chunks, records = []
     log.info('check', 'Erstprüfung gestartet', { project: p.name, sections: p.docFiles.length, excerpts: chunks.length })
     for (const [n, doc] of p.docFiles.entries()) {
@@ -138,7 +143,7 @@ export async function checkProject({ createClient = createJevClient, k = 6 } = {
       if (!record.contradicts.length) { deferred.push(`doc:${doc.id}`); continue }
       const places = [...new Set(record.contradicts.map((id) => chunkOf.get(id).path))]
       p.graph.edges.push({ id: `jev:f:${doc.id}`, source: `f:${BUNDLE_ID}`, target: `doc:${doc.id}`, kind: 'documents', certainty: 'abgeleitet', evidence: { source: 'Jev · Erstprüfung', text: `${section.path} weicht von ${places.join(', ')} ab.`, method: 'Jev' } })
-      const proposal = { id: `proposal-${digest(`${p.id}:${doc.id}:${record.fingerprint}`).slice(0, 16)}`, bundle: BUNDLE_ID, doc: doc.id, at: 0, op: 'replace', find: section.text, text: section.text, size: 'absatz', title: `${doc.title}: weicht vom Code ab`, why: `Jev: Der Abschnitt passt nicht zu ${places.join(', ')}. Die Korrektur wird aus diesen Codestellen formuliert.`, confidence: 'pruefen', commits: [], question: 'Korrektur noch nicht formuliert. Mit „Starten“ aus dem Code formulieren lassen.' }
+      const proposal = { id: `proposal-${digest(`${p.id}:${doc.id}:${record.fingerprint}`).slice(0, 16)}`, bundle: BUNDLE_ID, doc: doc.id, at: 0, op: 'replace', find: section.text, text: section.text, size: 'absatz', title: doc.title, why: `Jev: Der Abschnitt passt nicht zu ${places.join(', ')}. Die Korrektur wird aus diesen Codestellen formuliert.`, confidence: 'pruefen', commits: [], question: '' }
       p.dataset.proposals.push(previous.get(proposal.id) || proposal)
     }
     const count = (key) => records.filter((r) => r[key]?.length).length

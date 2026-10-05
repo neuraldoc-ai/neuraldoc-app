@@ -342,7 +342,7 @@ function Methode() {
 
 /** Same card and fold behaviour as the proposals card; it always shows the proposal that was selected last. */
 export function EvidenceCard({ p }: { p?: LiveProposal }) {
-  const [panelOpen, setPanelOpen] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(false);
   const showCommits = useCommitViewer((s) => s.show);
   return (
     <Collapsible open={panelOpen} onOpenChange={setPanelOpen}>

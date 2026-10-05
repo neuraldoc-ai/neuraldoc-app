@@ -184,6 +184,14 @@ test('Jev is required: without a key no check and no proposal exist', async () =
   assert.equal(projects.activeProject().mapping, null)
 })
 
+test('an LLM is required too: without one the check does not call Jev', async () => {
+  const provider = process.env.NEURALDOC_DRAFT_PROVIDER, model = process.env.NEURALDOC_LLM_MODEL
+  delete process.env.NEURALDOC_DRAFT_PROVIDER; delete process.env.NEURALDOC_LLM_MODEL
+  try { await assert.rejects(projects.checkProject(jev(() => assert.fail('no Jev request without an LLM'))), /LLM/) }
+  finally { process.env.NEURALDOC_DRAFT_PROVIDER = provider; process.env.NEURALDOC_LLM_MODEL = model }
+  assert.equal(projects.activeProject().mapping, null)
+})
+
 test('a failing Jev run installs nothing', async () => {
   await assert.rejects(projects.checkProject(jev(async () => ({ ok: false, status: 500 }))), /HTTP 500/)
   const p = projects.activeProject()

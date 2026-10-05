@@ -12,6 +12,8 @@ const PRICES = {
   'gemini-3.5-flash-lite': { input: 0.30, output: 2.50, thinkingConfig: { thinkingLevel: 'minimal' } },
   'gemini-2.5-flash-lite': { input: 0.10, output: 0.40, thinkingConfig: { thinkingBudget: 0 } },
 }
+/** The Gemini models drafts may use (cost rates are known for them). */
+export const GOOGLE_MODELS = Object.keys(PRICES)
 const OUTPUT_LIMIT = 1800
 export class DraftError extends Error {
   constructor(message, status = 400) { super(message); this.status = status }

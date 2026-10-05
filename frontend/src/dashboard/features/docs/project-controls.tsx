@@ -92,9 +92,11 @@ export function ProjectControls({ prominent }: { prominent?: boolean }) {
 export function StartCheck() {
   const [pending, setPending] = useState(false), [error, setError] = useState('')
   const setup = useQuery({ queryKey: ['setup'], queryFn: loadSetup })
-  if (setup.data && !setup.data.jev.configured) return <div className='grid justify-items-start gap-2 md:justify-items-end'>
-    <Button size='lg' asChild><Link to='/einstellungen'><KeyRound />Jev-Key hinterlegen</Link></Button>
-    <p className='max-w-[42ch] text-xs text-muted-foreground md:text-right'>Die Erstprüfung braucht deinen eigenen Jev-Key.</p>
+  // The check only makes sense when its findings can be turned into corrections: Jev and an LLM first.
+  const missing = setup.data ? [!setup.data.jev.configured && 'Jev-Key', !setup.data.drafting.configured && 'LLM'].filter(Boolean) : []
+  if (missing.length) return <div className='grid justify-items-start gap-2 md:justify-items-end'>
+    <Button size='lg' asChild><Link to='/einstellungen'><KeyRound />Einrichtung abschließen</Link></Button>
+    <p className='max-w-[42ch] text-xs text-muted-foreground md:text-right'>Für die Erstprüfung fehlt noch: {missing.join(' und ')}.</p>
   </div>
   return <div className='grid justify-items-start gap-2 md:justify-items-end'>
     <Button size='lg' disabled={pending} onClick={() => { setPending(true); setError(''); projectAction('check').catch((cause: unknown) => { setError(cause instanceof Error ? cause.message : 'Erstprüfung fehlgeschlagen.'); setPending(false) }) }}>{pending ? <LoaderCircle className='animate-spin' /> : <FolderGit2 />}{pending ? 'Prüft …' : 'Erstprüfung starten'}</Button>

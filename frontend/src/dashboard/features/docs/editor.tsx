@@ -1095,7 +1095,7 @@ function SuggestionHeader({ p }: { p: LiveProposal }) {
 }
 
 function SidePanel({ ps, ctx }: { ps: LiveProposal[]; ctx: Ctx }) {
-  const [panelOpen, setPanelOpen] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(false);
   const open = ps.filter((p) => p.state === "offen").length;
   const jump = (id: string) => {
     ctx.setEditing(undefined);

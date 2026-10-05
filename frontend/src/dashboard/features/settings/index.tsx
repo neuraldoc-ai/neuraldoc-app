@@ -129,7 +129,7 @@ function Status({ setup, refresh, fetching }: { setup: Setup; refresh: () => voi
       <CardHeader className="flex flex-row items-start justify-between gap-3">
         <div className="grid gap-1">
           <CardTitle className="text-base">Bereit für eigene Projekte?</CardTitle>
-          <CardDescription>Prüft nur die Einrichtung, ruft kein Modell auf.</CardDescription>
+          <CardDescription>Prüft die Einrichtung</CardDescription>
         </div>
         <Button variant="outline" size="sm" onClick={refresh} disabled={fetching}>
           <RefreshCw />
@@ -225,7 +225,7 @@ function Storage() {
           Wo deine Daten liegen
         </CardTitle>
         <CardDescription>
-          Nur in deinem Container. Nichts wird in deine Dateien zurückgeschrieben.
+          Nur in deinem Container
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-2 text-xs text-muted-foreground">

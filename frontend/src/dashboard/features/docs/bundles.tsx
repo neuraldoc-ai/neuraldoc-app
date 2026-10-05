@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { release } from './data'
+import { datasetMode, release } from './data'
+import { BundlePage } from './bundle'
 import { fmtDay, useBundles, useSummary } from './model'
 import { DocTypeBadge, Frame, NatureBadge, Path } from './ui'
 
@@ -15,6 +16,8 @@ export function BundlesPage() {
   const sum = useSummary()
   const items = useBundles()
   const navigate = useNavigate()
+  // An imported project has exactly one change: its initial check.
+  if (datasetMode === 'working' && items.length === 1) return <BundlePage id={items[0].id} />
   return (
     <Frame title='Änderungen' lead='Ein Feature, eine Doku-Änderung.'>
       <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
