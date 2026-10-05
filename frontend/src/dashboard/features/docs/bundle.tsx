@@ -36,7 +36,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/u
 import { Progress } from '@/components/ui/progress'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { changeKinds, confidences, datasetMode, docTypeOrder, docTypes, modules, natures, sizes, type Confidence, type DocTypeId, type Nature } from './data'
+import { bundles, changeKinds, confidences, datasetMode, docTypeOrder, docTypes, modules, natures, sizes, type Confidence, type DocTypeId, type Nature } from './data'
 import { projectState } from './project'
 import { StartReview } from './start-review'
 import { docOf, fmtDate, fmtDay, list, plural, routing, useBundles, type LiveBundle, type LiveProposal, type Route } from './model'
@@ -106,14 +106,16 @@ export function BundlePage({ id }: { id: string }) {
 
   const open = b.proposals.filter((p) => p.state === 'offen')
   const first = b.docs.map((d) => open.find((p) => p.doc === d)).find(Boolean)
-  // An imported project has one change, its initial check: no commits, tickets or merge requests.
   const own = datasetMode === 'working' ? projectState.project : null
+  // An imported project's changes come from its Git history; without history (an uploaded folder), or for the
+  // findings no commit explains, the change is the initial check itself: no commits, tickets or merge requests.
+  const initial = own && !b.commits.length ? own : null
   const withoutDraft = open.filter((p) => !p.generation && p.op !== 'note' && !p.task)
   return (
     <Frame
       title={b.title}
-      crumbs={own ? [{ label: b.title }] : [{ label: 'Änderungen', to: '/aenderungen' }, { label: b.title }]}
-      lead={own ? `${plural(own.files.length, 'Code-Datei', 'Code-Dateien')} · ${plural(new Set(own.documents.map((d) => d.path)).size, 'Dokument', 'Dokumente')} · geprüft am ${fmtDate(b.merged)}` : `${b.ticket} · ${b.mr} · gemergt ${fmtDate(b.merged)}`}
+      crumbs={own && bundles.length === 1 ? [{ label: b.title }] : [{ label: 'Änderungen', to: '/aenderungen' }, { label: b.title }]}
+      lead={initial ? `${plural(initial.files.length, 'Code-Datei', 'Code-Dateien')} · ${plural(new Set(initial.documents.map((d) => d.path)).size, 'Dokument', 'Dokumente')} · geprüft am ${fmtDate(b.merged)}` : `${b.ticket} · ${b.mr} · gemergt ${fmtDate(b.merged)}`}
       actions={
         b.nature === 'umbenennung' && open.length > 0 ? (
           <Button size='sm' onClick={() => decideMany(open.map((p) => p.id), 'uebernommen', `${b.title}: alle ${open.length} Stellen übernommen`)}>
@@ -128,12 +130,12 @@ export function BundlePage({ id }: { id: string }) {
       }
     >
       {!own && <FromAgent b={b} status={status} />}
-      {own ? <CheckSignals b={b} subjects={own.mapping?.subjects ?? 0} /> : <Signals b={b} />}
-      <div className={cn('grid gap-4 lg:grid-cols-3 [&>*]:min-w-0', own && 'items-start')}>
-        {own ? <Checked className='lg:col-span-2' /> : <Change b={b} className='lg:col-span-2' />}
+      {initial ? <CheckSignals b={b} subjects={initial.mapping?.subjects ?? 0} /> : <Signals b={b} />}
+      <div className={cn('grid gap-4 lg:grid-cols-3 [&>*]:min-w-0', initial && 'items-start')}>
+        {initial ? <Checked className='lg:col-span-2' /> : <Change b={b} className='lg:col-span-2' />}
         <Readers routes={routing(b)} />
       </div>
-      {own ? (
+      {initial ? (
         <Proposals b={b} />
       ) : (
         <div className='grid gap-4 lg:grid-cols-3 [&>*]:min-w-0'>

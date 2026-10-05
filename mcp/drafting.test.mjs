@@ -122,7 +122,7 @@ test('persisted cache works after a process restart even without credentials', a
 })
 
 test('missing key and expensive models fail without any provider request', async () => {
-  await assert.rejects(generateDraft(context(), { config: config('no-key', { apiKey: '' }), fetchImpl: () => assert.fail('No request allowed') }), /LLM-Key/)
+  await assert.rejects(generateDraft(context(), { config: config('no-key', { apiKey: '' }), fetchImpl: () => assert.fail('No request allowed') }), /kein LLM eingerichtet/)
   assert.throws(() => draftingConfig({ NEURALDOC_GEMINI_MODEL: 'gemini-pro' }), /freigeschaltet/)
   assert.deepEqual(draftingConfig({ GOOGLE_CLOUD_PROJECT: 'test-project' }).model, 'gemini-3.5-flash-lite')
   assert.equal(draftingConfig({ GOOGLE_CLOUD_PROJECT: 'test-project', GEMINI_API_KEY: 'developer-key' }).apiKey, undefined)

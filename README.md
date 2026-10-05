@@ -72,6 +72,10 @@ On the start page **Eigenes Projekt importieren**, later **Übersicht → Eigene
 
 Without separate documentation, neuraldoc checks the READMEs, the `docs/` folder and the PDF and Office files inside the repository. `node_modules`, build output and `.env` files are filtered out in the browser before anything is uploaded.
 
+A repository given by GitHub URL brings its Git history: every commit since the newest tag (the last release; without a tag the last 90 days). Merges become features with their branch commits, other commits are grouped by ticket key (e.g. `MOB-4812`). The overview and **Änderungen** then show each feature with its commits and the documents it affects, as in the showcase. An uploaded folder has no history; its findings appear as one change, the initial check.
+
+**Daten** shows the repository in a code editor (files, search, history, merge requests, diffs), the documents as neuraldoc read them, and a database if there is one: the repository's SQL files run read-only in the browser (PGlite). **Datenbank verbinden** adds your own PostgreSQL, on your machine (`host.docker.internal` from inside the container) or at an internet address, with SSL. The password stays in the `neuraldoc-data` volume; every query runs in a read-only transaction, at most 15 seconds and 1,000 rows. Use a database user that may only read.
+
 1. **Erstprüfung starten** compares every documentation section with the current code, as if the last release had just shipped, and lists each mismatch.
 2. **Starten** lets your LLM write the correction for each mismatch.
 3. Review, accept or edit, then **Freigaben exportieren** downloads a ZIP with the corrected documents.
@@ -122,7 +126,7 @@ repo + docs ──► code graph ──► initial check ──► LLM draft ─
 
 | Step | What happens | Cost |
 |---|---|---|
-| **Import** | Reads the code and the documents. PDF, Word, Excel and PowerPoint become text; long documents are split into sections. | free, local |
+| **Import** | Reads the code and the documents. PDF, Word, Excel and PowerPoint become text; long documents are split into sections. A cloned repository's commits since the last release are grouped into features. | free, local |
 | **Code graph** | Parses Java, Kotlin, TypeScript/TSX, Pascal (tree-sitter) and SQL (PostgreSQL parser) into files, functions, calls and tables. | free, local |
 | **Initial check** | For every section, BM25 finds up to six matching places in the current code. [Jev](https://docs.typesafe.ai/api) rates each pair as *contradicts*, *incomplete*, *consistent* or *unrelated*. Contradictions and omissions become proposals. | paid, capped by budget |
 | **Drafting** | Your LLM corrects each mismatching section from those code places. It can also answer that the text is right, or ask a question. The response is validated against a JSON contract and its evidence IDs; a correction that drops most of the section or pastes source code is rejected. | paid or local |
@@ -178,7 +182,8 @@ A local LLM on the same computer is reached from the container at `http://host.d
 - **What leaves your machine:** document text and code excerpts go to Jev (TypeSafe API) when you start the initial check, and to your LLM provider when you draft. With a local LLM, only the Jev request leaves your machine. A GitHub URL is cloned directly from GitHub.
 - **Beispielprojekt laden** clones two public GitHub repositories. The **showcase image** makes no external calls at all.
 - **No telemetry**, no analytics, no tracking. Keys are read at runtime and never written to the image, the caches or the export.
-- Projects, decisions and caches live in the Docker volume `neuraldoc-data`. **Einstellungen → Zurücksetzen** deletes all projects, or everything including profile and keys; `docker volume rm neuraldoc-data` deletes the volume.
+- Projects, decisions, caches and database connections live in the Docker volume `neuraldoc-data`. **Einstellungen → Zurücksetzen** deletes all projects, or everything including profile, keys and database connections; `docker volume rm neuraldoc-data` deletes the volume.
+- **Own databases** are only read: queries go from your container to the database you connect, never anywhere else.
 
 neuraldoc is built for local use by one person or a small team. There is no user management; do not expose it on a public network.
 

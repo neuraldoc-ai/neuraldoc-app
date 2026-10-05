@@ -10,7 +10,21 @@ import { ChevronDown, ChevronRight, FileText, ImageIcon, Paperclip, Workflow } f
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
-import { CodeView, RawToggle, accountNames, blue, fmtDate, type Raw } from './shared'
+import jiraRaw from '@dataset/jira/search_jql.json'
+import { CodeView, RawToggle, blue, fmtDate, type Raw } from './shared'
+
+/** Atlassian account id → display name, collected from everything Jira returns. */
+const accountNames: Record<string, string> = (() => {
+  const map: Record<string, string> = {}
+  const add = (u: Raw) => u?.accountId && (map[u.accountId] = u.displayName)
+  for (const i of (jiraRaw as Raw).issues) {
+    add(i.fields.assignee)
+    add(i.fields.reporter)
+    for (const c of i.fields.comment.comments) add(c.author)
+  }
+  return map
+})()
+
 
 const pages = (pagesRaw as Raw).results as Raw[]
 const spaces = (spacesRaw as Raw).results as Raw[]

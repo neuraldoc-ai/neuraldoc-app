@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { importProject, digest, BUNDLE_ID } from './project-import.mjs'
+import { withFeatures } from './project-features.mjs'
 import { withUpload } from './project-upload.mjs'
 import { createJevClient, MODEL } from './semantic-mapping.mjs'
 import { codeChunks, createRetriever, pick } from './retrieval.mjs'
@@ -29,7 +30,7 @@ export function activeProject() {
 export function projectPayload(project = activeProject()) {
   const mapping = project?.mapping ? (({ records, ...rest }) => rest)(project.mapping) : null
   // The prepared MOBIQ showcase exists only in showcase mode; the normal app starts empty.
-  return { mode: showcaseOnly() ? 'showcase' : project ? 'working' : 'empty', canImport: !showcaseOnly(), project: project ? { id: project.id, name: project.name, sources: project.sources, createdAt: project.createdAt, warnings: project.warnings, mapping, files: project.files.map(({ text, ...rest }) => rest), documents: project.docFiles.map(({ text, ...rest }) => rest), moduleDefs: project.moduleDefs } : null, dataset: project?.dataset ? withReviewer(project.dataset) : null, graph: project?.graph ?? null }
+  return { mode: showcaseOnly() ? 'showcase' : project ? 'working' : 'empty', canImport: !showcaseOnly(), project: project ? { id: project.id, name: project.name, sources: project.sources, createdAt: project.createdAt, warnings: project.warnings, mapping, files: project.files.map(({ text, ...rest }) => rest), documents: project.docFiles.map(({ text, ...rest }) => rest), moduleDefs: project.moduleDefs } : null, dataset: project?.dataset ? withReviewer(withFeatures(project, project.dataset)) : null, history: project?.history ? { ref: project.history.ref, tag: project.history.tag, commits: project.history.commits.length } : null, graph: project?.graph ?? null }
 }
 // Approvals carry the name from the settings, also for projects imported before it was entered.
 function withReviewer(dataset) {
@@ -237,4 +238,39 @@ export function exportProject() {
     files.push({ path: source.binary ? `${source.path}.md` : source.path, original: source.path, beforeSha256: source.sha256, content: text, edited: items.some((i) => i.edited), proposals: items.map((i) => i.proposal) })
   }
   return { project: p.name, exportedAt: new Date().toISOString(), files }
+}
+
+/* ---------- Sources for the Daten page: repository, history and documents of the active project ---------- */
+
+const projectDiffs = (p) => read(path.join(projectsDir, p.id, 'diffs.json'), {})
+
+/** The repository as the code editor shows it: files with their last commit, history and merge requests. */
+export function projectSource() {
+  const p = requireProject(), history = p.history, diffs = history ? projectDiffs(p) : {}
+  const last = new Map()
+  // Commits are newest first: the first one that touches a file is its last change.
+  for (const c of history?.commits ?? []) for (const f of diffs[c.id] ?? []) if (!last.has(f.new_path)) last.set(f.new_path, { short_id: c.id.slice(0, 7), title: c.title, author_name: c.author_name, committed_date: c.committed_date })
+  const files = {}
+  for (const f of p.files) files[f.path] = { content: f.text, lastCommit: last.get(f.path) ?? null }
+  for (const d of p.docSources.filter((s) => s.origin === 'repo')) files[d.path.replace(/^repository\//, '')] ??= { content: d.text, lastCommit: last.get(d.path.replace(/^repository\//, '')) ?? null, extracted: d.binary }
+  return {
+    repository: { project: p.sources.repo?.label ?? p.name, ref: history?.ref ?? null, tag: history?.tag ?? null, head: history?.head ?? null, files },
+    commits: history?.commits ?? [],
+    mergeRequests: history?.mergeRequests ?? [],
+  }
+}
+
+/** One commit with its stored diffs; accepts a full or abbreviated hash. */
+export function projectCommit(sha) {
+  const p = requireProject(), value = String(sha || '')
+  if (!/^[a-f0-9]{4,40}$/i.test(value)) throw new DraftError('Ungültiger Commit-Hash.', 400)
+  const matches = (p.history?.commits ?? []).filter((c) => c.id.startsWith(value.toLowerCase()))
+  if (matches.length !== 1) throw new DraftError(matches.length ? 'Der Hash ist nicht eindeutig.' : 'Diesen Commit gibt es in der importierten Historie nicht.', 404)
+  return { commit: matches[0], files: projectDiffs(p)[matches[0].id] ?? [] }
+}
+
+/** Documents with their full text (the page list carries only metadata). */
+export function projectDocuments() {
+  const p = requireProject()
+  return { documents: p.docSources.map(({ id, path: file, origin, format, binary, text }) => ({ id, path: file, origin, format, binary, text, sections: p.docFiles.filter((d) => d.source === id).map((d) => d.id) })) }
 }

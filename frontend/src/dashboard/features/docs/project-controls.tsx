@@ -1,9 +1,7 @@
 import { useRef, useState, type DragEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Download, FileText, FolderGit2, FolderOpen, GitBranch, KeyRound, LoaderCircle, Upload, X } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,7 +9,6 @@ import { cn } from '@/lib/utils'
 import { importProject, importSample, projectAction, projectState } from './project'
 import { archive, candidates, pick, type Picked, type Role } from './upload'
 import { repoUrl } from './import-rules.mjs'
-import { docs } from './data'
 import { loadSetup } from '@/features/settings/api'
 import { Link } from '@tanstack/react-router'
 
@@ -114,17 +111,4 @@ async function downloadExport() {
   for (const file of result.files) files[file.path] = strToU8(file.content)
   const url = URL.createObjectURL(new Blob([zipSync(files) as Uint8Array<ArrayBuffer>], { type: 'application/zip' })), anchor = document.createElement('a')
   anchor.href = url; anchor.download = 'neuraldoc-dokumentaenderungen.zip'; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
-
-export function ImportedSources({ tab }: { tab: string }) {
-  const project = projectState.project!, { repo, docs: docSource } = project.sources
-  const files = [...new Map(project.documents.map((d) => [d.path, d])).values()]
-  const source = (s: { label: string; source: string } | null, fallback: string) => s ? `${s.label} · ${s.source === 'url' ? 'von GitHub geklont' : 'hochgeladen'}` : fallback
-  return <div className='grid gap-4'>
-    <div className='grid gap-4 md:grid-cols-3'>{[{ title: 'Code-Dateien', value: project.files.length, detail: source(repo, '') }, { title: 'Dokumente', value: files.length, detail: source(docSource, 'Aus dem Repository (README, docs/)') }, { title: 'Abschnitte', value: project.documents.length, detail: 'Lange Dokumente werden in Abschnitte geteilt' }].map((item) => <Card key={item.title}><CardHeader><CardTitle className='text-sm'>{item.title}</CardTitle></CardHeader><CardContent><p className='text-3xl font-medium'>{item.value}</p><p className='mt-2 text-xs text-muted-foreground'>{item.detail}</p></CardContent></Card>)}</div>
-    <Card><CardHeader><CardTitle>{tab === 'dokumente' || tab === 'confluence' || tab === 'doku-arten' ? 'Dokumente' : 'Code'}</CardTitle></CardHeader><CardContent className='grid gap-1'>{tab === 'dokumente' || tab === 'confluence' || tab === 'doku-arten'
-      ? docs.map((doc) => { const meta = project.documents.find((d) => d.id === doc.id); return <Link key={doc.id} to='/dokumente/$id' params={{ id: doc.id }} className='flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm hover:border-brand-300'><span className='min-w-0 truncate'>{doc.title}</span><span className='flex shrink-0 items-center gap-2'><span className='hidden text-xs text-muted-foreground sm:inline'>{meta?.path}</span><Badge variant='outline'>{meta?.format.toUpperCase()}</Badge></span></Link> })
-      : project.files.map((file) => <p key={file.id} className='rounded-lg border px-3 py-2 font-mono text-xs'>{file.path}</p>)}</CardContent></Card>
-    {!!project.warnings.length && <details className='rounded-xl border p-4'><summary className='cursor-pointer text-sm'>{project.warnings.length} Hinweise zum Import</summary><ul className='mt-3 grid gap-1 text-xs text-muted-foreground'>{project.warnings.map((warning, i) => <li key={i}>{warning}</li>)}</ul></details>}
-  </div>
 }

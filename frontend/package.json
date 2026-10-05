@@ -67,6 +67,7 @@
     "input-otp": "^1.4.2",
     "lucide-react": "^1.8.0",
     "monaco-editor": "^0.55.1",
+    "pg": "^8.23.1",
     "pgsql-parser": "^18.2.8",
     "radix-ui": "^1.6.7",
     "react": "^19.2.5",

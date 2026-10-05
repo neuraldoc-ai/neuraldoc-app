@@ -5,10 +5,11 @@ import { parseCode, resolveJava, resolveTypeScript, parseSQL, sqlObjects } from 
 import { classify, ignored, LIMITS } from '../frontend/src/dashboard/features/docs/import-rules.mjs'
 import { documentText, isBinaryDoc, sections } from './doc-text.mjs'
 import { log } from './log.mjs'
+import { readHistory } from './git-history.mjs'
 
 export const digest = (value) => crypto.createHash('sha256').update(value).digest('hex')
 // Part of the project id: a changed importer builds a fresh project instead of reusing a stale graph.
-const IMPORTER_VERSION = 3
+const IMPORTER_VERSION = 4
 export const BUNDLE_ID = 'erstpruefung'
 
 /** Every regular file below root as a POSIX path; symlinks and ignored folders are never followed. */
@@ -64,6 +65,8 @@ export async function importProject(input, { projectsDir }) {
   }
   if (!input.repo?.dir) throw new Error('Repository fehlt.')
   await collect('repo', input.repo.dir)
+  // A cloned repository brings its history since the last release; an uploaded folder has none.
+  const history = await readHistory(input.repo.dir).catch((error) => { warnings.push(`Git-Historie nicht lesbar: ${error.message.split('\n')[0]}`); return null })
   if (input.docs?.dir) await collect('docs', input.docs.dir)
   if (!files.length) throw new Error('Keine Code-Dateien gefunden. Bitte den Ordner des Repositories (mit den Quelltexten) hochladen.')
   if (!docSources.length) throw new Error(input.docs?.dir ? 'Keine lesbaren Dokumente gefunden. Unterstützt: Markdown, Text, HTML, PDF, Word, Excel, PowerPoint und CSV.' : 'Im Repository gibt es keine Dokumentation (README, docs/, PDFs). Bitte die Doku zusätzlich hochladen.')
@@ -78,7 +81,7 @@ export async function importProject(input, { projectsDir }) {
   if (docFiles.length > LIMITS.sections) throw new Error(`Die Dokumente ergeben ${docFiles.length} Abschnitte, erlaubt sind ${LIMITS.sections}. Bitte weniger oder kürzere Dokumente hochladen.`)
 
   const moduleDefs = [...new Set(files.map((f) => f.path.includes('/') ? f.path.split('/')[0] : 'Repository'))].slice(0, 30).map((folder, i) => ({ id: `module-${i}`, name: folder, path: folder === 'Repository' ? '' : folder, description: `Ordner ${folder} im Repository.` }))
-  const id = digest(JSON.stringify({ importer: IMPORTER_VERSION, name, code: files.map((f) => [f.path, digest(f.text)]), docs: docSources.map((d) => [d.path, d.sha256]) })).slice(0, 20)
+  const id = digest(JSON.stringify({ importer: IMPORTER_VERSION, name, head: history?.head?.id ?? null, code: files.map((f) => [f.path, digest(f.text)]), docs: docSources.map((d) => [d.path, d.sha256]) })).slice(0, 20)
   const snapshot = path.join(projectsDir, id, 'snapshot')
   fs.rmSync(snapshot, { recursive: true, force: true }); fs.mkdirSync(snapshot, { recursive: true })
   // TypeScript resolution runs against a private copy, never against the upload folder.
@@ -136,7 +139,9 @@ export async function importProject(input, { projectsDir }) {
     bundles: [{ id: BUNDLE_ID, title: 'Erstprüfung: Doku gegen aktuellen Code', ticket: 'Erstprüfung', mr: `${files.length} Code-Dateien`, merged: date, path: [name], classifiedVia: ['Statische Analyse', 'Jev'], summary: 'Jeder Doku-Abschnitt wird mit den passenden Stellen im aktuellen Code verglichen, als wäre das letzte Release gerade fertig. Jede Abweichung wird zu einem Vorschlag.', aspects: moduleDefs.map((m) => ({ kind: 'schnittstelle', module: m.id, text: m.description, commits: [] })), commits: [] }],
     proposals: [], backtest: [],
   }
+  // Diffs are large and only read when a commit is opened: they live next to the project, not in it.
+  if (history) fs.writeFileSync(path.join(projectsDir, id, 'diffs.json'), JSON.stringify(history.diffs))
   const graph = { nodes, edges, metadata: { snapshot: date, sources: ['Repository', 'Dokumente'], method: 'Tree-sitter, TypeScript-Symbolauflösung und PostgreSQL AST; statische Analyse.', analysis: parserReport, semantic: { status: 'missing' } } }
-  log.info('import', 'Projekt analysiert', { name, code: files.length, documents: docSources.length, sections: docFiles.length, warnings: warnings.length, ms: Date.now() - started })
-  return { id, name, sources: { repo: { label: input.repo.label, source: input.repo.source }, docs: input.docs?.dir ? { label: input.docs.label, source: input.docs.source } : null }, createdAt: now, files, docSources, docFiles, moduleDefs, warnings, dataset, graph, mapping: null, generated: {}, decisions: {}, events: [] }
+  log.info('import', 'Projekt analysiert', { name, commits: history?.commits.length ?? 0, features: history?.features.length ?? 0, code: files.length, documents: docSources.length, sections: docFiles.length, warnings: warnings.length, ms: Date.now() - started })
+  return { id, name, sources: { repo: { label: input.repo.label, source: input.repo.source }, docs: input.docs?.dir ? { label: input.docs.label, source: input.docs.source } : null }, createdAt: now, files, docSources, docFiles, moduleDefs, warnings, dataset, graph, history: history && { ref: history.ref, tag: history.tag, head: history.head, commits: history.commits, mergeRequests: history.mergeRequests, features: history.features }, mapping: null, generated: {}, decisions: {}, events: [] }
 }

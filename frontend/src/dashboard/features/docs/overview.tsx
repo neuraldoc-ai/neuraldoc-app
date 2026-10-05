@@ -51,13 +51,18 @@ export function OverviewPage() {
   const unmapped = !!project && !project.mapping;
   const documentCount = project ? new Set(project.documents.map((d) => d.path)).size : 0;
   const mismatches = project?.mapping?.mismatches ?? 0;
+  // A cloned repository brings its history: its features are shown like the showcase's.
+  const features = bundles.filter((b) => b.commits.length > 0);
+  const history = !!project && features.length > 0;
   const checked = project
     ? [
+        ...(history ? [`${plural(features.reduce((n, b) => n + b.commits.length, 0), "Commit", "Commits")} ${projectState.history?.tag ? `seit ${projectState.history.tag} ` : ""}zu ${plural(features.length, "Feature", "Features")} gebündelt`] : []),
         `${plural(project.files.length, "Code-Datei", "Code-Dateien")} und ${plural(documentCount, "Dokument", "Dokumente")} importiert`,
         ...(project.mapping ? [
           `${plural(project.mapping.subjects, "Doku-Abschnitt", "Doku-Abschnitte")} mit Jev gegen den aktuellen Code geprüft`,
           `${plural(project.mapping.consistent, "Abschnitt passt", "Abschnitte passen")} laut Jev zum Code`,
           `${plural(project.mapping.deferred.length - project.mapping.consistent, "Abschnitt", "Abschnitte")} ohne erkennbaren Bezug zum Code, bleiben unverändert`,
+          ...(history && done.length ? [`${plural(done.length, "Feature", "Features")} ohne nötige Textänderung (${done.map((d) => d.title).join(", ")})`] : []),
         ] : []),
       ]
     : null;
@@ -96,20 +101,20 @@ export function OverviewPage() {
           <div className="grid gap-6 bg-brand-50/60 p-6 md:grid-cols-[1fr_auto] md:items-center dark:bg-brand-500/10">
             <div className="grid gap-2">
               <span className="text-xs font-medium tracking-wide text-brand-700 uppercase dark:text-brand-300">
-                {datasetMode === 'working' ? `Eigenes Projekt · importiert am ${fmtDate(release.freeze)}` : `Release ${release.id} · Code-Freeze am ${fmtDate(release.freeze)}`}
+                {history ? `${release.id.startsWith("seit") ? `Änderungen ${release.id}` : `Release ${release.id}`} · Stand ${fmtDate(release.freeze)}` : datasetMode === 'working' ? `Eigenes Projekt · importiert am ${fmtDate(release.freeze)}` : `Release ${release.id} · Code-Freeze am ${fmtDate(release.freeze)}`}
               </span>
               <p className="text-[26px] leading-tight font-medium tracking-tight">
-                {project ? (unmapped ? "Doku noch nicht geprüft." : mismatches ? `${plural(mismatches, "Doku-Abschnitt weicht", "Doku-Abschnitte weichen")} vom Code ab.` : "Keine Abweichung gefunden.") : <>Bei {plural(sum.withDocs, "Feature", "Features")} muss die Doku angepasst werden.</>}
+                {project && (unmapped || !history) ? (unmapped ? "Doku noch nicht geprüft." : mismatches ? `${plural(mismatches, "Doku-Abschnitt weicht", "Doku-Abschnitte weichen")} vom Code ab.` : "Keine Abweichung gefunden.") : (history ? features.filter((b) => b.proposals.length).length : sum.withDocs) ? <>Bei {plural(history ? features.filter((b) => b.proposals.length).length : sum.withDocs, "Feature", "Features")} muss die Doku angepasst werden.</> : "Keine Abweichung gefunden."}
               </p>
               <p className="max-w-[64ch] text-sm text-muted-foreground">
-                {project
+                {project && (unmapped || !history)
                   ? unmapped
                     ? "Die Erstprüfung vergleicht jedes Dokument mit dem aktuellen Code, als wäre das letzte Release gerade fertig, und zeigt jede Abweichung."
                     : mismatches
                       ? "„Starten“ formuliert die Korrekturen aus dem Code. Du prüfst jede Stelle und gibst sie frei."
                       : "Jev hat keinen Widerspruch zwischen Doku und Code gefunden."
-                  : <>neuraldoc hat {plural(sum.commits, "Commit", "Commits")} zu{" "}
-                    {plural(sum.bundles, "Feature", "Features")} gebündelt. „Starten“ formuliert die
+                  : <>neuraldoc hat {plural(history ? features.reduce((n, b) => n + b.commits.length, 0) : sum.commits, "Commit", "Commits")} zu{" "}
+                    {plural(history ? features.length : sum.bundles, "Feature", "Features")} gebündelt. „Starten“ formuliert die
                     Vorschläge für die betroffenen Dokumente.</>}
               </p>
             </div>
@@ -135,7 +140,7 @@ export function OverviewPage() {
             <CardDescription>
               {allDone
                 ? "Zu diesen Features sind alle Vorschläge entschieden."
-                : project
+                : project && !history
                   ? "Abweichungen zwischen Doku und aktuellem Code."
                   : "Features mit den meisten offenen Vorschlägen zuerst."}
             </CardDescription>

@@ -1,12 +1,9 @@
 /**
- * The GitLab repository as a real IDE (Monaco, the editor of VS Code): explorer, search, commit history and merge requests
+ * A repository as a real IDE (Monaco, the editor of VS Code): explorer, search, commit history and merge requests
  * in the side bar, files / commits / merge requests as editor tabs, diffs in a diff editor, status bar.
+ * The data comes from a RepoSource: the MOBIQ GitLab sample (showcase-source.ts) or an imported repository (project-source.ts).
  */
-import repoRaw from '@dataset/gitlab/repository.json'
-import commitsRaw from '@dataset/gitlab/commits.json'
-import diffsRaw from '@dataset/gitlab/diffs.json'
-import mrsRaw from '@dataset/gitlab/merge_requests.json'
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import {
   BookOpen,
   Braces,
@@ -48,27 +45,25 @@ import { Markdown, RawToggle, fmtDate, fmtDateTime, type Raw } from '../shared'
 import { CodeEditor, DiffViewer, type Cursor } from './editors'
 import { buildTree, languageOf, parseDiff, searchFiles, type TreeNode } from './model'
 
-const repo = repoRaw as Raw
-const commits = commitsRaw as Raw[]
-const diffs = diffsRaw as Record<string, Raw[]>
-const mrs = mrsRaw as Raw[]
+/** What the IDE shows: files with content and last commit, history, merge requests and the diffs of a commit. */
+export type RepoSource = {
+  repo: { project: string; ref: string | null; head: Raw | null; files: Record<string, Raw> }
+  commits: Raw[]
+  mrs: Raw[]
+  diffsOf: (id: string) => Raw[] | Promise<Raw[]>
+  commitsOfMr: (m: Raw) => Raw[]
+  /** Shown in the title bar, e.g. „schreibgeschützt“. */
+  note?: string
+}
 
-/** A commit belongs to a merge request if the MR's own commit list contains it. */
-const mrCommitIds: Record<number, Set<string>> = Object.fromEntries(
-  Object.entries(import.meta.glob('../../../../../../../datasets/mobiq/data/gitlab/merge_requests/*/commits.json', { eager: true, import: 'default' })).map(([p, list]) => [
-    Number(p.match(/merge_requests\/(\d+)\//)![1]),
-    new Set((list as Raw[]).map((c) => c.id)),
-  ])
-)
-const commitsOfMr = (m: Raw) => commits.filter((c) => c.parent_ids.length === 1 && mrCommitIds[m.iid]?.has(c.id))
+const SourceContext = createContext<RepoSource | null>(null)
+const useSource = () => useContext(SourceContext)!
 
 type Tab = { kind: 'file' | 'commit' | 'mr'; id: string }
 type Panel = 'explorer' | 'search' | 'commits' | 'mrs'
 
 const tabKey = (t: Tab) => `${t.kind}:${t.id}`
 const baseName = (p: string) => p.split('/').pop()!
-const commitById = (id: string) => commits.find((c) => c.id === id)
-const mrByIid = (iid: string) => mrs.find((m) => String(m.iid) === iid)
 
 const FILE_ICONS: Record<string, [LucideIcon, string]> = {
   java: [Coffee, 'text-orange-500'],
@@ -94,12 +89,27 @@ function FileIcon({ path, className }: { path: string; className?: string }) {
   return <Icon className={cn('size-4 shrink-0', color, className)} />
 }
 
-export default function Workbench() {
-  const tree = useMemo(() => buildTree(Object.keys(repo.files)), [])
+export default function Workbench({ source }: { source: RepoSource }) {
+  return (
+    <SourceContext.Provider value={source}>
+      <Ide />
+    </SourceContext.Provider>
+  )
+}
+
+/** README at the top level if there is one, otherwise the first file. */
+const startFile = (files: Record<string, Raw>) => Object.keys(files).find((p) => /^readme(\.md)?$/i.test(p)) ?? Object.keys(files).sort()[0]
+
+function Ide() {
+  const { repo, commits, mrs, note } = useSource()
+  const commitById = (id: string) => commits.find((c) => c.id === id)
+  const mrByIid = (iid: string) => mrs.find((m) => String(m.iid) === iid)
+  const tree = useMemo(() => buildTree(Object.keys(repo.files)), [repo])
+  const first = startFile(repo.files)
   const [panel, setPanel] = useState<Panel | null>('explorer')
   const [width, setWidth] = useState(288)
-  const [tabs, setTabs] = useState<Tab[]>([{ kind: 'file', id: 'README.md' }])
-  const [active, setActive] = useState('file:README.md')
+  const [tabs, setTabs] = useState<Tab[]>(first ? [{ kind: 'file', id: first }] : [])
+  const [active, setActive] = useState(first ? `file:${first}` : '')
   const [reveal, setReveal] = useState<{ line: number; nonce: number }>()
   const [cursor, setCursor] = useState<Cursor>({ line: 1, column: 1, selected: 0 })
   const [source, setSource] = useState<Record<string, boolean>>({})
@@ -165,8 +175,8 @@ export default function Workbench() {
   const activity: { id: Panel; icon: LucideIcon; label: string }[] = [
     { id: 'explorer', icon: Files, label: 'Explorer (Strg+B)' },
     { id: 'search', icon: Search, label: 'Suchen (Strg+Umschalt+F)' },
-    { id: 'commits', icon: GitCommitHorizontal, label: 'Verlauf' },
-    { id: 'mrs', icon: GitMerge, label: 'Merge-Requests' },
+    ...(commits.length ? [{ id: 'commits' as const, icon: GitCommitHorizontal, label: 'Verlauf' }] : []),
+    ...(mrs.length ? [{ id: 'mrs' as const, icon: GitMerge, label: 'Merge-Requests' }] : []),
   ]
 
   return (
@@ -175,7 +185,7 @@ export default function Workbench() {
         <span className='flex min-w-0 items-center gap-2 text-[13px] font-medium'>
           <SquareCode className='size-4 shrink-0 text-brand-600' />
           <span className='truncate'>{repo.project}</span>
-          <span className='hidden text-xs font-normal text-muted-foreground sm:inline'>schreibgeschützt</span>
+          <span className='hidden text-xs font-normal text-muted-foreground sm:inline'>{note ?? 'schreibgeschützt'}</span>
         </span>
         <button
           type='button'
@@ -225,8 +235,8 @@ export default function Workbench() {
               const key = tabKey(t)
               const isActive = key === active
               const c = t.kind === 'commit' ? commitById(t.id) : undefined
-              const label = t.kind === 'file' ? baseName(t.id) : t.kind === 'commit' ? c.short_id.slice(0, 7) : `!${t.id}`
-              const title = t.kind === 'file' ? t.id : t.kind === 'commit' ? c.title : mrByIid(t.id)?.title
+              const label = t.kind === 'file' ? baseName(t.id) : t.kind === 'commit' ? c?.short_id.slice(0, 7) : mrByIid(t.id)?.reference ?? `!${t.id}`
+              const title = t.kind === 'file' ? t.id : t.kind === 'commit' ? c?.title : mrByIid(t.id)?.title
               return (
                 <div
                   key={key}
@@ -273,12 +283,16 @@ export default function Workbench() {
 
       <footer className='flex shrink-0 items-center justify-between gap-3 bg-brand-700 px-3 py-1 text-xs text-white'>
         <span className='flex min-w-0 items-center gap-3'>
-          <span className='flex shrink-0 items-center gap-1'>
-            <GitBranch className='size-3.5' /> {repo.ref}
-          </span>
-          <span className='hidden truncate sm:inline'>
-            {repo.head.short_id} {repo.head.title}
-          </span>
+          {repo.ref && (
+            <span className='flex shrink-0 items-center gap-1'>
+              <GitBranch className='size-3.5' /> {repo.ref}
+            </span>
+          )}
+          {repo.head && (
+            <span className='hidden truncate sm:inline'>
+              {repo.head.short_id.slice(0, 7)} {repo.head.title}
+            </span>
+          )}
         </span>
         <span className='flex shrink-0 items-center gap-4'>
           {current?.kind === 'file' && file && (
@@ -314,6 +328,7 @@ function PanelHeader({ title, children }: { title: string; children?: ReactNode 
 }
 
 function Explorer({ tree, expanded, setExpanded, activePath, onOpen }: { tree: TreeNode; expanded: Set<string>; setExpanded: (s: Set<string>) => void; activePath: string; onOpen: (p: string) => void }) {
+  const { repo } = useSource()
   const toggle = (path: string) => {
     const next = new Set(expanded)
     if (!next.delete(path)) next.add(path)
@@ -366,8 +381,9 @@ function TreeRow({ node, depth, expanded, toggle, activePath, onOpen }: { node: 
 }
 
 function SearchPanel({ onOpen }: { onOpen: (path: string, line: number) => void }) {
+  const { repo } = useSource()
   const [query, setQuery] = useState('')
-  const { hits, total } = useMemo(() => searchFiles(repo.files, query), [query])
+  const { hits, total } = useMemo(() => searchFiles(repo.files, query), [repo, query])
   return (
     <>
       <PanelHeader title='Suche' />
@@ -418,6 +434,7 @@ function SearchPanel({ onOpen }: { onOpen: (path: string, line: number) => void 
 }
 
 function HistoryPanel({ activeId, onOpen }: { activeId: string; onOpen: (id: string) => void }) {
+  const { commits } = useSource()
   return (
     <>
       <PanelHeader title={`Verlauf · ${commits.length} Commits`} />
@@ -442,6 +459,7 @@ function HistoryPanel({ activeId, onOpen }: { activeId: string; onOpen: (id: str
 }
 
 function MergeRequestPanel({ activeId, onOpen }: { activeId: string; onOpen: (iid: string) => void }) {
+  const { mrs } = useSource()
   return (
     <>
       <PanelHeader title={`Merge-Requests · ${mrs.length}`} />
@@ -453,7 +471,7 @@ function MergeRequestPanel({ activeId, onOpen }: { activeId: string; onOpen: (ii
               <span className='truncate'>{m.title}</span>
             </span>
             <span className='block truncate ps-5 text-[11px] text-muted-foreground'>
-              !{m.iid} · {m.source_branch} · {m.author.name}
+              {m.reference ?? `!${m.iid}`}{m.source_branch ? ` · ${m.source_branch}` : ''} · {m.author.name}
             </span>
           </button>
         ))}
@@ -465,6 +483,7 @@ function MergeRequestPanel({ activeId, onOpen }: { activeId: string; onOpen: (ii
 /* ---------- Editor area ---------- */
 
 function Welcome({ onQuickOpen, onOpen }: { onQuickOpen: () => void; onOpen: (p: string) => void }) {
+  const readme = Object.keys(useSource().repo.files).find((p) => /^readme(\.md)?$/i.test(p))
   return (
     <div className='grid h-full place-content-center justify-items-center gap-4 p-6 text-center text-muted-foreground'>
       <SquareCode className='size-12 text-brand-600/60' />
@@ -473,9 +492,11 @@ function Welcome({ onQuickOpen, onOpen }: { onQuickOpen: () => void; onOpen: (p:
         <Button size='sm' variant='outline' onClick={onQuickOpen}>
           <Search className='size-3.5' /> Datei suchen (Strg+P)
         </Button>
-        <Button size='sm' variant='outline' onClick={() => onOpen('README.md')}>
-          <BookOpen className='size-3.5' /> README öffnen
-        </Button>
+        {readme && (
+          <Button size='sm' variant='outline' onClick={() => onOpen(readme)}>
+            <BookOpen className='size-3.5' /> README öffnen
+          </Button>
+        )}
       </div>
     </div>
   )
@@ -513,15 +534,16 @@ function copy(text: string) {
 }
 
 function FileView({ path, file, preview, onTogglePreview, reveal, onCursor, onOpenCommit }: { path: string; file: Raw; preview: boolean; onTogglePreview: () => void; reveal?: { line: number; nonce: number }; onCursor: (c: Cursor) => void; onOpenCommit: (id: string) => void }) {
-  const isMd = path.endsWith('.md')
-  const last = commits.find((c) => c.id.startsWith(file.lastCommit.short_id) || file.lastCommit.short_id.startsWith(c.short_id))
+  const { commits } = useSource()
+  const isMd = /\.(md|mdx|markdown)$/i.test(path)
+  const last = file.lastCommit && commits.find((c) => c.id.startsWith(file.lastCommit.short_id) || file.lastCommit.short_id.startsWith(c.short_id))
   return (
     <div className='flex h-full flex-col'>
       <Breadcrumbs path={path}>
         {last && (
           <button type='button' onClick={() => onOpenCommit(last.id)} className='me-1 hidden max-w-72 items-center gap-1.5 truncate rounded px-1.5 py-0.5 hover:bg-muted lg:flex' title='Letzte Änderung öffnen'>
             <GitCommitHorizontal className='size-3.5 shrink-0' />
-            <span className='truncate'>{file.lastCommit.short_id} {file.lastCommit.title} · {file.lastCommit.author_name}, {fmtDate(file.lastCommit.authored_date)}</span>
+            <span className='truncate'>{file.lastCommit.short_id} {file.lastCommit.title} · {file.lastCommit.author_name}, {fmtDate(file.lastCommit.authored_date ?? file.lastCommit.committed_date)}</span>
           </button>
         )}
         {isMd && <ToolButton icon={preview ? SquareCode : Eye} label={preview ? 'Quelltext' : 'Vorschau'} onClick={onTogglePreview} />}
@@ -535,7 +557,7 @@ function FileView({ path, file, preview, onTogglePreview, reveal, onCursor, onOp
             </div>
           </div>
         ) : (
-          <CodeEditor path={path} text={file.content} reveal={reveal?.line ? reveal : undefined} onCursor={onCursor} />
+          <CodeEditor path={file.extracted ? `${path}.txt` : path} text={file.content} reveal={reveal?.line ? reveal : undefined} onCursor={onCursor} />
         )}
       </div>
     </div>
@@ -543,7 +565,8 @@ function FileView({ path, file, preview, onTogglePreview, reveal, onCursor, onOp
 }
 
 function CommitView({ commit: c, sideBySide, setSideBySide, onOpenFile }: { commit: Raw; sideBySide: boolean; setSideBySide: (v: boolean) => void; onOpenFile: (p: string) => void }) {
-  const files = useMemo(() => diffs[c.id] ?? [], [c.id])
+  const { repo, diffsOf } = useSource()
+  const files = useDiffs(diffsOf, c.id)
   const [selected, setSelected] = useState(0)
   const counts = useMemo(() => files.map((f) => parseDiff(String(f.diff))), [files])
   const merge = c.parent_ids.length > 1
@@ -595,6 +618,8 @@ function CommitView({ commit: c, sideBySide, setSideBySide, onOpenFile }: { comm
             <DiffViewer diff={String(file.diff)} path={file.new_path} sideBySide={sideBySide} />
           </div>
         </>
+      ) : files === EMPTY_LOADING ? (
+        <p role='status' className='p-6 text-sm text-muted-foreground'>Änderungen werden geladen …</p>
       ) : (
         <p className='p-6 text-sm text-muted-foreground'>{merge ? 'Dieser Merge-Commit bringt keine eigenen Änderungen mit, die Dateiänderungen stehen in den Commits des Branches.' : 'Keine Dateiänderungen.'}</p>
       )}
@@ -603,16 +628,16 @@ function CommitView({ commit: c, sideBySide, setSideBySide, onOpenFile }: { comm
 }
 
 function MergeRequestView({ mr: m, onOpenCommit }: { mr: Raw; onOpenCommit: (id: string) => void }) {
-  const mine = commitsOfMr(m)
+  const mine = useSource().commitsOfMr(m)
   return (
     <div className='h-full overflow-auto p-6'>
       <div className='mx-auto grid max-w-3xl gap-5'>
         <div>
           <h3 className='flex items-center gap-2 text-lg font-medium'>
-            <GitMerge className='size-5 shrink-0 text-brand-600' /> !{m.iid} {m.title}
+            <GitMerge className='size-5 shrink-0 text-brand-600' /> {m.reference ?? `!${m.iid}`} {m.title}
           </h3>
           <p className='mt-1 text-sm text-muted-foreground'>
-            {m.source_branch} → {m.target_branch} · {m.author.name} · gemergt {fmtDate(m.merged_at)} von {m.merged_by.name}
+            {m.source_branch && m.target_branch ? `${m.source_branch} → ${m.target_branch} · ` : ''}{m.author.name} · gemergt {fmtDate(m.merged_at)}{m.merged_by?.name ? ` von ${m.merged_by.name}` : ''}
           </p>
           <div className='mt-2 flex flex-wrap gap-1'>
             {m.labels.map((l: string) => (
@@ -620,9 +645,11 @@ function MergeRequestView({ mr: m, onOpenCommit }: { mr: Raw; onOpenCommit: (id:
             ))}
           </div>
         </div>
-        <div className='rounded-lg border p-5'>
-          <Markdown text={m.description} />
-        </div>
+        {m.description?.trim() && (
+          <div className='rounded-lg border p-5'>
+            <Markdown text={m.description} />
+          </div>
+        )}
         <div className='grid gap-1'>
           <span className='mb-1 text-xs font-medium text-muted-foreground uppercase tracking-wider'>{mine.length} Commits</span>
           {mine.map((c) => (
@@ -640,6 +667,7 @@ function MergeRequestView({ mr: m, onOpenCommit }: { mr: Raw; onOpenCommit: (id:
 }
 
 function QuickOpen({ open, onOpenChange, onSelect }: { open: boolean; onOpenChange: (o: boolean) => void; onSelect: (path: string) => void }) {
+  const { repo } = useSource()
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogHeader className='sr-only'>
@@ -663,4 +691,21 @@ function QuickOpen({ open, onOpenChange, onSelect }: { open: boolean; onOpenChan
       </DialogContent>
     </Dialog>
   )
+}
+
+/* ---------- Diffs: synchronous for the sample, fetched for an imported repository ---------- */
+
+const EMPTY_LOADING: Raw[] = []
+
+function useDiffs(diffsOf: RepoSource['diffsOf'], id: string): Raw[] {
+  const initial = useMemo(() => diffsOf(id), [diffsOf, id])
+  const [loaded, setLoaded] = useState<{ id: string; files: Raw[] } | null>(null)
+  useEffect(() => {
+    if (!(initial instanceof Promise)) return
+    let live = true
+    initial.then((files) => { if (live) setLoaded({ id, files }) }).catch(() => { if (live) setLoaded({ id, files: [] }) })
+    return () => { live = false }
+  }, [initial, id])
+  if (!(initial instanceof Promise)) return initial
+  return loaded?.id === id ? loaded.files : EMPTY_LOADING
 }

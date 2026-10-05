@@ -23,6 +23,9 @@ All notable changes to this project are documented here. The format follows [Kee
 - Einstellungen → Zurücksetzen: delete all projects, or everything including profile and keys.
 - CI for tests, build, lint and a Docker smoke test.
 - `ARCHITECTURE.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, guides under `docs/`.
+- Git history for repositories imported by URL: commits since the last tag are grouped into features (merge requests, ticket keys). Overview, Änderungen and the change page look like the showcase for your own project: features with kind, commits, affected doc types and proposals; findings no commit explains are listed as „Weitere Abweichungen“.
+- Daten for your own project: code editor with history, merge requests and diffs; documents as neuraldoc read them (Markdown rendered); the repository's SQL files as a read-only database in the browser.
+- Own PostgreSQL connections (Daten → Datenbank verbinden): local or remote, single fields or a connection URL, SSL modes, schema, connection test. Read-only transactions, 15 s and 1,000 rows per query; the password never leaves the server.
 - Evaluation of the initial check in `mcp/eval`: MOBIQ plus three open-source benchmarks from real project history (httpx, zx, cobra), item-level scoring, a calibrated LLM judge for drafts, cost and time per variant.
 
 ### Changed

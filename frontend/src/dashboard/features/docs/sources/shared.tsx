@@ -1,8 +1,8 @@
 /**
  * Shared pieces for the source browsers on the Daten page: code view, diff, a small Markdown
  * renderer (README), ADF rendering (Jira) and a toggle that shows the original API JSON.
+ * Used by imported projects too, so it must not read the MOBIQ sample.
  */
-import jiraRaw from '@dataset/jira/search_jql.json'
 import { Fragment, useState, type ReactNode } from 'react'
 import { ChevronRight, Copy } from 'lucide-react'
 import { toast } from 'sonner'
@@ -16,18 +16,6 @@ import { cn } from '@/lib/utils'
 export type Raw = any
 
 export const blue = 'border-brand-200 bg-brand-50 text-brand-700 dark:border-brand-500/30 dark:bg-brand-500/15 dark:text-brand-200'
-
-/** Atlassian account id → display name, collected from everything Jira returns. */
-export const accountNames: Record<string, string> = (() => {
-  const map: Record<string, string> = {}
-  const add = (u: Raw) => u?.accountId && (map[u.accountId] = u.displayName)
-  for (const i of (jiraRaw as Raw).issues) {
-    add(i.fields.assignee)
-    add(i.fields.reporter)
-    for (const c of i.fields.comment.comments) add(c.author)
-  }
-  return map
-})()
 
 export const initials = (name = '?') =>
   name
@@ -145,17 +133,14 @@ export function DiffFile({ file }: { file: Raw }) {
 /* ---------- Markdown (README, MR descriptions) ---------- */
 
 function inlineMd(s: string): ReactNode {
-  return s.split(/(`[^`]+`|\*\*[^*]+\*\*)/g).map((part, i) =>
-    part.startsWith('`') ? (
-      <code key={i} className='rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]'>
-        {part.slice(1, -1)}
-      </code>
-    ) : part.startsWith('**') ? (
-      <strong key={i}>{part.slice(2, -2)}</strong>
-    ) : (
-      <Fragment key={i}>{part}</Fragment>
-    )
-  )
+  return s.split(/(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)\s]+\))/g).map((part, i) => {
+    if (part.startsWith('`')) return <code key={i} className='rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]'>{part.slice(1, -1)}</code>
+    if (part.startsWith('**')) return <strong key={i}>{part.slice(2, -2)}</strong>
+    const link = part.match(/^\[([^\]]+)\]\(([^)\s]+)\)$/)
+    // Only web links open; relative links of a repository have no target here.
+    if (link) return /^https?:\/\//.test(link[2]) ? <a key={i} href={link[2]} target='_blank' rel='noreferrer' className='text-brand-700 underline-offset-4 hover:underline dark:text-brand-300'>{link[1]}</a> : <span key={i} className='underline decoration-dotted underline-offset-4'>{link[1]}</span>
+    return <Fragment key={i}>{part}</Fragment>
+  })
 }
 
 export function Markdown({ text }: { text: string }) {
@@ -164,6 +149,48 @@ export function Markdown({ text }: { text: string }) {
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i]
     if (!l.trim()) continue
+    const fence = l.match(/^\s*(```|~~~)/)
+    if (fence) {
+      const code: string[] = []
+      while (++i < lines.length && !lines[i].trim().startsWith(fence[1])) code.push(lines[i])
+      blocks.push(<pre key={i} className='overflow-auto rounded-lg bg-muted/60 p-3 font-mono text-[12px] leading-5'>{code.join('\n')}</pre>)
+      continue
+    }
+    if (/^\s*\|.*\|\s*$/.test(l) && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1] ?? '')) {
+      const cells = (row: string) => row.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim())
+      const head = cells(l)
+      const rows: string[][] = []
+      i += 2
+      while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(cells(lines[i++]))
+      i--
+      blocks.push(
+        <div key={i} className='overflow-auto'>
+          <table className='w-full border-collapse text-[13px]'>
+            <thead><tr>{head.map((h, k) => <th key={k} className='border-b px-2 py-1 text-left font-medium'>{inlineMd(h)}</th>)}</tr></thead>
+            <tbody>{rows.map((r, k) => <tr key={k}>{r.map((c, j) => <td key={j} className='border-b px-2 py-1 align-top'>{inlineMd(c)}</td>)}</tr>)}</tbody>
+          </table>
+        </div>
+      )
+      continue
+    }
+    if (/^\s*\d+[.)] /.test(l)) {
+      const items: string[] = []
+      while (i < lines.length && /^\s*\d+[.)] /.test(lines[i])) items.push(lines[i++].replace(/^\s*\d+[.)] /, ''))
+      i--
+      blocks.push(<ol key={i} className='grid list-decimal gap-1 ps-5'>{items.map((it, k) => <li key={k}>{inlineMd(it)}</li>)}</ol>)
+      continue
+    }
+    if (/^>\s?/.test(l)) {
+      const quote: string[] = []
+      while (i < lines.length && /^>\s?/.test(lines[i])) quote.push(lines[i++].replace(/^>\s?/, ''))
+      i--
+      blocks.push(<blockquote key={i} className='border-s-2 ps-3 text-muted-foreground'>{inlineMd(quote.join(' '))}</blockquote>)
+      continue
+    }
+    if (/^\s*(-{3,}|\*{3,})\s*$/.test(l)) {
+      blocks.push(<hr key={i} />)
+      continue
+    }
     const h = l.match(/^(#{1,4})\s+(.*)$/)
     if (h) {
       const size = ['text-2xl', 'text-xl', 'text-lg', 'text-base'][h[1].length - 1]

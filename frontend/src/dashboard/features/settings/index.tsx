@@ -160,7 +160,7 @@ const resets = {
   all: {
     label: "Alles zurücksetzen",
     title: "Alles löschen?",
-    text: "Zusätzlich zu allen Projekten werden Profil, Keys und Modellwahl gelöscht. neuraldoc startet danach wie frisch installiert. Deine Originaldateien sind nicht betroffen.",
+    text: "Zusätzlich zu allen Projekten werden Profil, Keys, Modellwahl und Datenbankverbindungen gelöscht. neuraldoc startet danach wie frisch installiert. Deine Originaldateien sind nicht betroffen.",
   },
 } as const;
 
@@ -230,7 +230,7 @@ function Storage() {
       </CardHeader>
       <CardContent className="grid gap-2 text-xs text-muted-foreground">
         <p>
-          Profil, Keys, importierte Projekte und Freigaben liegen im Docker-Volume{" "}
+          Profil, Keys, Datenbankverbindungen, importierte Projekte und Freigaben liegen im Docker-Volume{" "}
           <code className="rounded bg-muted px-1 py-0.5">neuraldoc-data</code> und bleiben bei einem Neustart erhalten.
         </p>
         <p>

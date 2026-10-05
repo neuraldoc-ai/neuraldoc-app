@@ -49,7 +49,7 @@ export function routing(b: Bundle): Route[] {
     const ps = proposals.filter((p) => p.bundle === b.id && docOf(p.doc).type === type)
     if (datasetMode === 'working') {
       const checkedDocs = docs.filter((d) => d.type === type)
-      return { type, status: ps.length ? 'vorschlaege' : checkedDocs.length ? 'passt' : 'nicht', reason: ps.length ? `${plural(ps.length, 'Vorschlag', 'Vorschläge')} aus Jev-Zuordnungen` : checkedDocs.length ? 'Keine freigegebene Änderungszuordnung. Offene Fälle im Company Brain prüfen.' : 'Keine Dokumente dieser Art importiert.', proposals: ps, checkedDocs }
+      return { type, status: ps.length ? 'vorschlaege' : checkedDocs.length ? 'passt' : 'nicht', reason: ps.length ? `${plural(ps.length, 'Vorschlag', 'Vorschläge')} aus Jev-Zuordnungen` : checkedDocs.length ? 'Keine Abweichung, die zu dieser Änderung gehört.' : 'Keine Dokumente dieser Art importiert.', proposals: ps, checkedDocs }
     }
     if (!relevant.length) {
       const kinds = [...new Set(b.aspects.map((a) => changeKinds[a.kind].label))]

@@ -13,6 +13,8 @@ export type ProjectState = {
     files: { id: string; path: string }[]
     documents: { id: string; title: string; path: string; origin: 'repo' | 'docs'; format: string; part: number; parts: number }[]
   }
+  /** The Git history of a cloned repository since its last release; null for an uploaded folder. */
+  history?: null | { ref: string; tag: string | null; commits: number }
   projects?: { id: string; name: string; createdAt: string }[]
   dataset: ProjectDataset | null; graph: Brain | null
   /** null in the public showcase, where nobody has a profile. */

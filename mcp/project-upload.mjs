@@ -42,7 +42,7 @@ async function clone(value, dir, label) {
   const started = Date.now()
   log.info('import', `${label}: klone Repository`, { url: parsed.url })
   try {
-    await run('git', [...auth, '-c', 'protocol.file.allow=never', '-c', 'protocol.ext.allow=never', 'clone', '--depth', '1', '--single-branch', '--no-tags', '--', parsed.url, dir], { timeout: 180000, maxBuffer: 4 * 1024 * 1024, windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_LFS_SKIP_SMUDGE: '1' } })
+    await run('git', [...auth, '-c', 'protocol.file.allow=never', '-c', 'protocol.ext.allow=never', 'clone', '--depth', '300', '--single-branch', '--', parsed.url, dir], { timeout: 180000, maxBuffer: 4 * 1024 * 1024, windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_LFS_SKIP_SMUDGE: '1' } })
   } catch (error) {
     const detail = String(error.stderr || error.message).replace(/Authorization: \S+ \S+/g, 'Authorization: ***').trim().split('\n').pop()
     log.warn('import', `${label}: git clone fehlgeschlagen`, { url: parsed.url, detail })

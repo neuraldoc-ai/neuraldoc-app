@@ -23,7 +23,7 @@ export function BundlesPage() {
       <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
         <Stat n={sum.open} label='Offen' hint={`von ${sum.total} Doku-Vorschlägen`} accent={sum.open > 0} />
         <Stat n={sum.done} label='Erledigt' hint={sum.total ? `${Math.round((sum.done / sum.total) * 100)} % abgearbeitet` : 'noch nichts vorgeschlagen'} />
-        <Stat n={sum.withDocs} label='Änderungen mit Doku-Bezug' hint={`von ${sum.bundles} Änderungen, ${sum.bundles - sum.withDocs} nur Tests`} />
+        <Stat n={sum.withDocs} label='Änderungen mit Doku-Bezug' hint={`von ${sum.bundles} Änderungen, ${sum.bundles - sum.withDocs} ohne Doku-Änderung`} />
         <Stat n={sum.docsTouched} label='Dokumente betroffen' hint={`aus ${sum.commits} Commits in Release ${release.id}`} />
       </div>
       <Card className='py-0'>

@@ -353,7 +353,15 @@ test('HTTP: ZIP import, origin check on mutations, export', async () => {
     assert.equal((await imported.json()).project.id, first.project.id)
     const decision = await fetch(`${base}/api/mcp/decisions`, { method: 'POST', headers: { Origin: 'http://evil.example' }, body: JSON.stringify({ id: proposal.id, decision: null }) })
     assert.equal(decision.status, 403)
-    assert.equal((await fetch(`${base}/api/mcp/project/commit?sha=x`)).status, 404)
+    // An uploaded folder has no Git history: the code is there, commits are not.
+    assert.equal((await fetch(`${base}/api/mcp/project/commit?sha=x`)).status, 400)
+    assert.equal((await fetch(`${base}/api/mcp/project/commit?sha=abcdef1`)).status, 404)
+    const source = await (await fetch(`${base}/api/mcp/project/source`)).json()
+    assert.deepEqual([source.commits, source.mergeRequests, source.repository.ref], [[], [], null])
+    assert.match(source.repository.files['src/pricing.ts'].content, /0\.15/)
+    assert.equal(source.repository.files['.env'], undefined, 'secrets stay out')
+    const documents = (await (await fetch(`${base}/api/mcp/project/documents`)).json()).documents
+    assert.ok(documents.some((d) => d.path === 'dokumentation/rabatt.md' && /10 Prozent/.test(d.text) && d.sections.length === 1))
     const exported = await (await fetch(`${base}/api/mcp/project/export`)).json()
     assert.equal(exported.files.length, 1)
     const drafts = await (await fetch(`${base}/api/mcp/drafts`)).json()

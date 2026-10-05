@@ -1,11 +1,12 @@
 /**
- * The company database of the example (PostgreSQL): tables, columns and data, a SQL console with completion, the Flyway
- * migrations and the relationships as a diagram. Real PostgreSQL via PGlite, read-only. See ./db.ts.
+ * A PostgreSQL database: tables, columns and data, a SQL console with completion, the migrations and the relationships
+ * as a diagram. Read-only. The MOBIQ example and an imported repository's SQL files run in PGlite; an own connection
+ * goes through the local server. See ./db.ts.
  */
 import '@xyflow/react/dist/style.css'
 import { Background, BackgroundVariant, Controls, Handle, Position, ReactFlow, applyNodeChanges, type Edge, type Node, type NodeChange, type NodeProps } from '@xyflow/react'
 import { Database, FileCode2, KeyRound, Link2, Loader2, Play, Table2 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -13,28 +14,23 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { CodeEditor, SqlEditor, setSqlNames } from '../ide/editors'
 import {
+  catalogOf,
   formatCell,
-  getDb,
-  initFiles,
-  listColumns,
-  listForeignKeys,
-  listIndexes,
-  listPartitions,
-  listTables,
-  loadInitFile,
-  migrationHistory,
-  run,
-  serverVersion,
   type ColumnInfo,
+  type DbBackend,
   type ForeignKey,
   type MigrationRow,
   type QueryResult,
   type TableInfo,
 } from './db'
 
-type Catalog = { version: string; tables: TableInfo[]; fks: ForeignKey[]; columns: Record<string, ColumnInfo[]> }
+type Catalog = { version: string; tables: TableInfo[]; fks: ForeignKey[]; columns: Record<string, ColumnInfo[]>; history: MigrationRow[]; warnings: string[] }
 
-export default function DatabaseBrowser() {
+const DbContext = createContext<{ db: DbBackend; api: ReturnType<typeof catalogOf> } | null>(null)
+const useDb = () => useContext(DbContext)!
+
+export default function DatabaseBrowser({ backend }: { backend: DbBackend }) {
+  const api = useMemo(() => catalogOf(backend), [backend])
   const [catalog, setCatalog] = useState<Catalog>()
   const [error, setError] = useState<string>()
 
@@ -42,15 +38,15 @@ export default function DatabaseBrowser() {
     let cancelled = false
     ;(async () => {
       try {
-        await getDb()
-        const [version, tables, fks] = await Promise.all([serverVersion(), listTables(), listForeignKeys()])
+        const warnings = await backend.ready()
+        const [version, tables, fks, history] = await Promise.all([api.serverVersion(), api.listTables(), api.listForeignKeys(), api.migrationHistory()])
         const columns: Record<string, ColumnInfo[]> = {}
-        for (const t of tables) columns[t.name] = await listColumns(t.name)
+        for (const t of tables) columns[t.name] = await api.listColumns(t.name)
         setSqlNames([
           ...tables.map((t) => ({ label: t.name, detail: t.kind === 'v' ? 'Sicht' : 'Tabelle', kind: 'table' as const })),
           ...tables.flatMap((t) => columns[t.name].map((c) => ({ label: c.name, detail: `${t.name}.${c.type}`, kind: 'column' as const }))),
         ])
-        if (!cancelled) setCatalog({ version, tables, fks, columns })
+        if (!cancelled) setCatalog({ version, tables, fks, columns, history, warnings })
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e))
       }
@@ -58,103 +54,84 @@ export default function DatabaseBrowser() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [backend, api])
 
-  if (error) return <Card className='p-6 text-sm text-destructive'>Datenbank konnte nicht gestartet werden: {error}</Card>
+  if (error) return <Card className='p-6 text-sm text-destructive'>{backend.exactCounts ? 'Die Datenbank konnte nicht gestartet werden' : 'Die Datenbank konnte nicht gelesen werden'}: {error}</Card>
   if (!catalog)
     return (
       <Card className='grid h-[min(780px,calc(100vh-7rem))] min-h-[500px] place-content-center justify-items-center gap-3 text-sm text-muted-foreground'>
         <Loader2 className='size-6 animate-spin text-brand-600' />
-        <span>PostgreSQL startet und spielt Schema, Daten und Migrationen ein …</span>
+        <span>{backend.exactCounts ? 'PostgreSQL startet und spielt Schema, Daten und Migrationen ein …' : `Verbinde mit ${backend.where} …`}</span>
       </Card>
     )
-  return <Workbench catalog={catalog} />
+  return (
+    <DbContext.Provider value={{ db: backend, api }}>
+      <Workbench catalog={catalog} />
+    </DbContext.Provider>
+  )
 }
 
-const EXAMPLES: { label: string; sql: string }[] = [
-  {
-    label: 'Umsatz je Filiale 2026',
-    sql: `SELECT f.name AS filiale, count(*) AS belege, sum(b.summe) AS umsatz
-FROM kassenbeleg b
-JOIN filiale f USING (filial_id)
-WHERE b.belegdatum >= DATE '2026-01-01' AND NOT b.storniert
-GROUP BY f.name
-ORDER BY umsatz DESC;`,
-  },
-  {
-    label: 'Teillieferungen (MOB-4812)',
-    sql: `SELECT k.kv_nr, l.teil_nr, l.wunsch_kw, l.status, count(p.kvp_id) AS positionen
-FROM lieferteil l
-JOIN kaufvertrag k USING (kv_id)
-LEFT JOIN kv_position p ON p.lt_id = l.lt_id
-GROUP BY k.kv_nr, l.teil_nr, l.wunsch_kw, l.status
-ORDER BY k.kv_nr, l.teil_nr;`,
-  },
-  {
-    label: 'Finanzkäufe nach Status',
-    sql: `SELECT status, count(*) FILTER (WHERE finanzkauf) AS finanzkauf, count(*) AS gesamt
-FROM kaufvertrag
-GROUP BY status
-ORDER BY gesamt DESC;`,
-  },
-  {
-    label: 'Gutscheine mit Restguthaben',
-    sql: `SELECT gutschein_nr, wert, restwert, round(100 * restwert / wert) AS rest_prozent, gueltig_bis
-FROM gutschein
-WHERE restwert > 0 AND restwert < wert
-ORDER BY restwert DESC;`,
-  },
-  {
-    label: 'Partitionen der Kassenbelege (MOB-4790)',
-    sql: `SELECT tableoid::regclass AS partition, count(*) AS belege, min(belegdatum) AS von, max(belegdatum) AS bis
-FROM kassenbeleg
-GROUP BY 1
-ORDER BY 1;`,
-  },
-]
+/** Without prepared examples the console starts on the first table. */
+const firstQuery = (db: DbBackend, catalog: Catalog) => db.examples?.[0]?.sql ?? (catalog.tables[0] ? `SELECT *\nFROM "${catalog.tables[0].name}"\nLIMIT 100;` : 'SELECT version();')
 
 function Workbench({ catalog }: { catalog: Catalog }) {
-  const [sql, setSql] = useState(EXAMPLES[0].sql)
+  const { db } = useDb()
+  const [sql, setSql] = useState(() => firstQuery(db, catalog))
   const [result, setResult] = useState<QueryResult>()
   const [sqlError, setSqlError] = useState<string>()
   const [busy, setBusy] = useState(false)
-  const [tab, setTab] = useState('tabellen')
+  const [tab, setTab] = useState(() => (catalog.tables.length === 0 && catalog.warnings.length > 0 && db.files?.length ? 'migrationen' : 'tabellen'))
 
   const execute = useCallback(async (text: string) => {
     setBusy(true)
     setSqlError(undefined)
     try {
-      setResult(await run(text.replace(/;\s*$/, '')))
+      setResult(await db.run(text.replace(/;\s*$/, '')))
     } catch (e) {
       setResult(undefined)
       setSqlError(e instanceof Error ? e.message : String(e))
     } finally {
       setBusy(false)
     }
-  }, [])
+  }, [db])
 
+  const migrations = catalog.history.length > 0 || !!db.files?.length
+  // Only migrations without their starting schema: nothing to browse, but the files are worth reading.
+  const unbuilt = catalog.tables.length === 0 && catalog.warnings.length > 0
   const rowsTotal = catalog.tables.filter((t) => t.kind !== 'v').reduce((n, t) => n + t.rows, 0)
   return (
     <Card className='gap-0 overflow-hidden py-0'>
       <div className='flex flex-wrap items-center justify-between gap-3 border-b px-5 py-3'>
         <span className='flex items-center gap-2 font-medium'>
-          <Database className='size-4 text-brand-600' /> mobiq
+          <Database className='size-4 text-brand-600' /> {db.name}
           <Badge variant='outline' className='gap-1.5 font-normal'>
             <span className='size-1.5 rounded-full bg-emerald-500' /> verbunden
           </Badge>
           <Badge variant='secondary' className='font-normal'>nur lesen</Badge>
         </span>
         <span className='text-sm text-muted-foreground'>
-          {catalog.version} · {catalog.tables.length} Tabellen und Sichten · {rowsTotal.toLocaleString('de-DE')} Zeilen · im Browser (PGlite)
+          {catalog.version} · {catalog.tables.length} Tabellen und Sichten · {catalog.tables.some((t) => t.estimated && t.kind !== 'v') ? 'ca. ' : ''}{rowsTotal.toLocaleString('de-DE')} Zeilen · {db.where}
         </span>
       </div>
+      {unbuilt ? (
+        <p className='border-b bg-late-soft px-5 py-3 text-sm'>
+          Aus den SQL-Dateien ließ sich keine Datenbank aufbauen. Meist sind es Migrationen, die ein bestehendes Schema voraussetzen. Die Dateien kannst du unter „Migrationen“ lesen. Um die echte Datenbank zu sehen, verbinde sie über „Datenbank verbinden“.
+        </p>
+      ) : catalog.warnings.length > 0 && (
+        <details className='border-b bg-late-soft px-5 py-2 text-xs'>
+          <summary className='cursor-pointer'>{catalog.warnings.length === 1 ? 'Eine SQL-Datei' : `${catalog.warnings.length} SQL-Dateien`} ließen sich nicht einspielen. Der Rest ist vollständig geladen.</summary>
+          <ul className='mt-2 grid gap-1 font-mono text-[11px]'>
+            {catalog.warnings.map((w) => <li key={w}>{w}</li>)}
+          </ul>
+        </details>
+      )}
       <Tabs value={tab} onValueChange={setTab} className='gap-0'>
         <div className='border-b px-5 py-2'>
           <TabsList>
             <TabsTrigger value='tabellen'>Tabellen</TabsTrigger>
             <TabsTrigger value='sql'>SQL</TabsTrigger>
             <TabsTrigger value='beziehungen'>Beziehungen</TabsTrigger>
-            <TabsTrigger value='migrationen'>Migrationen</TabsTrigger>
+            {migrations && <TabsTrigger value='migrationen'>Migrationen</TabsTrigger>}
           </TabsList>
         </div>
         <TabsContent value='tabellen'>
@@ -166,9 +143,11 @@ function Workbench({ catalog }: { catalog: Catalog }) {
         <TabsContent value='beziehungen'>
           <ErDiagram catalog={catalog} />
         </TabsContent>
-        <TabsContent value='migrationen'>
-          <MigrationsView />
-        </TabsContent>
+        {migrations && (
+          <TabsContent value='migrationen'>
+            <MigrationsView history={catalog.history} />
+          </TabsContent>
+        )}
       </Tabs>
     </Card>
   )
@@ -219,8 +198,10 @@ function ResultTable({ result, maxHeight = 420 }: { result: QueryResult; maxHeig
 /* ---------- Tables ---------- */
 
 function TablesView({ catalog }: { catalog: Catalog }) {
-  const [selected, setSelected] = useState('kaufvertrag')
-  const info = catalog.tables.find((t) => t.name === selected)!
+  const { db } = useDb()
+  const [selected, setSelected] = useState(() => (catalog.tables.some((t) => t.name === db.preferredTable) ? db.preferredTable! : catalog.tables[0]?.name ?? ''))
+  const info = catalog.tables.find((t) => t.name === selected)
+  if (!info) return <p className='p-6 text-sm text-muted-foreground'>Im Schema „{db.schema}“ gibt es keine Tabellen.</p>
   return (
     <div className='grid lg:grid-cols-[250px_minmax(0,1fr)]'>
       <nav className='max-h-[640px] overflow-auto border-b p-2 lg:border-e lg:border-b-0' aria-label='Tabellen'>
@@ -234,7 +215,7 @@ function TablesView({ catalog }: { catalog: Catalog }) {
           >
             <Table2 className={cn('size-3.5 shrink-0', t.kind === 'v' ? 'text-amber-500' : 'text-brand-600')} />
             <span className='truncate'>{t.name}</span>
-            <span className='ms-auto text-xs text-muted-foreground tabular-nums'>{t.rows.toLocaleString('de-DE')}</span>
+            <span className='ms-auto text-xs text-muted-foreground tabular-nums'>{t.kind === 'v' && t.estimated ? '' : `${t.estimated ? '≈ ' : ''}${t.rows.toLocaleString('de-DE')}`}</span>
           </button>
         ))}
       </nav>
@@ -244,14 +225,15 @@ function TablesView({ catalog }: { catalog: Catalog }) {
 }
 
 function TableDetail({ info, columns, fks }: { info: TableInfo; columns: ColumnInfo[]; fks: ForeignKey[] }) {
+  const { db, api } = useDb()
   const [data, setData] = useState<QueryResult>()
   const [indexes, setIndexes] = useState<{ indexname: string; indexdef: string }[]>([])
   const [parts, setParts] = useState<{ name: string; rows: number }[]>([])
   useEffect(() => {
-    void run(`SELECT * FROM "${info.name}" ORDER BY 1 LIMIT 100`).then(setData)
-    void listIndexes(info.name).then(setIndexes)
-    if (info.kind === 'p') void listPartitions(info.name).then(setParts)
-  }, [info])
+    void db.run(`SELECT * FROM "${info.name.replaceAll('"', '""')}" ORDER BY 1 LIMIT 100`).then(setData, () => setData({ fields: [], rows: [], ms: 0 }))
+    void api.listIndexes(info.name).then(setIndexes)
+    if (info.kind === 'p') void api.listPartitions(info.name).then(setParts)
+  }, [info, db, api])
   const fkOf = (col: string) => fks.find((f) => f.src === info.name && f.cols.split(', ').includes(col))
   const kind = info.kind === 'v' ? 'Sicht' : info.kind === 'p' ? 'Partitionierte Tabelle' : 'Tabelle'
   return (
@@ -259,7 +241,7 @@ function TableDetail({ info, columns, fks }: { info: TableInfo; columns: ColumnI
       <div className='flex flex-wrap items-baseline gap-x-3 gap-y-1'>
         <h3 className='font-mono text-base font-medium'>{info.name}</h3>
         <span className='text-sm text-muted-foreground'>
-          {kind} · {info.rows.toLocaleString('de-DE')} Zeilen · {columns.length} Spalten
+          {kind} · {info.kind === 'v' && info.estimated ? '' : `${info.estimated ? 'ca. ' : ''}${info.rows.toLocaleString('de-DE')} Zeilen · `}{columns.length} Spalten
         </span>
       </div>
       <Tabs defaultValue='spalten' className='gap-3'>
@@ -308,7 +290,7 @@ function TableDetail({ info, columns, fks }: { info: TableInfo; columns: ColumnI
         </TabsContent>
         <TabsContent value='daten' className='grid gap-2'>
           <p className='font-mono text-xs text-muted-foreground'>
-            SELECT * FROM {info.name} ORDER BY 1 LIMIT 100 · erste {Math.min(100, info.rows)} von {info.rows.toLocaleString('de-DE')}
+            SELECT * FROM {info.name} ORDER BY 1 LIMIT 100{data ? ` · ${data.rows.length.toLocaleString('de-DE')} Zeilen` : ''}
           </p>
           <div className='overflow-hidden rounded-lg border'>{data ? <ResultTable result={data} /> : <p className='p-4 text-sm text-muted-foreground'>Lädt …</p>}</div>
         </TabsContent>
@@ -324,11 +306,11 @@ function TableDetail({ info, columns, fks }: { info: TableInfo; columns: ColumnI
           </ul>
           {parts.length > 0 && (
             <div className='grid gap-1.5'>
-              <span className='text-xs font-medium text-muted-foreground uppercase tracking-wider'>{parts.length} Partitionen nach Belegjahr</span>
+              <span className='text-xs font-medium text-muted-foreground uppercase tracking-wider'>{parts.length} Partitionen</span>
               <div className='flex flex-wrap gap-1.5'>
                 {parts.map((p) => (
                   <Badge key={p.name} variant={p.rows ? 'secondary' : 'outline'} className='font-mono text-[11px] font-normal'>
-                    {p.name.replace('kassenbeleg_', '')}: {p.rows}
+                    {p.name.replace(`${info.name}_`, '')}: {p.rows}
                   </Badge>
                 ))}
               </div>
@@ -343,6 +325,7 @@ function TableDetail({ info, columns, fks }: { info: TableInfo; columns: ColumnI
 /* ---------- SQL console ---------- */
 
 function SqlView({ sql, setSql, result, error, busy, onRun, initial }: { sql: string; setSql: (s: string) => void; result?: QueryResult; error?: string; busy: boolean; onRun: () => void; initial: () => void }) {
+  const examples = useDb().db.examples ?? []
   useEffect(() => {
     initial()
     // only the first visit of the console runs the example query
@@ -354,8 +337,8 @@ function SqlView({ sql, setSql, result, error, busy, onRun, initial }: { sql: st
         <Button size='sm' onClick={onRun} disabled={busy}>
           {busy ? <Loader2 className='animate-spin' /> : <Play />} Ausführen <kbd className='ms-1 hidden rounded border border-white/30 px-1 font-mono text-[10px] sm:inline'>Strg ↵</kbd>
         </Button>
-        <span className='ms-2 hidden text-xs text-muted-foreground md:inline'>Beispiele:</span>
-        {EXAMPLES.map((e) => (
+        {examples.length > 0 && <span className='ms-2 hidden text-xs text-muted-foreground md:inline'>Beispiele:</span>}
+        {examples.map((e) => (
           <Button key={e.label} size='sm' variant='outline' className='h-7 text-xs font-normal' onClick={() => setSql(e.sql)}>
             {e.label}
           </Button>
@@ -369,7 +352,7 @@ function SqlView({ sql, setSql, result, error, busy, onRun, initial }: { sql: st
         {result && (
           <>
             <p className='border-b px-5 py-2 text-xs text-muted-foreground'>
-              {result.rows.length.toLocaleString('de-DE')} {result.rows.length === 1 ? 'Zeile' : 'Zeilen'} in {result.ms.toLocaleString('de-DE', { maximumFractionDigits: 0 })} ms
+              {result.rows.length.toLocaleString('de-DE')} {result.rows.length === 1 ? 'Zeile' : 'Zeilen'}{result.truncated ? ' (gekürzt)' : ''} in {result.ms.toLocaleString('de-DE', { maximumFractionDigits: 0 })} ms
             </p>
             <ResultTable result={result} maxHeight={340} />
           </>
@@ -381,16 +364,20 @@ function SqlView({ sql, setSql, result, error, busy, onRun, initial }: { sql: st
 
 /* ---------- Migrations ---------- */
 
-function MigrationsView() {
-  const [history, setHistory] = useState<MigrationRow[]>([])
-  const [file, setFile] = useState(() => initFiles.find((f) => f.startsWith('12_')) ?? initFiles[0])
+function MigrationsView({ history }: { history: MigrationRow[] }) {
+  const { db } = useDb()
+  const files = useMemo(() => db.files ?? [], [db])
+  const names = files.map((f) => f.name)
+  const [file, setFile] = useState(() => names.find((f) => f.startsWith('12_')) ?? names[0])
   const [loaded, setLoaded] = useState<{ file: string; text: string }>()
-  useEffect(() => void migrationHistory().then(setHistory), [])
-  useEffect(() => void loadInitFile(file).then((text) => setLoaded({ file, text })), [file])
-  const fileOf = (m: MigrationRow) => initFiles.find((f) => f.endsWith(`_${m.script}`)) ?? initFiles[0]
+  useEffect(() => {
+    const f = files.find((x) => x.name === file)
+    if (f) void f.load().then((text) => setLoaded({ file: f.name, text }))
+  }, [file, files])
+  const fileOf = (m: MigrationRow) => names.find((f) => f.endsWith(`_${m.script}`) || f.endsWith(`/${m.script}`)) ?? names[0]
   return (
     <div className='grid min-w-0'>
-      <div className='overflow-auto border-b'>
+      {history.length > 0 && <div className='overflow-auto border-b'>
         <table className='w-full border-collapse text-[13px]'>
           <thead className='bg-muted'>
             <tr>
@@ -416,20 +403,22 @@ function MigrationsView() {
             })}
           </tbody>
         </table>
-      </div>
+      </div>}
+      {names.length > 0 && <>
       <div className='flex flex-wrap items-center gap-1.5 border-b px-5 py-2'>
         <span className='me-1 flex items-center gap-1.5 text-xs text-muted-foreground'>
-          <FileCode2 className='size-3.5' /> Dateien beim ersten Start (docker-compose, Ordner initdb):
+          <FileCode2 className='size-3.5' /> {db.filesLabel ?? 'SQL-Dateien:'}
         </span>
-        {initFiles.map((f) => (
+        {names.map((f) => (
           <Button key={f} size='sm' variant={f === file ? 'secondary' : 'ghost'} className='h-6 px-2 font-mono text-[11px] font-normal' onClick={() => setFile(f)}>
             {f}
           </Button>
         ))}
       </div>
       <div className='h-[360px]'>
-        {loaded?.file === file && <CodeEditor path={`db/${file}`} text={loaded.text} onCursor={() => {}} />}
+        {loaded?.file === file && <CodeEditor path={file.endsWith('.sql') ? file : `db/${file}`} text={loaded.text} onCursor={() => {}} />}
       </div>
+      </>}
     </div>
   )
 }

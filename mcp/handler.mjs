@@ -9,7 +9,8 @@ import { DraftError, draftingStatus } from './drafting.mjs'
 import { setupStatus } from './setup.mjs'
 import { listModels } from './models.mjs'
 import { installToken, profile, publicSettings, resetSettings, reviewer, saveSettings } from './settings.mjs'
-import { activeProject, addProject, activateProject, projectList, projectPayload, checkProject, projectDraft, projectDecisions, resetProjectDecisions, resetProjects, exportProject, showcaseOnly } from './projects.mjs'
+import { listConnections, saveConnection, deleteConnection, testConnection, queryConnection, resetConnections } from './db-connections.mjs'
+import { activeProject, addProject, activateProject, projectList, projectPayload, checkProject, projectDraft, projectDecisions, resetProjectDecisions, resetProjects, exportProject, showcaseOnly, projectSource, projectCommit, projectDocuments } from './projects.mjs'
 import { LIMITS } from '../frontend/src/dashboard/features/docs/import-rules.mjs'
 import { docTypeOrder, docTypes } from '../frontend/src/dashboard/features/docs/vocabulary.ts'
 import { log, logError } from './log.mjs'
@@ -156,6 +157,9 @@ async function api(req, res, path) {
       if (path === '/api/mcp/project/activate') return send(res, 200, activateProject((await readJsonBody(req)).id))
       if (path === '/api/mcp/project/check') return send(res, 200, await checkProject())
     }
+    if (req.method === 'GET' && path === '/api/mcp/project/source') return send(res, 200, projectSource(), { 'Cache-Control': 'no-store' })
+    if (req.method === 'GET' && path === '/api/mcp/project/commit') return send(res, 200, projectCommit(new URL(req.url, 'http://localhost').searchParams.get('sha')))
+    if (req.method === 'GET' && path === '/api/mcp/project/documents') return send(res, 200, projectDocuments(), { 'Cache-Control': 'no-store' })
     if (req.method === 'GET' && path === '/api/mcp/project/export') {
       return send(res, 200, exportProject(), { 'Content-Disposition': 'attachment; filename="neuraldoc-dokumentaenderungen.json"', 'Cache-Control': 'no-store' })
     }
@@ -180,8 +184,22 @@ async function api(req, res, path) {
       const { scope } = await readJsonBody(req, 1024)
       if (!['projects', 'all'].includes(scope)) throw new Error('scope muss projects oder all sein.')
       resetProjects()
-      if (scope === 'all') { resetSettings(); log.info('reset', 'Profil und Keys gelöscht') }
+      if (scope === 'all') { resetSettings(); resetConnections(); log.info('reset', 'Profil, Keys und Datenbankverbindungen gelöscht') }
       return send(res, 200, { ok: true, scope })
+    }
+
+    if (path.startsWith('/api/mcp/db/')) {
+      // Own PostgreSQL connections: off in the public showcase, every change and query only from this app.
+      if (showcaseOnly()) throw new DraftError('Im Showcase lassen sich keine Datenbanken verbinden.', 403)
+      if (req.method === 'GET' && path === '/api/mcp/db/connections') return send(res, 200, { connections: listConnections() }, { 'Cache-Control': 'no-store' })
+      if (req.method === 'POST') {
+        localMutation()
+        const body = await readJsonBody(req, 200_000)
+        if (path === '/api/mcp/db/connections') return send(res, 200, saveConnection(body))
+        if (path === '/api/mcp/db/connections/delete') return send(res, 200, { connections: deleteConnection(String(body.id)) })
+        if (path === '/api/mcp/db/test') return send(res, 200, await testConnection(body))
+        if (path === '/api/mcp/db/query') return send(res, 200, await queryConnection(String(body.id), body.sql, body.params ?? []))
+      }
     }
 
     if (!showcaseOnly()) {
