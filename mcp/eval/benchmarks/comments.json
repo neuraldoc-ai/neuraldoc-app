@@ -1,0 +1,437 @@
+{
+  "about": "Ground truth for the comment check: wrong comments planted into copies of real repositories (each is a realistic kind of comment rot: wrong default, unit, inverted rule, stale name, wrong parameter) and wrong comments found in the original code. Scope 'file': the file itself proves the comment wrong; 'cross': only code in another file does. 'history': comments that maintainers later fixed in a commit that changed only comments (mcp/eval/mine-comment-fixes.mjs); the check runs on the code of the parent commit.",
+  "repos": {
+    "ky": {
+      "src": "ky@v2.1.0",
+      "root": "source"
+    },
+    "httpx": {
+      "src": "httpx@0.28.1",
+      "root": "httpx"
+    },
+    "cobra": {
+      "src": "cobra@v1.10.1",
+      "root": "."
+    },
+    "axios": {
+      "src": "axios@v1.20.0",
+      "root": "lib"
+    },
+    "linkding": {
+      "src": "linkding@v1.47.0",
+      "root": "bookmarks",
+      "exclude": "(^|/)(static|templates|migrations|e2e|tests|tests_e2e)/"
+    }
+  },
+  "planted": [
+    {
+      "id": "ky-1",
+      "repo": "ky",
+      "file": "source/types/retry.ts",
+      "scope": "cross",
+      "what": "wrong default of retry.limit (code: 2)",
+      "find": "@default 2\n\t*/\n\tlimit?",
+      "replace": "@default 3\n\t*/\n\tlimit?"
+    },
+    {
+      "id": "ky-2",
+      "repo": "ky",
+      "file": "source/types/retry.ts",
+      "scope": "cross",
+      "what": "retryCount starts at 1 (code passes this.#retryCount + 1)",
+      "find": "Starts at 1 for the first retry.",
+      "replace": "Starts at 0 for the first retry."
+    },
+    {
+      "id": "ky-3",
+      "repo": "ky",
+      "file": "source/core/retry-timing.ts",
+      "scope": "file",
+      "what": "Retry-After is read first, not the rate-limit headers",
+      "find": "// Retry-After is authoritative when present. Only missing Retry-After falls through to rate-limit headers.",
+      "replace": "// Rate-limit headers take precedence; Retry-After is only read when no rate-limit header is present."
+    },
+    {
+      "id": "ky-4",
+      "repo": "ky",
+      "file": "source/core/Ky.ts",
+      "scope": "file",
+      "what": "no jitter on server-provided retry timing",
+      "find": "// Don't apply jitter when server provides explicit retry timing",
+      "replace": "// Apply jitter on top of the server-provided retry timing"
+    },
+    {
+      "id": "ky-5",
+      "repo": "ky",
+      "file": "source/core/Ky.ts",
+      "scope": "file",
+      "what": "unknown errors are not retried",
+      "find": "// Only retry known retriable error types. Unknown errors (e.g., programming bugs) are not retried.",
+      "replace": "// Unknown errors (e.g., programming bugs) are retried like network errors."
+    },
+    {
+      "id": "ky-6",
+      "repo": "ky",
+      "file": "source/utils/normalize.ts",
+      "scope": "file",
+      "what": "an invalid retry limit throws, it is not clamped",
+      "find": "Normalizes an omitted retry limit or validates a supplied one.",
+      "replace": "Normalizes an omitted retry limit or clamps a negative one to zero."
+    },
+    {
+      "id": "ky-7",
+      "repo": "ky",
+      "file": "source/types/retry.ts",
+      "scope": "cross",
+      "what": "413 is retried when a retry timing header is present",
+      "find": "`413 Payload Too Large` is only retried when the response includes a retry timing header.",
+      "replace": "`413 Payload Too Large` is never retried."
+    },
+    {
+      "id": "ky-8",
+      "repo": "ky",
+      "file": "source/core/Ky.ts",
+      "scope": "file",
+      "what": "malformed timing headers fall back to the normal delay, retries continue",
+      "find": "// Malformed retry timing headers should not disable retries; they only lose their server-provided timing.",
+      "replace": "// Malformed retry timing headers disable retries for this response."
+    },
+    {
+      "id": "ky-9",
+      "repo": "ky",
+      "file": "source/core/Ky.ts",
+      "scope": "file",
+      "what": "stale name: the method is #getResponseData",
+      "find": "Unlike error bodies (`#getResponseData`)",
+      "replace": "Unlike error bodies (`#readErrorBody`)"
+    },
+    {
+      "id": "httpx-1",
+      "repo": "httpx",
+      "file": "httpx/_config.py",
+      "scope": "file",
+      "what": "connect=10.0 means 10s on connect, 5s elsewhere",
+      "find": "Timeout(5.0, connect=10.0)  # 10s timeout on connect. 5s timeout elsewhere.",
+      "replace": "Timeout(5.0, connect=10.0)  # 5s timeout on connect. 10s timeout elsewhere."
+    },
+    {
+      "id": "httpx-2",
+      "repo": "httpx",
+      "file": "httpx/_models.py",
+      "scope": "cross",
+      "what": "is_error is True for 4xx and 5xx",
+      "find": "A property which is `True` for 4xx and 5xx status codes, `False` otherwise.",
+      "replace": "A property which is `True` for 5xx status codes, `False` otherwise."
+    },
+    {
+      "id": "httpx-3",
+      "repo": "httpx",
+      "file": "httpx/_models.py",
+      "scope": "file",
+      "what": "setting the encoding after text was read raises ValueError",
+      "find": "If the `text` attribute has been accessed, attempting to set the\n        encoding will throw a ValueError.",
+      "replace": "If the `text` attribute has been accessed, setting the encoding\n        decodes the content again with the new encoding."
+    },
+    {
+      "id": "httpx-4",
+      "repo": "httpx",
+      "file": "httpx/_client.py",
+      "scope": "file",
+      "what": "http2 defaults to False",
+      "find": "enabled. Defaults to `False`.",
+      "nth": 1,
+      "replace": "enabled. Defaults to `True`."
+    },
+    {
+      "id": "httpx-5",
+      "repo": "httpx",
+      "file": "httpx/_utils.py",
+      "scope": "file",
+      "what": "*example.com also matches example.com",
+      "find": "# *example.com should match \"www.example.com\" and \"example.com\"",
+      "replace": "# *example.com should match \"www.example.com\" but not \"example.com\""
+    },
+    {
+      "id": "httpx-6",
+      "repo": "httpx",
+      "file": "httpx/_utils.py",
+      "scope": "file",
+      "what": "NO_PROXY=* disables all proxies",
+      "find": "then we should just bypass any information\n            # from HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, and always ignore\n            # proxies.",
+      "replace": "then only HTTP_PROXY is ignored; HTTPS_PROXY and\n            # ALL_PROXY still apply."
+    },
+    {
+      "id": "httpx-7",
+      "repo": "httpx",
+      "file": "httpx/_client.py",
+      "scope": "file",
+      "what": "default_encoding defaults to utf-8",
+      "find": "Set to a callable for automatic character set detection. Default: \"utf-8\".",
+      "nth": 1,
+      "replace": "Set to a callable for automatic character set detection. Default: \"latin-1\"."
+    },
+    {
+      "id": "cobra-1",
+      "repo": "cobra",
+      "file": "cobra.go",
+      "scope": "file",
+      "what": "command sorting is on by default",
+      "find": "which is turned on by default.",
+      "replace": "which is turned off by default."
+    },
+    {
+      "id": "cobra-2",
+      "repo": "cobra",
+      "file": "cobra.go",
+      "scope": "file",
+      "what": "EnableTraverseRunHooks is disabled by default",
+      "find": "// By default this is disabled, which means only the first run hook to be found is executed.",
+      "replace": "// By default this is enabled, which means the run hooks of all parents are executed."
+    },
+    {
+      "id": "cobra-3",
+      "repo": "cobra",
+      "file": "cobra.go",
+      "scope": "cross",
+      "what": "0 waits for the return key",
+      "find": "Set to 0 to wait for the return key to be pressed.",
+      "replace": "Set to 0 to close the window immediately without waiting."
+    },
+    {
+      "id": "cobra-4",
+      "repo": "cobra",
+      "file": "args.go",
+      "scope": "file",
+      "what": "MaximumNArgs fails on more than N",
+      "find": "// MaximumNArgs returns an error if there are more than N args.",
+      "replace": "// MaximumNArgs returns an error if there are fewer than N args."
+    },
+    {
+      "id": "cobra-5",
+      "repo": "cobra",
+      "file": "args.go",
+      "scope": "file",
+      "what": "ArbitraryArgs never returns an error",
+      "find": "// ArbitraryArgs never returns an error.",
+      "replace": "// ArbitraryArgs returns an error if no args are given."
+    },
+    {
+      "id": "cobra-6",
+      "repo": "cobra",
+      "file": "command.go",
+      "scope": "file",
+      "what": "stale name: the method is SetUsageFunc",
+      "find": "// SetUsageFunc sets usage function.",
+      "replace": "// SetUsageHandler sets usage function."
+    },
+    {
+      "id": "cobra-7",
+      "repo": "cobra",
+      "file": "command.go",
+      "scope": "file",
+      "what": "ErrOrStderr falls back to stderr",
+      "find": "// ErrOrStderr returns output to stderr",
+      "replace": "// ErrOrStderr returns output to stdout"
+    },
+    {
+      "id": "cobra-8",
+      "repo": "cobra",
+      "file": "flag_groups.go",
+      "scope": "file",
+      "what": "mutually exclusive: error when more than one flag is set",
+      "find": "if the command is invoked with more than one flag from the given set of flags.",
+      "replace": "if the command is invoked without any flag from the given set of flags."
+    },
+    {
+      "id": "axios-1",
+      "repo": "axios",
+      "file": "lib/helpers/isAbsoluteURL.js",
+      "scope": "file",
+      "what": "protocol-relative URLs count as absolute",
+      "find": "// A URL is considered absolute if it begins with \"<scheme>://\" or \"//\" (protocol-relative URL).",
+      "replace": "// A URL is considered absolute only if it begins with \"<scheme>://\"; protocol-relative URLs (\"//\") count as relative."
+    },
+    {
+      "id": "axios-2",
+      "repo": "axios",
+      "file": "lib/core/settle.js",
+      "scope": "file",
+      "what": "responses without status are resolved",
+      "find": " * Resolve or reject a Promise based on response status.",
+      "replace": " * Resolve or reject a Promise based on response status. Responses without a status are always rejected."
+    },
+    {
+      "id": "axios-3",
+      "repo": "axios",
+      "file": "lib/helpers/buildURL.js",
+      "scope": "file",
+      "what": "brackets are not decoded",
+      "find": " * It replaces URL-encoded forms of `:`, `$`, `,`, and spaces with\n * their plain counterparts (`:`, `$`, `,`, `+`).",
+      "replace": " * It replaces URL-encoded forms of `:`, `$`, `,`, `[`, `]`, and spaces with\n * their plain counterparts (`:`, `$`, `,`, `[`, `]`, `+`)."
+    },
+    {
+      "id": "axios-4",
+      "repo": "axios",
+      "file": "lib/helpers/combineURLs.js",
+      "scope": "file",
+      "what": "parameter is relativeURL",
+      "find": "@param {string} relativeURL The relative URL",
+      "replace": "@param {string} relativePath The relative URL"
+    },
+    {
+      "id": "axios-5",
+      "repo": "axios",
+      "file": "lib/defaults/index.js",
+      "scope": "cross",
+      "what": "timeout is in milliseconds",
+      "find": "A timeout in milliseconds to abort a request.",
+      "replace": "A timeout in seconds to abort a request."
+    },
+    {
+      "id": "axios-6",
+      "repo": "axios",
+      "file": "lib/defaults/index.js",
+      "scope": "file",
+      "what": "a SyntaxError is swallowed and the value encoded",
+      "find": " * It takes a string, tries to parse it, and if it fails, it returns the stringified version\n * of the input",
+      "replace": " * It takes a string, tries to parse it, and if it fails, it throws the parse error\n * to the caller"
+    },
+    {
+      "id": "linkding-1",
+      "repo": "linkding",
+      "file": "bookmarks/services/favicon_loader.py",
+      "scope": "file",
+      "what": "max_file_age is one day",
+      "find": "max_file_age = 60 * 60 * 24  # 1 day",
+      "replace": "max_file_age = 60 * 60 * 24  # 1 week"
+    },
+    {
+      "id": "linkding-2",
+      "repo": "linkding",
+      "file": "bookmarks/services/favicon_loader.py",
+      "scope": "file",
+      "what": "favicon file name is scheme+hostname",
+      "find": "# Use scheme+hostname as favicon filename to reuse icon for all pages on the same domain",
+      "replace": "# Use the full page URL as favicon filename, so every page gets its own icon"
+    },
+    {
+      "id": "linkding-3",
+      "repo": "linkding",
+      "file": "bookmarks/services/favicon_loader.py",
+      "scope": "file",
+      "what": "domain is the hostname only",
+      "find": "        # https://example.com/foo?bar -> example.com",
+      "replace": "        # https://example.com/foo?bar -> example.com/foo"
+    },
+    {
+      "id": "linkding-4",
+      "repo": "linkding",
+      "file": "bookmarks/services/auto_tagging.py",
+      "scope": "file",
+      "what": "a trailing comment needs whitespace before #",
+      "find": "# Remove trailing comment - only if # is preceded by whitespace",
+      "replace": "# Remove trailing comment - everything after the first #"
+    },
+    {
+      "id": "linkding-5",
+      "repo": "linkding",
+      "file": "bookmarks/utils.py",
+      "scope": "file",
+      "what": "the delta is years, months and weeks",
+      "find": "\"\"\"Calculate the difference between two datetimes in years, months, and weeks.\"\"\"",
+      "replace": "\"\"\"Calculate the difference between two datetimes in years, months, and days.\"\"\""
+    },
+    {
+      "id": "linkding-6",
+      "repo": "linkding",
+      "file": "bookmarks/services/importer.py",
+      "scope": "file",
+      "what": "bookmarks are imported in batches of 200",
+      "find": "# Split bookmarks to import into batches, to keep memory usage for bulk operations manageable",
+      "replace": "# Import all bookmarks in one bulk operation; batching was removed for speed"
+    }
+  ],
+  "real": [
+    {
+      "id": "linkding-r1",
+      "repo": "linkding",
+      "file": "bookmarks/utils.py",
+      "anchor": "First tries to parse the timestamp as milliseconds.",
+      "what": "parse_timestamp tries seconds first, then milliseconds (/1000), then microseconds (/1000000); docstring and inline comments are one unit off"
+    }
+  ],
+  "history": [
+    {
+      "id": "cobra-h1",
+      "repo": "cobra",
+      "sha": "2a7647ff46",
+      "parent": "7045405",
+      "file": "command.go",
+      "lines": [
+        239,
+        240
+      ],
+      "what": "SetContext: the context is not set to context.Background by default"
+    },
+    {
+      "id": "cobra-h2",
+      "repo": "cobra",
+      "sha": "3a1795bc25",
+      "parent": "f848943",
+      "file": "command.go",
+      "lines": [
+        227,
+        228
+      ],
+      "what": "Context returns nil, not Background, without ExecuteContext"
+    },
+    {
+      "id": "cobra-h3",
+      "repo": "cobra",
+      "sha": "7df62f7668",
+      "parent": "39b5a91",
+      "file": "command.go",
+      "lines": [
+        967,
+        973
+      ],
+      "what": "the flags are SilenceErrors and SilenceUsage"
+    },
+    {
+      "id": "cobra-h4",
+      "repo": "cobra",
+      "sha": "3c2624538b",
+      "parent": "0da0687",
+      "file": "command.go",
+      "lines": [
+        312,
+        312
+      ],
+      "what": "InOrStdin returns input from stdin"
+    },
+    {
+      "id": "cobra-h5",
+      "repo": "cobra",
+      "sha": "6096009e8d",
+      "parent": "0f866a6",
+      "file": "command.go",
+      "lines": [
+        750,
+        750
+      ],
+      "what": "the doc comment of RemoveCommand names AddCommand"
+    },
+    {
+      "id": "cobra-h6",
+      "repo": "cobra",
+      "sha": "903e5b7073",
+      "parent": "66cfd1f",
+      "file": "cobra/cmd/project.go",
+      "lines": [
+        88,
+        88
+      ],
+      "what": "trimSrcPath trims at the beginning of absPath"
+    }
+  ]
+}

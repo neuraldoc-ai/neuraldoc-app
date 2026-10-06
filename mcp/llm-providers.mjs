@@ -7,7 +7,7 @@ export function compatibleBase(value) {
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error('LLM-URL ohne Zugangsdaten, Query oder Fragment angeben.')
   return url.href.replace(/\/+$/, '')
 }
-// Anthropic does not enforce all array constraints. Apply them locally after parsing.
+// Anthropic does not enforce all array constraints, so they are left out of its schema.
 const claudeSchema = (value) => Array.isArray(value) ? value.map(claudeSchema) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).filter(([k]) => !['maxItems', 'minItems'].includes(k)).map(([k, v]) => [k, claudeSchema(v)])) : value
 export function providerRequest(config, context, systemPrompt, schema, outputLimit) {
   const model = config.model, content = JSON.stringify(context)

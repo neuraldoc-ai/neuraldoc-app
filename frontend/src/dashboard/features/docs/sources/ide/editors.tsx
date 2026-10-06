@@ -1,4 +1,4 @@
-/** The two Monaco editors of the IDE: a read-only code editor with one model per file, and a diff editor. */
+/** The Monaco editors of the IDE: a read-only code editor with one model per file, a diff editor and the SQL editor. */
 import { useEffect, useRef, type RefObject } from 'react'
 import type * as Monaco from 'monaco-editor/esm/vs/editor/editor.api.js'
 import { applyTheme, monaco } from './monaco'

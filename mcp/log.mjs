@@ -15,7 +15,7 @@ export const log = {
   error: (scope, message, fields) => write('error', scope, message, fields),
 }
 
-/** Logs an error with its cause; programming errors (TypeError etc.) also with the stack. */
+/** Logs an error with its status; programming errors (TypeError etc.) also with the stack. */
 export function logError(scope, error, fields) {
   const unexpected = error && !['Error', 'DraftError'].includes(error.constructor?.name)
   write(unexpected || (error?.status ?? 500) >= 500 ? 'error' : 'warn', scope, error?.message || String(error), { ...fields, ...(error?.status ? { status: error.status } : {}) })
