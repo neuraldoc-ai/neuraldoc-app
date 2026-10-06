@@ -27,7 +27,7 @@ function Dropzone({ role, value, url, onPicked, onUrl, disabled }: { role: Role;
       onPicked(picked); onUrl('')
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Dateien konnten nicht gelesen werden.') } finally { setReading(false) }
   }
-  const drop = (event: DragEvent) => { event.preventDefault(); setOver(false); if (!disabled) void take(candidates(event.dataTransfer)) }
+  const drop = (event: DragEvent) => { event.preventDefault(); setOver(false); if (!disabled) void take(candidates(event.dataTransfer, role)) }
   const Icon = role === 'repo' ? FolderGit2 : FileText
   return <div className='grid gap-2'>
     {value ? <div className='flex items-center gap-3 rounded-xl border bg-muted/40 px-4 py-3'>
@@ -43,8 +43,8 @@ function Dropzone({ role, value, url, onPicked, onUrl, disabled }: { role: Role;
       <p className='text-xs text-muted-foreground'>{role === 'repo' ? 'Ordner oder ZIP. node_modules, Build-Ordner und .env werden übersprungen.' : 'PDF, Word, Excel, PowerPoint, Markdown, Text oder HTML. Auch ganze Ordner.'}</p>
       <button type='button' className='text-xs text-brand-700 underline-offset-4 hover:underline dark:text-brand-300' onClick={(e) => { e.stopPropagation(); (role === 'repo' ? files : folder).current?.click() }}>{role === 'repo' ? 'Stattdessen ZIP wählen' : 'Stattdessen Ordner wählen'}</button>
     </div>}
-    <input ref={folder} type='file' className='hidden' {...{ webkitdirectory: '', directory: '' }} onChange={(e) => { if (e.target.files?.length) void take(candidates(e.target.files)); e.target.value = '' }} />
-    <input ref={files} type='file' className='hidden' multiple={role === 'docs'} accept={role === 'repo' ? '.zip' : '.pdf,.docx,.xlsx,.pptx,.md,.mdx,.markdown,.txt,.rst,.adoc,.html,.htm,.xml,.csv,.zip'} onChange={(e) => { if (e.target.files?.length) void take(candidates(e.target.files)); e.target.value = '' }} />
+    <input ref={folder} type='file' className='hidden' {...{ webkitdirectory: '', directory: '' }} onChange={(e) => { if (e.target.files?.length) void take(candidates(e.target.files, role)); e.target.value = '' }} />
+    <input ref={files} type='file' className='hidden' multiple={role === 'docs'} accept={role === 'repo' ? '.zip' : '.pdf,.docx,.xlsx,.pptx,.md,.mdx,.markdown,.txt,.rst,.adoc,.html,.htm,.xml,.csv,.zip'} onChange={(e) => { if (e.target.files?.length) void take(candidates(e.target.files, role)); e.target.value = '' }} />
     {!value && <div className='relative'><GitBranch className='pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground' /><Input aria-label={role === 'repo' ? 'GitHub-URL des Repositories' : 'GitHub-URL der Dokumentation'} className='pl-9' value={url} disabled={disabled} onChange={(e) => onUrl(e.target.value)} placeholder='oder GitHub-URL, z. B. github.com/organisation/repository' /></div>}
     {error && <p role='alert' className='text-xs text-destructive'>{error}</p>}
   </div>
@@ -112,7 +112,7 @@ export function StartCheck() {
   </div>
 }
 
-const phaseLabel = { sections: 'Abschnitte werden mit dem Code verglichen', lists: 'Listen werden auf Vollständigkeit geprüft', jev: 'Jev prüft die Befunde gegen' } as const
+const phaseLabel = { features: 'Änderungen werden beschrieben', sections: 'Abschnitte werden mit dem Code verglichen', lists: 'Listen werden auf Vollständigkeit geprüft', jev: 'Jev prüft die Befunde gegen' } as const
 
 /** While the check runs: how far it is. It takes about two to five seconds per section. */
 function CheckProgress({ status }: { status?: CheckStatus }) {

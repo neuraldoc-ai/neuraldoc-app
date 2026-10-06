@@ -30,6 +30,33 @@ export function classify(path, role) {
   return CODE.test(name) ? 'code' : null
 }
 
+/**
+ * The rules of the .gitignore files of an uploaded folder as one test: `ignore(path)` is true for paths Git would not
+ * track (generated folders, local state, caches). `files` maps the folder of each .gitignore ('' = root) to its text.
+ * Supports comments, negation (!), anchored (/a, a/b) and directory (a/) patterns and the globs *, ? and **.
+ */
+export function gitignore(files) {
+  const rules = []
+  for (const [base, text] of Object.entries(files)) {
+    for (const raw of text.split(/\r?\n/)) {
+      let line = raw.replace(/(?<!\\)\s+$/, '')
+      if (!line || line.startsWith('#')) continue
+      const negate = line.startsWith('!')
+      if (negate) line = line.slice(1)
+      const dir = line.endsWith('/')
+      line = line.replace(/\/+$/, '')
+      const anchored = line.includes('/')
+      line = line.replace(/^\//, '')
+      // "a/**/b" also matches "a/b".
+      const glob = line.split(/(\/\*\*\/|\*\*\/|\/\*\*|\*\*|\*|\?)/).map((part) => ({ '/**/': '/(?:.*/)?', '**/': '(?:.*/)?', '/**': '/.*', '**': '.*', '*': '[^/]*', '?': '[^/]' })[part] ?? part.replace(/[.+^${}()|[\]\\]/g, '\\$&')).join('')
+      const prefix = base ? `${base.replace(/[.+^${}()|[\]\\]/g, '\\$&')}/` : ''
+      // A pattern without a slash matches at any depth below its .gitignore; a matched directory takes everything in it.
+      rules.push({ negate, test: new RegExp(`^${prefix}${anchored ? '' : '(?:.*/)?'}${glob}${dir ? '/' : '(?:/|$)'}`) })
+    }
+  }
+  return (path) => rules.reduce((ignoredSoFar, rule) => (rule.test.test(path) ? !rule.negate : ignoredSoFar), false)
+}
+
 /** The display name of a GitHub (or other https Git) URL, or null if it is not one. */
 export function repoUrl(value) {
   const text = String(value || '').trim().replace(/\/+$/, '').replace(/\.git$/, '')
