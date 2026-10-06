@@ -3,7 +3,7 @@
  * Shared by the dashboard (through model.ts) and the MCP server (mcp/core.mjs), so both always agree.
  * Imports carry the .ts extension because Node loads this file directly.
  */
-import { changeKinds, datasetMode, docTypeOrder, docTypes, docs, bundles, modules, proposals, type Bundle, type Doc, type DocTypeId, type Nature, type Proposal } from './data.ts'
+import { changeKinds, changeTypes, datasetMode, docTypeOrder, docTypes, docs, bundles, modules, proposals, type Bundle, type Doc, type DocTypeId, type Nature, type Proposal } from './data.ts'
 
 /* ---------- Lookups ---------- */
 
@@ -13,6 +13,7 @@ export const commitOf = (hash: string) => bundles.flatMap((b) => b.commits).find
 
 /** The overall nature of a change: fachlich wins over technisch over umbenennung over intern. */
 export function natureOf(b: Bundle): Nature {
+  if (b.type) return changeTypes[b.type].nature
   const order: Nature[] = ['fachlich', 'technisch', 'umbenennung', 'intern']
   const present = new Set(b.aspects.map((a) => changeKinds[a.kind].nature))
   return order.find((n) => present.has(n)) ?? 'intern'

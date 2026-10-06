@@ -1,14 +1,15 @@
 // Turns an imported project's Git history into the same changes (bundles) the showcase shows: one per feature,
 // with its commits, the kinds of change and the proposals of the initial check whose code it touched.
 import { BUNDLE_ID } from './project-import.mjs'
+import { plainFeature } from './feature-texts.mjs'
 
 const short = (id) => id.slice(0, 7)
 const TOUCHES = { fix: 'intern', test: 'intern' }
 
-/** Paths of the code excerpts a proposal's section contradicts (chunk ids look like file:<path>#L<line>). */
+/** Paths of the code excerpts a proposal's section contradicts (ids look like file:<path>#L<line>, exact places file:<path>#P<line>). */
 export function proposalPaths(p, proposal) {
   const record = p.mapping?.records?.find((r) => r.doc === (proposal.section ?? proposal.doc))
-  return [...new Set((record?.contradicts ?? []).map((id) => id.replace(/^file:/, '').replace(/#L\d+$/, '')))]
+  return [...new Set((record?.contradicts ?? []).map((id) => id.replace(/^file:/, '').replace(/#[LP]\d+$/, '')))]
 }
 
 /** The release the history belongs to: release/26.4 → 26.4, otherwise the tag it starts from. */
@@ -49,11 +50,16 @@ export function withFeatures(p, dataset) {
     })
     const modules = [...new Set(f.files.map(moduleOf).filter(Boolean))].map((m) => p.dataset.modules[m]).filter(Boolean)
     const mine = [...assigned.values()].filter((a) => a.feature === f).length
+    // In plain words (feature-texts.mjs): from the model after the first check, before that from the commit subject.
+    const text = p.featureTexts?.[f.id] ?? plainFeature(f)
+    const stats = f.commits.reduce((s, { id }) => { const c = commitsById.get(id); return { additions: s.additions + (c.stats?.additions ?? 0), deletions: s.deletions + (c.stats?.deletions ?? 0) } }, { additions: 0, deletions: 0 })
     return {
-      id: f.id, title: f.title, ticket: f.ticket ?? short(f.commits[0].id), mr: f.mr ?? short(f.commits[0].id), merged: f.merged.slice(0, 10),
+      id: f.id, title: text.title, subject: f.title, type: text.type, areas: text.areas, described: text.source === 'model',
+      ticket: f.ticket ?? short(f.commits[0].id), mr: f.mr ?? short(f.commits[0].id), merged: f.merged.slice(0, 10),
+      stats: { files: f.files.length, ...stats }, authors: [...new Set(f.commits.map(({ id }) => commitsById.get(id).author_name))],
       path: modules.slice(0, 1), alsoAffects: modules.slice(1, 4),
-      classifiedVia: ['Git-Historie', f.mr ? `Merge-Request ${f.mr}` : 'Commit', ...(f.ticket ? [`Ticket ${f.ticket}`] : [])],
-      summary: f.summary.split('\n').filter((l) => !/^(Closes|Fixes|Resolves|Refs)\b/i.test(l)).join(' ').trim(),
+      classifiedVia: ['Git-Historie', f.mr ? `Merge-Request ${f.mr}` : 'Commit', ...(f.ticket ? [`Ticket ${f.ticket}`] : []), ...(text.source === 'model' ? [`beschrieben von ${text.model}`] : [])],
+      summary: text.summary || f.summary.split('\n').filter((l) => !/^(Closes|Fixes|Resolves|Refs)\b/i.test(l)).join(' ').trim(),
       aspects, commits, files: f.files,
       ...(mine ? {} : { noDocsReason: checked ? 'Die Erstprüfung hat zu den geänderten Dateien keine Abweichung in der Doku gefunden.' : 'Noch nicht geprüft. Starte die Erstprüfung auf der Übersicht.' }),
     }

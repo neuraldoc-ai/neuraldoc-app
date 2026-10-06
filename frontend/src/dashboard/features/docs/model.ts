@@ -13,11 +13,12 @@ import {
   proposals,
   type Bundle,
   type ChangeKind,
+  type Doc,
   type DocTypeId,
   type Nature,
   type Proposal,
 } from "./data";
-import { docOf, natureOf, routing } from "./logic";
+import { docOf, natureOf, plural, routing } from "./logic";
 import { useDecisions, type Decision } from "./store";
 import { useGenerated, type Generation } from './generation-store';
 
@@ -202,6 +203,17 @@ export const fmtDay = (iso: string) =>
     day: "2-digit",
     month: "2-digit",
   });
+
+/** How a document is named in an own project: its path in the repository (README.md, docs/setup.md). */
+export const docLabel = (d: Doc) => d.path?.replace(/^(repository|dokumentation)\//, "") || d.title;
+
+/** The line under a change of an own project: who, when, which commit or merge request, how big. */
+export function ownLead(b: Bundle) {
+  const first = b.commits[0];
+  const ref = b.mr && b.mr !== first?.hash ? `Merge-Request ${b.mr}` : b.commits.length > 1 ? plural(b.commits.length, "Commit", "Commits") : `Commit ${first?.hash}`;
+  const size = b.stats ? `${plural(b.stats.files, "Datei", "Dateien")} (+${b.stats.additions.toLocaleString("de-DE")} −${b.stats.deletions.toLocaleString("de-DE")})` : null;
+  return [b.authors?.join(", "), fmtDate(b.merged), ref, b.ticket && b.ticket !== first?.hash ? `Ticket ${b.ticket}` : null, size].filter(Boolean).join(" · ");
+}
 
 export const initials = (name: string) =>
   name

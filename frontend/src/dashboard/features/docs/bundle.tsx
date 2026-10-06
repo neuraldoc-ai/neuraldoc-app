@@ -36,10 +36,11 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/u
 import { Progress } from '@/components/ui/progress'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { bundles, changeKinds, confidences, datasetMode, docTypeOrder, docTypes, modules, natures, sizes, type Confidence, type DocTypeId, type Nature } from './data'
+import { bundles, changeKinds, changeTypes, confidences, datasetMode, docTypeOrder, docTypes, modules, natures, sizes, type Confidence, type DocTypeId, type Nature } from './data'
+import { OwnChange, OwnDocs } from './own-change'
 import { projectState } from './project'
 import { StartReview } from './start-review'
-import { docOf, fmtDate, fmtDay, list, plural, routing, useBundles, type LiveBundle, type LiveProposal, type Route } from './model'
+import { docLabel, docOf, fmtDate, fmtDay, list, ownLead, plural, routing, useBundles, type LiveBundle, type LiveProposal, type Route } from './model'
 import { locationOf } from './logic'
 import { blueSoft, typeIcon } from './overview-icons'
 import { useDecisions } from './store'
@@ -110,12 +111,14 @@ export function BundlePage({ id }: { id: string }) {
   // An imported project's changes come from its Git history; without history (an uploaded folder), or for the
   // findings no commit explains, the change is the initial check itself: no commits, tickets or merge requests.
   const initial = own && !b.commits.length ? own : null
+  // A change from the Git history of an own project: described in plain words, with the project's own documents.
+  const history = !!own && b.commits.length > 0
   const withoutDraft = open.filter((p) => !p.generation && p.op !== 'note' && !p.task)
   return (
     <Frame
       title={b.title}
       crumbs={own && bundles.length === 1 ? [{ label: b.title }] : [{ label: 'Änderungen', to: '/aenderungen' }, { label: b.title }]}
-      lead={initial ? `${plural(initial.files.length, 'Code-Datei', 'Code-Dateien')} · ${plural(new Set(initial.documents.map((d) => d.path)).size, 'Dokument', 'Dokumente')} · geprüft am ${fmtDate(b.merged)}` : `${b.ticket} · ${b.mr} · gemergt ${fmtDate(b.merged)}`}
+      lead={initial ? `${plural(initial.files.length, 'Code-Datei', 'Code-Dateien')} · ${plural(new Set(initial.documents.map((d) => d.path)).size, 'Dokument', 'Dokumente')} · geprüft am ${fmtDate(b.merged)}` : history ? ownLead(b) : `${b.ticket} · ${b.mr} · gemergt ${fmtDate(b.merged)}`}
       actions={
         b.nature === 'umbenennung' && open.length > 0 ? (
           <Button size='sm' onClick={() => decideMany(open.map((p) => p.id), 'uebernommen', `${b.title}: alle ${open.length} Stellen übernommen`)}>
@@ -132,8 +135,8 @@ export function BundlePage({ id }: { id: string }) {
       {!own && <FromAgent b={b} status={status} />}
       {initial ? <CheckSignals b={b} subjects={initial.mapping?.subjects ?? 0} /> : <Signals b={b} />}
       <div className={cn('grid gap-4 lg:grid-cols-3 [&>*]:min-w-0', initial && 'items-start')}>
-        {initial ? <Checked className='lg:col-span-2' /> : <Change b={b} className='lg:col-span-2' />}
-        <Readers routes={routing(b)} />
+        {initial ? <Checked className='lg:col-span-2' /> : history ? <OwnChange b={b} className='lg:col-span-2' /> : <Change b={b} className='lg:col-span-2' />}
+        {history ? <OwnDocs b={b} checked={!!own?.mapping} /> : <Readers routes={routing(b)} />}
       </div>
       {initial ? (
         <Proposals b={b} />
@@ -231,14 +234,15 @@ const natureLook: Record<Nature, { icon: typeof Briefcase; tile: string; hint: s
 }
 
 function Signals({ b }: { b: LiveBundle }) {
-  const look = natureLook[b.nature]
+  const look = natureLook[b.nature], type = b.type ? changeTypes[b.type] : null
+  const own = datasetMode === 'working'
   const total = b.proposals.length
   const done = total - b.open
   const questions = b.proposals.filter((p) => p.state === 'offen' && (p.question || p.confidence === 'pruefen')).length
   return (
     <Card className='py-0'>
       <CardContent className='grid divide-y px-0 sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-4 lg:divide-x'>
-        <Signal icon={look.icon} tile={look.tile} label='Art' value={natures[b.nature]} hint={look.hint} />
+        <Signal icon={look.icon} tile={look.tile} label='Art' value={type?.label ?? natures[b.nature]} hint={type?.hint ?? look.hint} />
         <div className='flex items-center gap-3 px-5 py-4'>
           <span className={cn('flex size-10 shrink-0 items-center justify-center rounded-xl', b.open ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300')}>
             {b.open || !total ? <PenLine className='size-5' /> : <Check className='size-5' />}
@@ -249,7 +253,7 @@ function Signals({ b }: { b: LiveBundle }) {
             {total > 0 && <Progress value={(done / total) * 100} className='h-1.5' indicatorClassName={done === total ? 'bg-emerald-500' : 'bg-brand-500'} />}
           </div>
         </div>
-        <Signal icon={FileText} tile='bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200' label='Dokumente' value={b.docs.length ? plural(b.docs.length, 'Dokument', 'Dokumente') : 'Keins'} hint={b.types.map((t) => docTypes[t].label).join(', ') || 'nichts zu ändern'} />
+        <Signal icon={FileText} tile='bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200' label='Dokumente' value={b.docs.length ? plural(b.docs.length, 'Dokument', 'Dokumente') : 'Keins'} hint={(own ? b.docs.map((d) => docLabel(docOf(d))) : b.types.map((t) => docTypes[t].label)).join(', ') || 'nichts zu ändern'} />
         <Signal
           icon={questions ? CircleHelp : Check}
           tile={questions ? 'bg-late-soft text-late-fg' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'}
@@ -405,21 +409,22 @@ function Proposals({ b, status, className }: { b: LiveBundle; status?: ChangeSta
         </Empty>
       </Panel>
     )
-  const types = docTypeOrder.filter((t) => b.types.includes(t))
+  // The showcase groups by doc type; an own project by its documents (README.md, docs/setup.md).
+  const groups = datasetMode === 'working'
+    ? b.docs.map((d) => ({ key: d, anchor: `doc-${d}`, label: docLabel(docOf(d)), Icon: FileText, ps: b.proposals.filter((p) => p.doc === d), type: null }))
+    : docTypeOrder.filter((t) => b.types.includes(t)).map((t) => ({ key: t, anchor: `typ-${t}`, label: docTypes[t].label, Icon: typeIcon[t], ps: b.proposals.filter((p) => docOf(p.doc).type === t), type: t }))
   return (
     <Panel title='Vorschläge' className={className}>
-      {types.map((t) => {
-        const ps = b.proposals.filter((p) => docOf(p.doc).type === t)
-        const Icon = typeIcon[t]
+      {groups.map(({ key, anchor, label, Icon, ps, type: t }) => {
         return (
-          <section key={t} id={`typ-${t}`} className='grid scroll-mt-20 gap-1'>
+          <section key={key} id={anchor} className='grid scroll-mt-20 gap-1'>
             <h3 className='flex items-center gap-2.5 pt-2 pb-1.5 text-base font-semibold tracking-tight'>
               <span className={cn('flex size-7 items-center justify-center rounded-md border', blueSoft)}>
                 <Icon className='size-4' />
               </span>
-              {docTypes[t].label}
+              {label}
               <span className='text-sm font-normal text-muted-foreground tabular-nums'>{ps.length}</span>
-              {status && (
+              {status && t && (
                 <span className='ms-auto text-xs font-normal text-muted-foreground'>
                   {status.approvers[t].self ? 'Entwicklung gibt selbst frei' : `Freigabe: ${status.approvers[t].name}`}
                 </span>
@@ -547,8 +552,10 @@ function ProposalRow({ p, written }: { p: LiveProposal; written?: ChangeStatus['
 /* ---------- Commits ---------- */
 
 function Commits({ b }: { b: LiveBundle }) {
+  // A commit straight on the main line has no merge request: its hash is not repeated as one.
+  const direct = b.mr === b.commits[0]?.hash
   return (
-    <Panel title={plural(b.commits.length, 'Commit', 'Commits')} aside={<Badge variant='outline' className={cn('font-normal', blueSoft)}>{b.mr}</Badge>}>
+    <Panel title={plural(b.commits.length, 'Commit', 'Commits')} aside={direct ? undefined : <Badge variant='outline' className={cn('font-normal', blueSoft)}>{b.mr}</Badge>}>
       <ol className='relative grid gap-4 before:absolute before:top-2 before:bottom-2 before:left-[5px] before:w-px before:bg-brand-200 dark:before:bg-brand-500/30'>
         {b.commits.map((c) => (
           <li key={c.hash} className={cn('relative grid gap-1 pl-6', c.supersededBy && 'opacity-50')}>
@@ -561,7 +568,7 @@ function Commits({ b }: { b: LiveBundle }) {
         ))}
         <li className='relative pl-6 text-xs text-muted-foreground'>
           <span className='absolute top-0.5 left-0 size-[11px] rounded-full bg-brand-600' />
-          Gemergt {fmtDate(b.merged)}
+          {direct ? 'Im Hauptzweig' : 'Gemergt'} {fmtDate(b.merged)}
         </li>
       </ol>
     </Panel>

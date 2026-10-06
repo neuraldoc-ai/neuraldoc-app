@@ -11,7 +11,7 @@ import { toast } from 'sonner'
 
 export type Decision = {
   state: 'uebernommen' | 'verworfen'
-  /** Set when the proposal was changed in the editor before it was accepted. */
+  /** The accepted text: changed in the editor, or the generated text as it was when accepted. */
   edited?: { text?: string; blocks?: Block[]; rows?: string[][] }
 }
 

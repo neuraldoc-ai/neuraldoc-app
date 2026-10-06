@@ -88,6 +88,8 @@ export type Block =
 export type Doc = {
   id: string
   title: string
+  /** Own projects: where the document lives (repository/README.md, dokumentation/handbuch.pdf). */
+  path?: string
   type: DocTypeId
   modules: ModuleId[]
   owner: PersonId
@@ -121,6 +123,16 @@ export type Commit = {
   note?: string
 }
 
+/** What a change of an own project means for readers, from its commits and diff (mcp/feature-texts.mjs). */
+export type ChangeType = 'neu' | 'geaendert' | 'fix' | 'intern'
+
+export const changeTypes: Record<ChangeType, { label: string; hint: string; nature: Nature }> = {
+  neu: { label: 'Neue Funktion', hint: 'Man kann etwas Neues tun', nature: 'fachlich' },
+  geaendert: { label: 'Geändertes Verhalten', hint: 'Etwas funktioniert anders', nature: 'fachlich' },
+  fix: { label: 'Fehlerbehebung', hint: 'Ein Fehler ist behoben', nature: 'technisch' },
+  intern: { label: 'Intern', hint: 'Tests, Umbau, Build', nature: 'intern' },
+}
+
 export type Step = { text: string; mark?: 'neu' | 'geändert' }
 
 export type Aspect = { kind: ChangeKind; module: ModuleId; text: string; commits: string[] }
@@ -143,6 +155,16 @@ export type Bundle = {
   commits: Commit[]
   /** Nothing visible changes for readers — shown so it is clear the change was checked. */
   noDocsReason?: string
+  /* Own projects with Git history: the change in plain words and the commit it came from. */
+  /** The original commit or merge request subject. */
+  subject?: string
+  type?: ChangeType
+  /** Parts of the product it touches, in a user's words. */
+  areas?: string[]
+  /** true when the model described it, false when the title is the cleaned commit subject. */
+  described?: boolean
+  stats?: { files: number; additions: number; deletions: number }
+  authors?: string[]
 }
 
 /* ---------- Proposals ---------- */

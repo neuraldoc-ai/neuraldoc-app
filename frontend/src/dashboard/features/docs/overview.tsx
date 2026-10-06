@@ -3,7 +3,8 @@
  * and what neuraldoc already did so nobody has to.
  */
 import { Link } from "@tanstack/react-router";
-import { ArrowRight, Check, CircleHelp, Clock } from "lucide-react";
+import { ArrowRight, Check, CircleHelp, FileText } from "lucide-react";
+import { ChangeBadge } from "./own-change";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -17,6 +18,7 @@ import { docTypes, release, datasetMode } from "./data";
 import { ProjectControls, StartCheck } from "./project-controls";
 import { projectState } from "./project";
 import {
+  docLabel,
   docOf,
   fmtDate,
   plural,
@@ -25,7 +27,7 @@ import {
   useProposals,
   useSummary,
 } from "./model";
-import { Frame, NatureBadge } from "./ui";
+import { Frame } from "./ui";
 import { blueSoft, typeIcon } from "./overview-icons";
 import { StartReview } from './start-review';
 
@@ -54,16 +56,23 @@ export function OverviewPage() {
   // A cloned repository brings its history: its features are shown like the showcase's.
   const features = bundles.filter((b) => b.commits.length > 0);
   const history = !!project && features.length > 0;
+  // Own history: commits since the last tag (or the last 90 days), each change described in plain words.
+  const commitCount = features.reduce((n, b) => n + b.commits.length, 0);
+  const since = projectState.history?.tag ? `seit ${projectState.history.tag}` : "der letzten 90 Tage";
+  const withDocs = features.filter((b) => b.proposals.length > 0);
+  const internal = features.filter((b) => b.proposals.length === 0 && b.nature === "intern");
+  const quiet = features.filter((b) => b.proposals.length === 0 && b.nature !== "intern");
   const checked = project
     ? [
-        ...(history ? [`${plural(features.reduce((n, b) => n + b.commits.length, 0), "Commit", "Commits")} ${projectState.history?.tag ? `seit ${projectState.history.tag} ` : ""}zu ${plural(features.length, "Feature", "Features")} gebündelt`] : []),
+        ...(history ? [`${plural(commitCount, "Commit", "Commits")} ${since} gelesen${features.length < commitCount ? `, zu ${plural(features.length, "Änderung", "Änderungen")} gebündelt` : ""}${features.some((b) => b.described) ? " und in einfachen Worten beschrieben" : ""}`] : []),
         `${plural(project.files.length, "Code-Datei", "Code-Dateien")} und ${plural(documentCount, "Dokument", "Dokumente")} importiert`,
         ...(project.mapping ? [
           `${plural(project.mapping.subjects, "Doku-Abschnitt", "Doku-Abschnitte")} gegen den aktuellen Code geprüft`,
           `${plural(project.mapping.consistent, "Abschnitt passt", "Abschnitte passen")} zum Code`,
           ...(project.mapping.findings ? [`${plural(project.mapping.findings, "Änderung", "Änderungen")} mit Begründung und Codebeleg vorbereitet`] : []),
           ...(project.mapping.skipped ? [`${plural(project.mapping.skipped, "Abschnitt", "Abschnitte")} ohne prüfbaren Inhalt (Logos, Links), bleiben unverändert`] : []),
-          ...(history && done.length ? [`${plural(done.length, "Feature", "Features")} ohne nötige Textänderung (${done.map((d) => d.title).join(", ")})`] : []),
+          ...(history && internal.length ? [`${plural(internal.length, "interne Änderung", "interne Änderungen")} (Tests, Umbau, Build) ohne Folgen für die Doku`] : []),
+          ...(history && quiet.length ? [`${plural(quiet.length, "weitere Änderung braucht", "weitere Änderungen brauchen")} keine Textänderung`] : []),
         ] : []),
       ]
     : null;
@@ -102,10 +111,10 @@ export function OverviewPage() {
           <div className="grid gap-6 bg-brand-50/60 p-6 md:grid-cols-[1fr_auto] md:items-center dark:bg-brand-500/10">
             <div className="grid gap-2">
               <span className="text-xs font-medium tracking-wide text-brand-700 uppercase dark:text-brand-300">
-                {history ? `${release.id.startsWith("seit") ? `Änderungen ${release.id}` : `Release ${release.id}`} · Stand ${fmtDate(release.freeze)}` : datasetMode === 'working' ? `Eigenes Projekt · importiert am ${fmtDate(release.freeze)}` : `Release ${release.id} · Code-Freeze am ${fmtDate(release.freeze)}`}
+                {history ? `${projectState.history?.tag ? `Änderungen seit ${projectState.history.tag}` : "Änderungen der letzten 90 Tage"} · Stand ${fmtDate(release.freeze)}` : datasetMode === 'working' ? `Eigenes Projekt · importiert am ${fmtDate(release.freeze)}` : `Release ${release.id} · Code-Freeze am ${fmtDate(release.freeze)}`}
               </span>
               <p className="text-[26px] leading-tight font-medium tracking-tight">
-                {project && (unmapped || !history) ? (unmapped ? "Doku noch nicht geprüft." : mismatches ? `${plural(mismatches, "Doku-Abschnitt weicht", "Doku-Abschnitte weichen")} vom Code ab.` : "Keine Abweichung gefunden.") : (history ? features.filter((b) => b.proposals.length).length : sum.withDocs) ? <>Bei {plural(history ? features.filter((b) => b.proposals.length).length : sum.withDocs, "Feature", "Features")} muss die Doku angepasst werden.</> : "Keine Abweichung gefunden."}
+                {project && (unmapped || !history) ? (unmapped ? "Doku noch nicht geprüft." : mismatches ? `${plural(mismatches, "Doku-Abschnitt weicht", "Doku-Abschnitte weichen")} vom Code ab.` : "Keine Abweichung gefunden.") : history ? (withDocs.length ? `Bei ${withDocs.length} von ${plural(features.length, "Änderung", "Änderungen")} muss die Doku angepasst werden.` : "Keine Änderung braucht eine Doku-Anpassung.") : sum.withDocs ? <>Bei {plural(sum.withDocs, "Feature", "Features")} muss die Doku angepasst werden.</> : "Keine Abweichung gefunden."}
               </p>
               <p className="max-w-[64ch] text-sm text-muted-foreground">
                 {project && (unmapped || !history)
@@ -114,8 +123,10 @@ export function OverviewPage() {
                     : mismatches
                       ? "Zu jeder Abweichung steht die Korrektur mit Begründung und Codebeleg bereit. Du prüfst jede Stelle und gibst sie frei."
                       : "Die Prüfung hat keine Abweichung zwischen Doku und Code gefunden."
-                  : <>neuraldoc hat {plural(history ? features.reduce((n, b) => n + b.commits.length, 0) : sum.commits, "Commit", "Commits")} zu{" "}
-                    {plural(history ? features.length : sum.bundles, "Feature", "Features")} gebündelt. „Starten“ formuliert die
+                  : history
+                    ? `${plural(commitCount, "Commit", "Commits")} ${since}: ${withDocs.length} ${withDocs.length === 1 ? "ändert" : "ändern"} etwas, das in der Doku steht, ${internal.length} ${internal.length === 1 ? "ist" : "sind"} intern (Tests, Umbau, Build), ${quiet.length} ${quiet.length === 1 ? "braucht" : "brauchen"} keine Textänderung. „Starten“ führt dich durch die Vorschläge.`
+                    : <>neuraldoc hat {plural(sum.commits, "Commit", "Commits")} zu{" "}
+                    {plural(sum.bundles, "Feature", "Features")} gebündelt. „Starten“ formuliert die
                     Vorschläge für die betroffenen Dokumente.</>}
               </p>
             </div>
@@ -140,10 +151,10 @@ export function OverviewPage() {
             <CardTitle>Doku-Änderungen prüfen</CardTitle>
             <CardDescription>
               {allDone
-                ? "Zu diesen Features sind alle Vorschläge entschieden."
+                ? history ? "Zu diesen Änderungen sind alle Vorschläge entschieden." : "Zu diesen Features sind alle Vorschläge entschieden."
                 : project && !history
                   ? "Abweichungen zwischen Doku und aktuellem Code."
-                  : "Features mit den meisten offenen Vorschlägen zuerst."}
+                  : history ? "Änderungen mit den meisten offenen Vorschlägen zuerst." : "Features mit den meisten offenen Vorschlägen zuerst."}
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
@@ -179,10 +190,6 @@ export function OverviewPage() {
               </ul>
             )}
             {open.map((b, i) => {
-              const minutes = Math.max(
-                1,
-                Math.round(b.open * (b.nature === "umbenennung" ? 0.2 : 1.2)),
-              );
               return (
                 <Link
                   key={b.id}
@@ -196,14 +203,22 @@ export function OverviewPage() {
                   <span className="grid gap-1.5">
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{b.title}</span>
-                      <NatureBadge nature={b.nature} />
+                      <ChangeBadge b={b} />
                     </span>
+                    {project && b.summary && (
+                      <span className="line-clamp-2 text-sm text-foreground/80">{b.summary}</span>
+                    )}
                     <span className="text-sm text-muted-foreground">
                       {plural(b.open, "offener Vorschlag", "offene Vorschläge")} in{" "}
-                      {plural(b.types.length, "Doku-Art", "Doku-Arten")}
+                      {project ? plural(b.docs.length, "Dokument", "Dokumenten") : plural(b.types.length, "Doku-Art", "Doku-Arten")}
                     </span>
                     <span className="flex flex-wrap gap-1">
-                      {b.types.map((t) => {
+                      {project && b.docs.map((d) => (
+                        <Badge key={d} variant="secondary" className="gap-1 font-normal">
+                          <FileText /> {docLabel(docOf(d))}
+                        </Badge>
+                      ))}
+                      {!project && b.types.map((t) => {
                         const Icon = typeIcon[t];
                         return (
                           <Badge
@@ -217,13 +232,7 @@ export function OverviewPage() {
                       })}
                     </span>
                   </span>
-                  <span className="flex items-center gap-1 text-xs whitespace-nowrap text-muted-foreground">
-                    <Clock className="size-3.5" />{" "}
-                    {b.nature === "umbenennung"
-                      ? "Umbenennung"
-                      : `ca. ${minutes} Min.`}
-                    <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-                  </span>
+                  <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
                 </Link>
               );
             })}
