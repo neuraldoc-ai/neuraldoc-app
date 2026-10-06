@@ -259,3 +259,24 @@ test('a Confluence page in the documentation repository gets its changed words i
   assert.equal(gh.head('neuraldoc/docs')['confluence/storage/p.xml'], xml.replace('5 Tage', '3 Tage'))
   assert.match(gh.pulls[0].title, /confluence\/storage\/p\.xml/)
 })
+
+test('one pull request per change: named after the change, with its ticket, on a branch of its own', async () => {
+  saveSettings({ NEURALDOC_GIT_TOKEN: 'test-token', NEURALDOC_GITHUB_PR_GROUP: 'change' })
+  const gh = fakeGitHub({ files: { 'README.md': README } })
+  const p = project(approved('doc-a', 'doc-b'))
+  p.dataset.bundles = [
+    { id: 'mob-2101', title: 'Rabattstaffel ab 1.000 EUR', ticket: 'MOB-2101', mr: '!412', summary: 'Ab 1.000 EUR gibt es 15 Prozent.' },
+    { id: 'mob-2117', title: 'Export mit Erstellungsdatum', ticket: 'MOB-2117', mr: '!418', summary: '' },
+  ]
+  p.dataset.proposals.find((x) => x.id === 'p-doc-a').bundle = 'mob-2101'
+  p.dataset.proposals.find((x) => x.id === 'p-doc-b').bundle = 'mob-2117'
+  const status = await syncGitHub(() => p, { fetchImpl: gh.fetch })
+  assert.deepEqual(gh.pulls.map((x) => [x.title, x.head.ref]).sort(), [
+    ['docs(MOB-2101): Rabattstaffel ab 1.000 EUR', 'neuraldoc/rabattstaffel-ab-1-000-eur'],
+    ['docs(MOB-2117): Export mit Erstellungsdatum', 'neuraldoc/export-mit-erstellungsdatum'],
+  ])
+  assert.match(gh.pulls.find((x) => x.title.includes('2101')).body, /\*\*Änderung:\*\* Rabattstaffel ab 1\.000 EUR \(MOB-2101, !412\)/)
+  // Each pull request carries only its change's section.
+  assert.match(gh.head('neuraldoc/rabattstaffel-ab-1-000-eur')['README.md'], /15 Prozent[\s\S]*Datum der Bestellung/)
+  assert.deepEqual(status.pullRequests.map((r) => [r.change, r.proposals]).sort(), [['mob-2101', ['p-doc-a']], ['mob-2117', ['p-doc-b']]])
+})

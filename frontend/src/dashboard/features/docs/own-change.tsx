@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { changeTypes, docs } from './data'
-import { docLabel, docOf, plural, type LiveBundle } from './model'
+import { docFile, docLabel, docOf, plural, type LiveBundle } from './model'
 import { blueSoft } from './overview-icons'
 import { NatureBadge, Panel } from './ui'
 
@@ -91,19 +91,24 @@ export function OwnDocs({ b, checked }: { b: LiveBundle; checked: boolean }) {
   const shown = rest.slice(0, Math.max(0, 6 - touched.length))
   return (
     <Panel title='Welche Doku' description={touched.length ? `${plural(touched.length, 'Dokument muss', 'Dokumente müssen')} angepasst werden` : checked ? 'Kein Dokument muss angepasst werden' : 'Noch nicht geprüft'}>
-      <div className='grid gap-1.5'>
+      <div className='grid grid-cols-1 gap-1.5'>
         {touched.map(({ doc, open, all }) => (
-          <a key={doc.id} href={`#doc-${doc.id}`} className={cn('flex items-center gap-3 rounded-xl border p-3 transition-colors hover:border-brand-400', blueSoft)}>
+          <a key={doc.id} href={`#doc-${doc.id}`} title={docFile(doc)} className={cn('flex min-w-0 items-center gap-3 rounded-xl border p-3 transition-colors hover:border-brand-400', blueSoft)}>
             <PenLine className='size-4 shrink-0' />
-            <span className='min-w-0 flex-1 truncate text-sm font-medium'>{docLabel(doc)}</span>
-            <span className='shrink-0 text-xs'>{open ? `${plural(open, 'Stelle', 'Stellen')} anpassen` : `${plural(all, 'Stelle', 'Stellen')} entschieden`}</span>
+            <span className='grid min-w-0 flex-1 gap-0.5'>
+              <span className='line-clamp-2 text-sm font-medium'>{docLabel(doc)}</span>
+              <span className='truncate text-[11px] opacity-75'>
+                {open ? `${plural(open, 'Stelle', 'Stellen')} anpassen` : `${plural(all, 'Stelle', 'Stellen')} entschieden`}
+                {docFile(doc) && docFile(doc) !== docLabel(doc) && ` · ${docFile(doc).split('/').pop()}`}
+              </span>
+            </span>
           </a>
         ))}
         {checked &&
           shown.map((doc) => (
             <Tooltip key={doc.id}>
               <TooltipTrigger asChild>
-                <div className='flex items-center gap-3 rounded-xl border px-3 py-2 text-muted-foreground'>
+                <div className='flex min-w-0 items-center gap-3 rounded-xl border px-3 py-2 text-muted-foreground'>
                   <FileText className='size-4 shrink-0' />
                   <span className='min-w-0 flex-1 truncate text-sm'>{docLabel(doc)}</span>
                   <span className={cn('flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px]', greenSoft)}>

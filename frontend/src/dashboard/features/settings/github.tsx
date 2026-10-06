@@ -201,7 +201,7 @@ function TokenTab({ setup }: { setup: Setup }) {
 /** When and how neuraldoc opens pull requests. */
 function PullRequestOptions({ values }: { values: Record<string, string> }) {
   const [mode, setMode] = useState(values.NEURALDOC_GITHUB_PR || "auto");
-  const [group, setGroup] = useState(values.NEURALDOC_GITHUB_PR_GROUP || "repository");
+  const [group, setGroup] = useState(values.NEURALDOC_GITHUB_PR_GROUP || "change");
   const [prefix, setPrefix] = useState(values.NEURALDOC_GITHUB_BRANCH_PREFIX || "neuraldoc/");
   const [labels, setLabels] = useState(values.NEURALDOC_GITHUB_LABELS || "documentation, neuraldoc");
   const [reviewers, setReviewers] = useState(values.NEURALDOC_GITHUB_REVIEWERS ?? "");
@@ -239,6 +239,7 @@ function PullRequestOptions({ values }: { values: Record<string, string> }) {
           <Select value={group} onValueChange={setGroup}>
             <SelectTrigger id="gh-group"><SelectValue /></SelectTrigger>
             <SelectContent>
+              <SelectItem value="change">Ein Pull-Request je Änderung</SelectItem>
               <SelectItem value="repository">Ein Pull-Request je Repository</SelectItem>
               <SelectItem value="document">Ein Pull-Request je Dokument</SelectItem>
             </SelectContent>

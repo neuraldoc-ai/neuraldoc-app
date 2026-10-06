@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { Frame } from './ui'
 import { ProjectControls } from './project-controls'
+import { PullRequestTargets } from './github-publish'
 import { datasetMode } from './data'
 import { projectState } from './project'
 import type { DataTab } from './dataset'
@@ -52,6 +53,7 @@ function ImportedData({ tab, onTab }: { tab: DataTab; onTab: (tab: DataTab) => v
       }
     >
       <ProjectControls />
+      <PullRequestTargets />
       <div className={cn('grid gap-4 sm:grid-cols-2', hasDb ? 'lg:grid-cols-3' : 'lg:grid-cols-2')}>
         <SourceCard active={active === 'gitlab'} onClick={() => onTab('gitlab')} icon={<GitCommitHorizontal />} name='Code' value={project.files.length} unit='Dateien' sub={history?.commits ? `${project.sources.repo.label} · ${history.commits} Commits${history.tag ? ` seit ${history.tag}` : ''}` : `${project.sources.repo.label} · ${project.sources.repo.source === 'url' ? 'von GitHub' : 'hochgeladen, ohne Git-Verlauf'}`} />
         <SourceCard active={active === 'dokumente'} onClick={() => onTab('dokumente')} icon={<FileText />} name='Dokumente' value={documents} unit='Dateien' sub={formats(project.documents) || `${project.documents.length} Abschnitte`} />

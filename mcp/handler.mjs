@@ -193,7 +193,7 @@ async function api(req, res, path) {
     if (path.startsWith('/api/mcp/github/')) {
       // Approved sections as pull requests: off in the showcase, every change only from this app.
       if (showcaseOnly()) throw new DraftError('Im Showcase gibt es keine GitHub-Anbindung.', 403)
-      if (req.method === 'GET' && path === '/api/mcp/github/status') return send(res, 200, await githubStatus(activeProject(), { refresh: true }), { 'Cache-Control': 'no-store' })
+      if (req.method === 'GET' && path === '/api/mcp/github/status') return send(res, 200, await githubStatus(activeProject(), { refresh: true, getProject: activeProject }), { 'Cache-Control': 'no-store' })
       if (req.method === 'GET' && path === '/api/mcp/github/app/callback') {
         // GitHub sends the browser back here after the app was created; the state from appManifest is the proof.
         const params = new URL(req.url, 'http://localhost').searchParams

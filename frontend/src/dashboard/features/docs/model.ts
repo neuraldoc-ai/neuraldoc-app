@@ -205,7 +205,10 @@ export const fmtDay = (iso: string) =>
   });
 
 /** How a document is named in an own project: its path in the repository (README.md, docs/setup.md). */
-export const docLabel = (d: Doc) => d.path?.replace(/^(repository|dokumentation)\//, "") || d.title;
+/** A document as people know it: its title (the Confluence page, the first heading), not the file it is stored in. */
+export const docLabel = (d: Doc) => d.title || docFile(d);
+/** Where the document lies in the repository, for a second line under its title. */
+export const docFile = (d: Doc) => d.path?.replace(/^(repository|dokumentation)\//, "") || "";
 
 /** The line under a change of an own project: who, when, which commit or merge request, how big. */
 export function ownLead(b: Bundle) {

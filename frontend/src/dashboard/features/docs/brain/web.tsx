@@ -1,4 +1,4 @@
-﻿import { useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -13,6 +13,7 @@ import {
   type Node,
   type NodeChange,
   type NodeProps,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
@@ -207,13 +208,21 @@ function layout(
 export function BrainWeb() {
   const { resolvedTheme } = useTheme();
   const canvas = useRef<HTMLDivElement>(null);
-  const [mode, setMode] = useState("overview"),
+  // The overview condenses the network to its main objects; when they have no connections among them (a project
+  // without features), it would be a field of loose dots, so the page starts with every object type.
+  const [mode, setMode] = useState(() =>
+    projectConnections(brain.edges, brain.nodes.filter((n) => overviewTypes.includes(n.type)).map((n) => n.id), 5).length ? "overview" : "detail",
+  ),
     [scope, setScope] = useState("all");
   const [root, setRoot] = useState(brain.nodes.find((n) => n.type === "feature")?.id || brain.nodes[0]?.id || ""),
     [depth, setDepth] = useState("2");
   const [types, setTypes] = useState<NodeType[]>(nodeOrder),
     [onlyProven, setOnlyProven] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null),
+    [hovered, setHovered] = useState<string | null>(null);
+  // Positions the reader dragged a node to; they hold until the visible section changes.
+  const [dragged, setDragged] = useState<Record<string, { x: number; y: number }>>({});
+  const [flow, setFlow] = useState<ReactFlowInstance<Node<Data>, Edge> | null>(null);
   const [edge, setEdge] = useState<BrainEdge | null>(null),
     [path, setPath] = useState<Path | null>(null);
   const [history, setHistory] = useState<string[]>([]),
@@ -264,7 +273,7 @@ export function BrainWeb() {
     () => layout(shownNodes, connections),
     [shownNodes, connections],
   );
-  const focusId = selected;
+  const focusId = selected ?? hovered;
   const lit = new Set<string>(
     path?.nodes ||
       (focusId
@@ -279,7 +288,7 @@ export function BrainWeb() {
   const nodes: Node<Data>[] = shownNodes.map((n) => ({
     id: n.id,
     type: "brain",
-    position: positions[n.id],
+    position: dragged[n.id] ?? positions[n.id],
     measured: measured[n.id],
     ariaLabel: `${typeLabel[n.type]}: ${n.label}`,
     data: {
@@ -291,6 +300,8 @@ export function BrainWeb() {
         ["feature", "module", "department", "database"].includes(n.type),
     },
   }));
+  // Labels only while few lines are highlighted; 24 times "gehört zum Modul" hides the network.
+  const lightCount = connections.filter((p) => (path ? p.edges.some((e) => path.edges.some((step) => step.id === e.id)) : !!focusId && (p.source === focusId || p.target === focusId))).length;
   const edges: Edge[] = connections.map((p, i) => {
     const highlighted = path
       ? p.edges.some((e) => path.edges.some((step) => step.id === e.id))
@@ -301,7 +312,7 @@ export function BrainWeb() {
       target: p.target,
       type: "pan-friendly",
       label:
-        highlighted && p.edges.length === 1
+        highlighted && p.edges.length === 1 && lightCount <= 8
           ? edgeLabel[p.edges[0].kind]
           : undefined,
       labelStyle: { fontSize: 11 },
@@ -340,8 +351,29 @@ export function BrainWeb() {
     setSelected(id);
     setEdge(null);
     setDetailsOpen(true);
+    // The details panel narrows the canvas: a node it would cover glides back into view, nothing else moves.
+    setTimeout(() => {
+      const node = flow?.getInternalNode(id), box = canvas.current?.getBoundingClientRect()
+      if (!flow || !node || !box) return
+      const { x, y, zoom } = flow.getViewport(), cx = node.internals.positionAbsolute.x + 82, cy = node.internals.positionAbsolute.y + 38
+      const sx = cx * zoom + x, sy = cy * zoom + y
+      if (sx < box.width * 0.2 || sy < box.height * 0.15 || sx > box.width * 0.8 || sy > box.height * 0.85) void flow.setCenter(cx, cy, { zoom, duration: 350 })
+    }, 80)
+  }
+  /** A click on the empty canvas or Escape: nothing selected, the whole section readable again. */
+  function clearSelection() {
+    setSelected(null);
+    setEdge(null);
+    if (!path) setDetailsOpen(false);
   }
   function onChange(changes: NodeChange<Node<Data>>[]) {
+    const moved = changes.filter((c) => c.type === "position" && c.position);
+    if (moved.length)
+      setDragged((current) => {
+        const next = { ...current };
+        for (const c of moved) if (c.type === "position" && c.position) next[c.id] = c.position;
+        return next;
+      });
     // Retain measurements when selecting objects or changing the sidebar.
     const dimensions = changes.filter((c) => c.type === "dimensions");
     if (dimensions.length)
@@ -352,6 +384,24 @@ export function BrainWeb() {
       });
   }
   const viewportKey = `${mode}:${scope}:${root}:${depth}:${onlyProven}:${types.join(",")}:${path?.nodes.join(",") || ""}`;
+  // A new section (centre, filter, path) is laid out fresh and the view glides to it instead of jumping.
+  const [shownKey, setShownKey] = useState(viewportKey);
+  if (shownKey !== viewportKey) {
+    setShownKey(viewportKey);
+    setDragged({});
+  }
+  useEffect(() => {
+    if (!flow) return;
+    const timer = setTimeout(() => void flow.fitView({ padding: 0.14, duration: 450 }), 60);
+    return () => clearTimeout(timer);
+  }, [flow, viewportKey]);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !traceOpen) clearSelection();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
   return (
     <>
       <AppHeader crumbs={[{ label: "Company Brain" }]} />
@@ -515,14 +565,14 @@ export function BrainWeb() {
             className="relative min-h-0 min-w-0 flex-1 overflow-hidden"
           >
             <ReactFlow
-              key={viewportKey}
+              onInit={setFlow}
               nodes={nodes}
               edges={edges}
               nodeTypes={nodeTypes}
               colorMode={resolvedTheme}
               onNodesChange={onChange}
               nodesConnectable={false}
-              nodesDraggable={false}
+              nodesDraggable
               elementsSelectable={false}
               selectNodesOnDrag={false}
               selectionOnDrag={false}
@@ -534,11 +584,13 @@ export function BrainWeb() {
               fitViewOptions={{ padding: 0.14 }}
               minZoom={0.08}
               maxZoom={3}
-              onNodeDoubleClick={(_, n) => selectNode(n.id)}
-              onEdgeClick={() => {
-                /* Keep edge hit areas active without selecting on click. */
-              }}
-              onEdgeDoubleClick={(_, e) => {
+              // One click shows details, a click on the empty canvas clears them; a double click makes a node the centre.
+              onNodeClick={(_, n) => (selected === n.id && !edge ? clearSelection() : selectNode(n.id))}
+              onNodeDoubleClick={(_, n) => focus(n.id)}
+              onNodeMouseEnter={(_, n) => setHovered(n.id)}
+              onNodeMouseLeave={() => setHovered(null)}
+              onPaneClick={clearSelection}
+              onEdgeClick={(_, e) => {
                 setDetailsOpen(true);
                 const p = e.data?.path as Path;
                 if (p.edges.length === 1) {
@@ -608,7 +660,7 @@ export function BrainWeb() {
             </div>
             <div className="pointer-events-none absolute right-3 bottom-4 left-14 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
               <span className="rounded bg-background/90 px-2 py-1">
-                Doppelklick zum Erkunden · Ziehen zum Anordnen
+                Klick: Details · Doppelklick: als Mittelpunkt · Ziehen: verschieben · Mausrad: zoomen
               </span>
               <span className="rounded bg-background/90 px-2 py-1">
                 ━━ Belegt · ┄┄ Abgeleitet / zugeordnet

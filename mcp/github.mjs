@@ -10,6 +10,7 @@ import { DraftError } from './drafting.mjs'
 import { log, logError } from './log.mjs'
 import { reviewer, runtimeEnv, saveSettings } from './settings.mjs'
 import { applyStorage } from './confluence-storage.mjs'
+import { withFeatures } from './project-features.mjs'
 
 const stateDir = () => process.env.NEURALDOC_STATE_DIR ? path.resolve(process.env.NEURALDOC_STATE_DIR) : fileURLToPath(new URL('./state/', import.meta.url))
 const stateFile = () => path.join(stateDir(), 'github.json')
@@ -21,7 +22,7 @@ export const resetGitHub = () => fs.rmSync(stateFile(), { force: true })
 
 /** The marker in every commit neuraldoc writes: a branch whose newest commit lacks it was changed by a person. */
 export const MARKER = 'Generated-by: neuraldoc'
-const MODES = ['auto', 'manual', 'off'], GROUPS = ['repository', 'document']
+const MODES = ['auto', 'manual', 'off'], GROUPS = ['change', 'repository', 'document']
 
 /** The integration as configured: auth, when pull requests are made and how they look. */
 export function githubConfig(env = runtimeEnv()) {
@@ -32,7 +33,7 @@ export function githubConfig(env = runtimeEnv()) {
     api, host: api === 'https://api.github.com' ? 'github.com' : new URL(api).host,
     auth: appId && key ? 'app' : token ? 'token' : null, appId, key, token, appSlug: env.NEURALDOC_GITHUB_APP_SLUG?.trim() || null,
     mode: MODES.includes(env.NEURALDOC_GITHUB_PR) ? env.NEURALDOC_GITHUB_PR : 'auto',
-    group: GROUPS.includes(env.NEURALDOC_GITHUB_PR_GROUP) ? env.NEURALDOC_GITHUB_PR_GROUP : 'repository',
+    group: GROUPS.includes(env.NEURALDOC_GITHUB_PR_GROUP) ? env.NEURALDOC_GITHUB_PR_GROUP : 'change',
     prefix: (env.NEURALDOC_GITHUB_BRANCH_PREFIX?.trim() || 'neuraldoc/').replace(/^\/+/, ''),
     labels: list(env.NEURALDOC_GITHUB_LABELS ?? 'documentation,neuraldoc'),
     reviewers: list(env.NEURALDOC_GITHUB_REVIEWERS),
@@ -152,6 +153,9 @@ const slug = (value) => value.toLowerCase().replace(/\.[a-z0-9]+$/, '').replace(
 export function planPullRequests(p, config = githubConfig(), state = readState()) {
   const targets = projectTargets(p, config, state), published = state.published[p.id] ?? {}
   const groups = new Map(), skipped = []
+  // The changes (features of the history, or the initial check) the dashboard shows; each gets its own pull request.
+  const view = p.dataset ? withFeatures(p, p.dataset) : { proposals: [], bundles: [] }
+  const changeOf = new Map((view.proposals ?? []).map((x) => [x.id, (view.bundles ?? []).find((b) => b.id === x.bundle)]))
   for (const proposal of p.dataset?.proposals ?? []) {
     const decision = p.decisions?.[proposal.id]
     if (decision?.state !== 'uebernommen' || published[proposal.id]) continue
@@ -163,9 +167,11 @@ export function planPullRequests(p, config = githubConfig(), state = readState()
     if (source.binary && source.format !== 'xml') { skipped.push({ ...item, reason: `${source.format.toUpperCase()}-Dateien lassen sich nicht per Pull-Request ändern. Bitte über „Freigaben exportieren“ übertragen.` }); continue }
     if (!target?.owner) { skipped.push({ ...item, reason: source.origin === 'docs' ? 'Für die Dokumentation ist kein GitHub-Repository hinterlegt.' : 'Für das Repository ist kein GitHub-Repository hinterlegt.' }); continue }
     if (typeof item.content !== 'string') continue
-    const branch = config.group === 'document' ? `${config.prefix}docs-${slug(item.path)}` : `${config.prefix}docs`
+    const change = changeOf.get(proposal.id)
+    const branch = config.group === 'document' ? `${config.prefix}docs-${slug(item.path)}` : config.group === 'change' && change ? `${config.prefix}${slug(change.title || change.id)}` : `${config.prefix}docs`
     const key = `${target.owner}/${target.repo}#${branch}`.toLowerCase()
-    if (!groups.has(key)) groups.set(key, { key, owner: target.owner, repo: target.repo, base: target.base, branch, items: [] })
+    const about = config.group === 'change' && change ? { id: change.id, title: change.title, ticket: change.ticket, mr: change.mr, summary: change.summary } : null
+    if (!groups.has(key)) groups.set(key, { key, owner: target.owner, repo: target.repo, base: target.base, branch, change: about, items: [] })
     groups.get(key).items.push(item)
   }
   return { groups: [...groups.values()], skipped, targets }
@@ -205,6 +211,8 @@ const day = (iso) => iso ? new Date(iso).toLocaleDateString('de-DE', { day: '2-d
 
 export function pullRequestTitle(group, config) {
   const files = [...new Set(group.items.map((i) => i.path))]
+  // One pull request per change: named like the change, with its ticket when there is one (MOB-1234).
+  if (group.change) return `docs${/^[A-Z][A-Z\d]+-\d+$/.test(group.change.ticket ?? '') ? `(${group.change.ticket})` : ''}: ${group.change.title}`
   return config.group === 'document' || files.length === 1 ? `docs(${files[0]}): an den aktuellen Code angepasst` : `docs: Dokumentation an den aktuellen Code angepasst (${group.items.length} ${group.items.length === 1 ? 'Abschnitt' : 'Abschnitte'})`
 }
 
@@ -220,7 +228,8 @@ export function pullRequestBody({ projectName, group, applied, conflicts, skippe
   const body = [
     '## Doku-Änderungen aus neuraldoc',
     '',
-    `neuraldoc hat die Dokumentation von **${projectName}** gegen den aktuellen Code geprüft. Diese ${applied.length === 1 ? 'Änderung wurde' : `${applied.length} Änderungen wurden`} in neuraldoc geprüft und freigegeben:`,
+    ...(group.change ? [`**Änderung:** ${group.change.title}${group.change.ticket && group.change.ticket !== 'Erstprüfung' ? ` (${[group.change.ticket, group.change.mr].filter((x, i, all) => x && all.indexOf(x) === i).join(', ')})` : ''}`, '', ...(group.change.summary ? [`> ${group.change.summary.replace(/\n+/g, ' ')}`, ''] : [])] : []),
+    `neuraldoc hat die Dokumentation von **${projectName}** gegen den aktuellen Code geprüft. ${applied.length === 1 ? 'Dieser Abschnitt wurde' : `Diese ${applied.length} Abschnitte wurden`} in neuraldoc geprüft und freigegeben:`,
     '',
     '| Datei | Abschnitt | Warum | Freigegeben |',
     '|---|---|---|---|',
@@ -273,7 +282,7 @@ async function syncGroup({ gh, group, config, project, previous, skipped, force 
     if (result.text !== raw) files.push({ path: file, content: result.text })
   }
   const digest = fingerprint({ baseSha, files, proposals: applied.map((i) => i.proposal) })
-  const record = { key: group.key, project: project.id, already: applied.filter((i) => i.already).map((i) => i.proposal), owner: gh.owner, repo: gh.repo, branch: group.branch, base, proposals: applied.filter((i) => !i.already).map((i) => i.proposal), conflicts: [...applied.filter((i) => i.partial).map((i) => ({ proposal: i.proposal, path: i.path, title: i.title, reason: `Nur teilweise im Pull-Request: ${i.partial.join('; ')}` })), ...conflicts.map(({ proposal, path: file, title, reason }) => ({ proposal, path: file, title, reason }))], digest, updatedAt: new Date().toISOString(), error: null }
+  const record = { key: group.key, project: project.id, change: group.change?.id ?? null, changeTitle: group.change?.title ?? null, already: applied.filter((i) => i.already).map((i) => i.proposal), owner: gh.owner, repo: gh.repo, branch: group.branch, base, proposals: applied.filter((i) => !i.already).map((i) => i.proposal), conflicts: [...applied.filter((i) => i.partial).map((i) => ({ proposal: i.proposal, path: i.path, title: i.title, reason: `Nur teilweise im Pull-Request: ${i.partial.join('; ')}` })), ...conflicts.map(({ proposal, path: file, title, reason }) => ({ proposal, path: file, title, reason }))], digest, updatedAt: new Date().toISOString(), error: null }
   let pr = await findPullRequest(gh, group.branch)
   // A merged pull request is finished: what it carried is published, anything new starts a fresh one.
   if (pr && prState(pr) === 'merged' && previous?.number === pr.number) pr = null
@@ -324,8 +333,9 @@ async function closePullRequest(gh, pr, branch, reason) {
 }
 
 /** Reads the state of the project's pull requests on GitHub; a merged one publishes its sections. */
-export async function refreshPullRequests(p, { fetchImpl, config = githubConfig() } = {}) {
+export async function refreshPullRequests(p, { fetchImpl, config = githubConfig(), onMerged } = {}) {
   if (!config.auth) return
+  let merged = false
   const records = Object.values(readState().records).filter((r) => r.project === p.id && r.number && ['open', 'edited'].includes(r.state))
   for (const record of records) {
     try {
@@ -336,9 +346,12 @@ export async function refreshPullRequests(p, { fetchImpl, config = githubConfig(
         s.records[record.key] = { ...s.records[record.key], state, mergedAt: pr.merged_at ?? null, updatedAt: new Date().toISOString() }
         if (state === 'merged') for (const id of record.proposals) (s.published[p.id] ??= {})[id] = { number: record.number, url: record.url, repo: `${record.owner}/${record.repo}`, mergedAt: pr.merged_at }
       })
+      merged ||= state === 'merged'
       log.info('github', state === 'merged' ? 'Pull-Request gemergt' : 'Pull-Request geschlossen', { repo: `${record.owner}/${record.repo}`, number: record.number })
     } catch (error) { log.warn('github', 'Pull-Request-Status nicht lesbar', { repo: `${record.owner}/${record.repo}`, number: record.number, error: error.message }) }
   }
+  // A merge moves the base branch: the other pull requests of the project are rebuilt on it.
+  if (merged) onMerged?.()
 }
 
 export const syncStatus = { running: false, queued: false, lastRun: null, error: null }
@@ -402,18 +415,18 @@ export function scheduleSync(getProject, delay = 2500) {
 
 let lastRefresh = 0
 /** What the dashboard shows: connection, where each approval goes, the pull requests and what they carry. */
-export async function githubStatus(p, { refresh = false, fetchImpl } = {}) {
+export async function githubStatus(p, { refresh = false, fetchImpl, getProject } = {}) {
   const config = githubConfig()
-  if (p && refresh && config.auth && Date.now() - lastRefresh > 20_000) { lastRefresh = Date.now(); await refreshPullRequests(p, { fetchImpl, config }).catch(() => undefined) }
+  if (p && refresh && config.auth && Date.now() - lastRefresh > 20_000) { lastRefresh = Date.now(); await refreshPullRequests(p, { fetchImpl, config, onMerged: getProject && (() => scheduleSync(getProject)) }).catch(() => undefined) }
   const state = readState(), plan = p ? planPullRequests(p, config, state) : { groups: [], skipped: [], targets: {} }
   const records = p ? Object.values(state.records).filter((r) => r.project === p.id).sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '')) : []
   return {
     configured: !!config.auth, auth: config.auth, mode: config.mode, group: config.group, host: config.host,
     app: config.auth === 'app' ? { id: config.appId, slug: config.appSlug, installUrl: config.appSlug ? `https://${config.host}/apps/${config.appSlug}/installations/new` : null } : null,
     targets: plan.targets,
-    pending: plan.groups.map((g) => ({ key: g.key, repo: `${g.owner}/${g.repo}`, branch: g.branch, proposals: g.items.map((i) => i.proposal), inPullRequest: !!records.find((r) => r.key === g.key && r.state === 'open' && g.items.every((i) => r.proposals.includes(i.proposal) || r.conflicts?.some((c) => c.proposal === i.proposal))) })),
+    pending: plan.groups.map((g) => ({ key: g.key, change: g.change?.id ?? null, repo: `${g.owner}/${g.repo}`, branch: g.branch, proposals: g.items.map((i) => i.proposal), inPullRequest: !!records.find((r) => r.key === g.key && r.state === 'open' && g.items.every((i) => r.proposals.includes(i.proposal) || r.conflicts?.some((c) => c.proposal === i.proposal))) })),
     skipped: plan.skipped.map(({ proposal, path: file, title, reason }) => ({ proposal, path: file, title, reason })),
-    pullRequests: records.map(({ key, owner, repo, branch, base, number, url, state, proposals, conflicts, error, note, updatedAt, mergedAt }) => ({ key, repo: `${owner}/${repo}`, branch, base, number, url, state, proposals, conflicts: conflicts ?? [], error, note, updatedAt, mergedAt })),
+    pullRequests: records.map(({ key, change, changeTitle, owner, repo, branch, base, number, url, state, proposals, conflicts, error, note, updatedAt, mergedAt }) => ({ key, change: change ?? null, changeTitle: changeTitle ?? null, repo: `${owner}/${repo}`, branch, base, number, url, state, proposals, conflicts: conflicts ?? [], error, note, updatedAt, mergedAt })),
     published: p ? state.published[p.id] ?? {} : {},
     sync: { ...syncStatus },
   }

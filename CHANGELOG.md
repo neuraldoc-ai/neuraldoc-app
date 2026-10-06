@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- One pull request per change, named after the change and its ticket. The list of changes shows each change's pull request; the change page shows its state, what is missing and the next step (update, rebuild, reopen). The overview no longer has a pull request card; the target repositories are set on the Daten page.
+- Company Brain: a click shows details and highlights the neighbours, a click on the canvas or Escape clears them, a double click makes a node the centre, nodes can be dragged; the view glides to a new section instead of being rebuilt.
+- Documents are named by their title (the Confluence page, the first heading) instead of their file path.
 - Links and file names in the documentation that point to files the repository does not have (any more): found without a model against every path of the repository, its history and its `.gitignore`; a renamed file gets its new path, a dead list entry is removed, a dead link keeps its text. Re-import a project to get it.
 - Approved changes become GitHub pull requests, like Dependabot or Renovate: a GitHub App created from Einstellungen (pull requests by `<app>[bot]`) or a personal token; automatic after every approval or on a button; one pull request per repository or per document; labels, reviewers, drafts. Withdrawals rebuild the branch, merged pull requests publish their sections, commits by a person stop neuraldoc. Confluence pages in storage format (`.xml`, as in `mobiq-docs`) get the changed words in their XML. PDF and Office files and sections changed in the repository meanwhile are listed instead. The overview shows the pull requests and the target repository; the change page links each approved section to its pull request.
 - Docker image with healthcheck, non-root user and volume `/data`; start with `docker build -t neuraldoc .` and `docker run`.

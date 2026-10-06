@@ -44,6 +44,7 @@ import { docLabel, docOf, fmtDate, fmtDay, list, ownLead, plural, routing, useBu
 import { locationOf } from './logic'
 import { blueSoft, typeIcon } from './overview-icons'
 import { useDecisions } from './store'
+import { ChangePullRequests } from './github-publish'
 import { Frame, Hash, Panel, Path, Process } from './ui'
 
 const greenSoft = 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300'
@@ -135,6 +136,7 @@ export function BundlePage({ id }: { id: string }) {
     >
       {!own && <FromAgent b={b} status={status} />}
       {initial ? <CheckSignals b={b} subjects={initial.mapping?.subjects ?? 0} /> : <Signals b={b} />}
+      {own && <ChangePullRequests b={b} />}
       <div className={cn('grid gap-4 lg:grid-cols-3 [&>*]:min-w-0', initial && 'items-start')}>
         {initial ? <Checked className='lg:col-span-2' /> : history ? <OwnChange b={b} className='lg:col-span-2' /> : <Change b={b} className='lg:col-span-2' />}
         {history ? <OwnDocs b={b} checked={!!own?.mapping} /> : <Readers routes={routing(b)} />}
@@ -516,7 +518,7 @@ function ProposalRow({ p, written }: { p: LiveProposal; written?: ChangeStatus['
               <Tooltip>
                 <TooltipTrigger asChild>
                   <a href={written.target.url} target='_blank' rel='noreferrer' className='flex items-center gap-1 text-xs text-emerald-700 hover:underline dark:text-emerald-300'>
-                    <Upload className='size-3.5' /> {written.label ?? `In ${written.target.system}, Version ${written.version}`}
+                    {written.label ? <GitPullRequestArrow className='size-3.5' /> : <Upload className='size-3.5' />} {written.label ?? `In ${written.target.system}, Version ${written.version}`}
                   </a>
                 </TooltipTrigger>
                 <TooltipContent>{written.label ? `Pull-Request in ${written.target.title}, Stand ${clock(written.at)}` : `Zurückgeschrieben nach „${written.target.title}“ um ${clock(written.at)}`}</TooltipContent>

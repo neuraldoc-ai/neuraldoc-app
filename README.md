@@ -163,7 +163,7 @@ Keys, provider and model are set in the app under **Einstellungen** (stored in `
 | `NEURALDOC_GIT_TOKEN` | Personal GitHub token: imports private repositories by URL and, with *Contents* and *Pull requests* write access, opens pull requests (also in Einstellungen) | none |
 | `NEURALDOC_GITHUB_APP_ID` / `NEURALDOC_GITHUB_APP_PRIVATE_KEY` / `NEURALDOC_GITHUB_APP_SLUG` | GitHub App that opens the pull requests as `<slug>[bot]`; Einstellungen creates one from a manifest. Takes precedence over the token | none |
 | `NEURALDOC_GITHUB_PR` | `auto` (after every approval), `manual` (button on the overview) or `off` | `auto` |
-| `NEURALDOC_GITHUB_PR_GROUP` | `repository` (one pull request per repository) or `document` (one per file) | `repository` |
+| `NEURALDOC_GITHUB_PR_GROUP` | `change` (one pull request per change, named after it), `repository` (one per repository) or `document` (one per file) | `change` |
 | `NEURALDOC_GITHUB_BRANCH_PREFIX` / `NEURALDOC_GITHUB_LABELS` / `NEURALDOC_GITHUB_REVIEWERS` / `NEURALDOC_GITHUB_DRAFT_PR` | Branch prefix, labels and reviewers (comma-separated), `true` opens drafts | `neuraldoc/`, `documentation,neuraldoc`, none, `false` |
 | `NEURALDOC_GITHUB_API_URL` | API of a GitHub Enterprise Server | `https://api.github.com` |
 | `NEURALDOC_DRAFT_PROVIDER` | `openai`, `anthropic`, `gemini`, `vertex` or `local` | none |

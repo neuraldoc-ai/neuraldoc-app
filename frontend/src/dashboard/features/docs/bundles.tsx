@@ -11,6 +11,8 @@ import { datasetMode, release } from './data'
 import { BundlePage } from './bundle'
 import { docLabel, docOf, fmtDay, useBundles, useSummary } from './model'
 import { ChangeBadge } from './own-change'
+import { PullRequestChips } from './github-publish'
+import { useGitHubStatus } from './github-status'
 import { DocTypeBadge, Frame, NatureBadge, Path } from './ui'
 
 export function BundlesPage() {
@@ -96,6 +98,7 @@ function OwnChanges() {
   const rest = items.filter((b) => b.commits.length === 0)
   const sorted = [...features].sort((a, b) => b.proposals.length - a.proposals.length || b.merged.localeCompare(a.merged))
   const internal = features.filter((b) => b.nature === 'intern').length
+  const github = useGitHubStatus().data
   return (
     <Frame title='Änderungen' lead='Was sich seit dem letzten Release am Produkt geändert hat, und welche Dokumente deshalb nicht mehr stimmen.'>
       <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
@@ -112,6 +115,7 @@ function OwnChanges() {
               <TableHead>Art</TableHead>
               <TableHead>Betroffene Doku</TableHead>
               <TableHead className='text-right'>Offen</TableHead>
+              {github?.configured && <TableHead>Pull-Request</TableHead>}
               <TableHead className='pe-5 text-right'>Datum</TableHead>
             </TableRow>
           </TableHeader>
@@ -143,6 +147,7 @@ function OwnChanges() {
                 <TableCell className='text-right tabular-nums'>
                   {b.proposals.length === 0 ? <span className='text-muted-foreground'>–</span> : b.open === 0 ? <Badge variant='secondary' className='font-normal'>erledigt</Badge> : `${b.open} / ${b.proposals.length}`}
                 </TableCell>
+                {github?.configured && <TableCell><PullRequestChips status={github} b={b} /></TableCell>}
                 <TableCell className='pe-5 text-right text-sm whitespace-nowrap text-muted-foreground tabular-nums'>{b.commits.length ? fmtDay(b.merged) : '–'}</TableCell>
               </TableRow>
             ))}

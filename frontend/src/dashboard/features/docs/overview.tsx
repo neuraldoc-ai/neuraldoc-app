@@ -30,7 +30,6 @@ import {
 import { Frame } from "./ui";
 import { blueSoft, typeIcon } from "./overview-icons";
 import { StartReview } from './start-review';
-import { PublishCard } from "./github-publish";
 
 export function OverviewPage() {
   const sum = useSummary();
@@ -101,7 +100,7 @@ export function OverviewPage() {
               </p>
               <p className="max-w-[64ch] text-sm text-muted-foreground">
                 {project
-                  ? "Mit GitHub verbunden, landen die Freigaben als Pull-Request im Repository. „Freigaben exportieren“ lädt die korrigierten Dokumente zusätzlich als ZIP herunter."
+                  ? "Mit GitHub verbunden, hat jede Änderung ihren Pull-Request, siehe „Änderungen“. „Freigaben exportieren“ lädt die korrigierten Dokumente zusätzlich als ZIP herunter."
                   : <>Die Vorschläge für {plural(sum.docsTouched, "Dokument", "Dokumente")}{" "}
                     sind übernommen oder verworfen. Um von vorn zu beginnen, setz die
                     Entscheidungen oben rechts zurück.</>}
@@ -259,7 +258,6 @@ export function OverviewPage() {
         </Card>
 
         <div className="grid h-fit gap-4">
-          {project && <PublishCard />}
           <Card className="h-fit">
             <CardHeader>
               <CardTitle>Bereits geprüft</CardTitle>
