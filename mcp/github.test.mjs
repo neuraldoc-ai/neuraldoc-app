@@ -241,3 +241,21 @@ test('the clone token is only given for the configured GitHub host', async () =>
   assert.equal(await cloneToken('https://github.com/acme/shop.git'), 'test-token')
   assert.equal(await cloneToken('https://gitlab.com/acme/shop.git'), null)
 })
+
+test('a Confluence page in the documentation repository gets its changed words in the XML, not Markdown', async () => {
+  saveSettings({ NEURALDOC_GIT_TOKEN: 'test-token' })
+  const xml = '<!-- MOBIQFB / Parameter (Version 2) -->\n<table><tbody><tr><td><p>LIEF_VORLAUF_TAGE</p></td><td><p>5 Tage</p></td></tr></tbody></table>\n'
+  const gh = fakeGitHub({ files: { 'confluence/storage/p.xml': xml } })
+  const section = { id: 'doc-x', source: 'src-xml', title: 'Parameter', text: '# Parameter\n\n| LIEF_VORLAUF_TAGE | 5 Tage |' }
+  const p = {
+    id: 'b'.repeat(20), name: 'MOBIQ', sources: { repo: { label: 'code', source: 'upload' }, docs: { label: 'docs', source: 'url', url: 'https://github.com/acme/shop' } },
+    docSources: [{ id: 'src-xml', path: 'dokumentation/confluence/storage/p.xml', origin: 'docs', format: 'xml', binary: true }],
+    docFiles: [section], dataset: { proposals: [{ id: 'p-x', section: 'doc-x', doc: 'src-xml', title: 'Parameter' }] },
+    generated: { 'p-x': { text: '# Parameter\n\n| LIEF_VORLAUF_TAGE | 3 Tage |', why: 'Standard im Code: 3', generation: { status: 'draft', findings: [] } } },
+    decisions: { 'p-x': { state: 'uebernommen', at: '2026-10-06T09:00:00Z', by: 'Erika Muster' } },
+  }
+  const status = await syncGitHub(() => p, { fetchImpl: gh.fetch })
+  assert.equal(status.pullRequests[0].state, 'open')
+  assert.equal(gh.head('neuraldoc/docs')['confluence/storage/p.xml'], xml.replace('5 Tage', '3 Tage'))
+  assert.match(gh.pulls[0].title, /confluence\/storage\/p\.xml/)
+})

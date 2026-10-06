@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { DraftError } from './drafting.mjs'
 import { log, logError } from './log.mjs'
 import { reviewer, runtimeEnv, saveSettings } from './settings.mjs'
+import { applyStorage } from './confluence-storage.mjs'
 
 const stateDir = () => process.env.NEURALDOC_STATE_DIR ? path.resolve(process.env.NEURALDOC_STATE_DIR) : fileURLToPath(new URL('./state/', import.meta.url))
 const stateFile = () => path.join(stateDir(), 'github.json')
@@ -158,7 +159,8 @@ export function planPullRequests(p, config = githubConfig(), state = readState()
     if (!section || !source) continue
     const item = { proposal: proposal.id, title: section.title, path: repoPath(source), source: source.id, find: section.text, content: decision.edited?.text ?? p.generated[proposal.id]?.text, edited: !!decision.edited, by: decision.by, at: decision.at, why: p.generated[proposal.id]?.why ?? '', findings: p.generated[proposal.id]?.generation?.findings ?? [] }
     const target = targets[source.origin]
-    if (source.binary) { skipped.push({ ...item, reason: `${source.format.toUpperCase()}-Dateien lassen sich nicht per Pull-Request ändern. Bitte über „Freigaben exportieren“ übertragen.` }); continue }
+    // Confluence pages in storage format are XML in the repository: changed words go back into their text nodes.
+    if (source.binary && source.format !== 'xml') { skipped.push({ ...item, reason: `${source.format.toUpperCase()}-Dateien lassen sich nicht per Pull-Request ändern. Bitte über „Freigaben exportieren“ übertragen.` }); continue }
     if (!target?.owner) { skipped.push({ ...item, reason: source.origin === 'docs' ? 'Für die Dokumentation ist kein GitHub-Repository hinterlegt.' : 'Für das Repository ist kein GitHub-Repository hinterlegt.' }); continue }
     if (typeof item.content !== 'string') continue
     const branch = config.group === 'document' ? `${config.prefix}docs-${slug(item.path)}` : `${config.prefix}docs`
@@ -170,6 +172,18 @@ export function planPullRequests(p, config = githubConfig(), state = readState()
 }
 
 /** Puts the approved sections into the file as it is on the base branch now; a section changed there meanwhile is a conflict. */
+/** Puts the approved sections into a file as it is on the base branch; Confluence storage XML gets its changed words. */
+export function applyFile(file, raw, items) {
+  if (!/\.xml$/i.test(file)) return applyItems(raw, items)
+  const { text, results } = applyStorage(raw, items)
+  const why = (l) => `${l.old ? `„${l.old}“` : ''}${l.old && l.new ? ' → ' : ''}${l.new ? `„${l.new}“` : ''} (${l.why})`
+  return {
+    text,
+    applied: results.filter((r) => r.state !== 'conflict').map((r) => ({ ...r.item, ...(r.state === 'partial' ? { partial: r.left.map(why) } : {}) })),
+    conflicts: results.filter((r) => r.state === 'conflict').map((r) => ({ ...r.item, reason: `Auf der Confluence-Seite nicht einsetzbar: ${r.left.map(why).join('; ')}` })),
+  }
+}
+
 export function applyItems(raw, items) {
   const bom = raw.startsWith('﻿'), crlf = raw.includes('\r\n'), lf = (s) => s.replace(/\r\n/g, '\n')
   let text = lf(bom ? raw.slice(1) : raw)
@@ -202,7 +216,7 @@ export function commitMessage(group, applied, config, projectName) {
 export function pullRequestBody({ projectName, group, applied, conflicts, skipped }) {
   const rows = applied.map((i) => `| \`${cell(i.path)}\` | ${cell(i.title)}${i.edited ? ' *(angepasst)*' : ''} | ${cell(i.why)} | ${cell(i.by)}, ${day(i.at)} |`)
   const details = applied.filter((i) => i.findings.length).map((i) => [`#### ${i.path} › ${i.title}`, ...i.findings.map((f) => `- **${KIND[f.kind] ?? f.kind}:** ${f.explanation}${f.evidence?.length ? ` (Beleg: ${f.evidence.map((e) => `\`${e.source ?? e.file}\``).join(', ')})` : ''}`)].join('\n'))
-  const open = [...conflicts, ...skipped.filter((s) => s.path && group.items.every((i) => i.proposal !== s.proposal))]
+  const open = [...applied.filter((i) => i.partial).map((i) => ({ ...i, reason: `Nur teilweise übernommen, bitte von Hand ergänzen: ${i.partial.join('; ')}` })), ...conflicts, ...skipped.filter((s) => s.path && group.items.every((i) => i.proposal !== s.proposal))]
   const body = [
     '## Doku-Änderungen aus neuraldoc',
     '',
@@ -254,12 +268,12 @@ async function syncGroup({ gh, group, config, project, previous, skipped, force 
   for (const file of [...new Set(group.items.map((i) => i.path))]) {
     const items = group.items.filter((i) => i.path === file), raw = await fileOnBase(gh, file, base)
     if (raw === null) { conflicts.push(...items.map((i) => ({ ...i, reason: `Die Datei gibt es auf ${base} nicht mehr.` }))); continue }
-    const result = applyItems(raw, items)
+    const result = applyFile(file, raw, items)
     applied.push(...result.applied); conflicts.push(...result.conflicts)
     if (result.text !== raw) files.push({ path: file, content: result.text })
   }
   const digest = fingerprint({ baseSha, files, proposals: applied.map((i) => i.proposal) })
-  const record = { key: group.key, project: project.id, already: applied.filter((i) => i.already).map((i) => i.proposal), owner: gh.owner, repo: gh.repo, branch: group.branch, base, proposals: applied.filter((i) => !i.already).map((i) => i.proposal), conflicts: conflicts.map(({ proposal, path: file, title, reason }) => ({ proposal, path: file, title, reason })), digest, updatedAt: new Date().toISOString(), error: null }
+  const record = { key: group.key, project: project.id, already: applied.filter((i) => i.already).map((i) => i.proposal), owner: gh.owner, repo: gh.repo, branch: group.branch, base, proposals: applied.filter((i) => !i.already).map((i) => i.proposal), conflicts: [...applied.filter((i) => i.partial).map((i) => ({ proposal: i.proposal, path: i.path, title: i.title, reason: `Nur teilweise im Pull-Request: ${i.partial.join('; ')}` })), ...conflicts.map(({ proposal, path: file, title, reason }) => ({ proposal, path: file, title, reason }))], digest, updatedAt: new Date().toISOString(), error: null }
   let pr = await findPullRequest(gh, group.branch)
   // A merged pull request is finished: what it carried is published, anything new starts a fresh one.
   if (pr && prState(pr) === 'merged' && previous?.number === pr.number) pr = null
