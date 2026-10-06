@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Approved changes become GitHub pull requests, like Dependabot or Renovate: a GitHub App created from Einstellungen (pull requests by `<app>[bot]`) or a personal token; automatic after every approval or on a button; one pull request per repository or per document; labels, reviewers, drafts. Withdrawals rebuild the branch, merged pull requests publish their sections, commits by a person stop neuraldoc. PDF and Office files and sections changed in the repository meanwhile are listed instead. The overview shows the pull requests and the target repository; the change page links each approved section to its pull request.
 - Docker image with healthcheck, non-root user and volume `/data`; start with `docker build -t neuraldoc .` and `docker run`.
 - Import of your own projects in the browser: drag and drop a folder or ZIP, or paste a GitHub URL. Documentation is optional; without it, READMEs, `docs/` and PDF/Office files in the repository are checked.
 - PDF, Word, Excel and PowerPoint documents; long documents are split into sections.

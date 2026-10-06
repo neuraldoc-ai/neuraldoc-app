@@ -12,6 +12,7 @@ import { DraftError, draftingConfig, draftingStatus } from './drafting.mjs'
 import { applyLineEdits, CHECK_PROMPT_VERSION, checkDocumentLists, checkSection, codeIndex, createSectionRetriever, excerptId, pool, sectionTerms, verifyWithJev } from './check.mjs'
 import { log, logError } from './log.mjs'
 import { profile, reviewer, runtimeEnv } from './settings.mjs'
+import { scheduleSync } from './github.mjs'
 
 export const projectsDir = path.join(process.env.NEURALDOC_STATE_DIR || fileURLToPath(new URL('./state/', import.meta.url)), 'projects')
 const activePath = path.join(projectsDir, 'active.json')
@@ -165,7 +166,8 @@ export function startCheck(options) {
   key(env)
   progress({ running: true, phase: 'sections', done: 0, total: p.docFiles.filter((d) => d.checkable !== false).length, findings: 0, startedAt: new Date().toISOString(), finishedAt: null, error: null, project: p.id })
   checkProject(options)
-    .then((payload) => progress({ running: false, phase: 'done', findings: payload.project?.mapping?.findings ?? 0, finishedAt: new Date().toISOString() }))
+    // A new check can change approved corrections (their decision is then dropped): the pull requests follow.
+    .then((payload) => { progress({ running: false, phase: 'done', findings: payload.project?.mapping?.findings ?? 0, finishedAt: new Date().toISOString() }); scheduleSync(activeProject) })
     .catch((error) => { logError('check', error); progress({ running: false, phase: 'failed', error: error.message, finishedAt: new Date().toISOString() }) })
   return { ...checkStatus }
 }

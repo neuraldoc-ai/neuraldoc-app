@@ -135,6 +135,7 @@ repo + docs ──► code graph ──► initial check ───────�
 | **Code graph** | Parses Java, Kotlin, TypeScript/TSX, Pascal (tree-sitter) and SQL (PostgreSQL parser) into files, functions, calls and tables. | free, local |
 | **Initial check** | For every section, neuraldoc looks up the names it mentions (code spans, options, flags, environment variables) in the code and picks the matching code places, files the section names first. Your LLM lists the statements the code contradicts, the names that no longer exist and the entries a list leaves out, each with a literal quote from the section and the code, a reason and the line edits that fix it. The server keeps only what it can verify: quotes exist, a "removed" name really occurs nowhere in the code, edits change more than whitespace, keep the language and the Markdown format. A second look drops context mistakes (another server, an example value), [Jev](https://docs.typesafe.ai/api) confirms each finding and must confirm every deletion. Per document, a completeness pass compares documented options, settings or fields with the code that defines them. | paid (your LLM, about 0.01 USD per section; Jev a fraction of that) |
 | **Review & export** | Every change is shown in place with its reason and code evidence. You take all, some or none, or edit the text. Approved sections are merged back into their documents; PDF and Office files come back as Markdown. The export lists the SHA-256 of every original. | free, local |
+| **Pull request** | With GitHub connected, every approval or withdrawal rebuilds a neuraldoc branch on the base branch and keeps one pull request on it, like Dependabot or Renovate. The base branch is never written; commits a person adds to the branch stop neuraldoc from touching it. | free |
 
 Every link in the graph is marked as **proven** (read from the code) or **derived** (from a model), so you always know what was found and what was guessed. Details: [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -159,7 +160,12 @@ Keys, provider and model are set in the app under **Einstellungen** (stored in `
 |---|---|---|
 | `TYPESAFE_API_KEY` | Jev, checks documents against the code. Required for your own projects. | none |
 | `NEURALDOC_JEV_BUDGET_USD` | Spending cap per initial check (max 1 USD) | `0.25` |
-| `NEURALDOC_GIT_TOKEN` | GitHub token, only for importing private repositories by URL (also in Einstellungen) | none |
+| `NEURALDOC_GIT_TOKEN` | Personal GitHub token: imports private repositories by URL and, with *Contents* and *Pull requests* write access, opens pull requests (also in Einstellungen) | none |
+| `NEURALDOC_GITHUB_APP_ID` / `NEURALDOC_GITHUB_APP_PRIVATE_KEY` / `NEURALDOC_GITHUB_APP_SLUG` | GitHub App that opens the pull requests as `<slug>[bot]`; Einstellungen creates one from a manifest. Takes precedence over the token | none |
+| `NEURALDOC_GITHUB_PR` | `auto` (after every approval), `manual` (button on the overview) or `off` | `auto` |
+| `NEURALDOC_GITHUB_PR_GROUP` | `repository` (one pull request per repository) or `document` (one per file) | `repository` |
+| `NEURALDOC_GITHUB_BRANCH_PREFIX` / `NEURALDOC_GITHUB_LABELS` / `NEURALDOC_GITHUB_REVIEWERS` / `NEURALDOC_GITHUB_DRAFT_PR` | Branch prefix, labels and reviewers (comma-separated), `true` opens drafts | `neuraldoc/`, `documentation,neuraldoc`, none, `false` |
+| `NEURALDOC_GITHUB_API_URL` | API of a GitHub Enterprise Server | `https://api.github.com` |
 | `NEURALDOC_DRAFT_PROVIDER` | `openai`, `anthropic`, `gemini`, `vertex` or `local` | none |
 | `NEURALDOC_LLM_MODEL` | Model used for drafting | provider default |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) / `VERTEX_API_KEY` / `NEURALDOC_LLM_API_KEY` | Key for the chosen provider | none |
@@ -184,7 +190,8 @@ A local LLM on the same computer is reached from the container at `http://host.d
 
 ## Privacy
 
-- **Your files stay unchanged.** The upload goes only to your own container; the temporary copy is deleted after the import. Secrets such as `.env` files and private keys are filtered out in the browser and again on the server.
+- **Your files stay unchanged** unless you connect GitHub: then approved sections go into a pull request on a `neuraldoc/` branch, never straight into the base branch.
+- **Uploads stay local.** The upload goes only to your own container; the temporary copy is deleted after the import. Secrets such as `.env` files and private keys are filtered out in the browser and again on the server.
 - **What leaves your machine:** when you start the initial check, document sections and code excerpts go to your LLM provider, and the findings with their code excerpts to Jev (TypeSafe API). With a local LLM, only the Jev request leaves your machine. A GitHub URL is cloned directly from GitHub.
 - **Beispielprojekt laden** clones two public GitHub repositories. The **showcase image** makes no external calls at all.
 - **No telemetry**, no analytics, no tracking. Keys are read at runtime and never written to the image, the caches or the export.

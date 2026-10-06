@@ -58,7 +58,8 @@ type ChangeStatus = {
   mrComment: { mr: string; at: string } | null
   approvers: Record<DocTypeId, Approver>
   writeBack: boolean
-  writebacks: { proposal: string; target: Target; version: number; at: string }[]
+  /** Own projects: label says where on GitHub the section is ("In PR #12", "PR #12 gemergt"). */
+  writebacks: { proposal: string; target: Target; version: number; at: string; label?: string }[]
   targets: Record<string, Target | null>
 }
 
@@ -515,10 +516,10 @@ function ProposalRow({ p, written }: { p: LiveProposal; written?: ChangeStatus['
               <Tooltip>
                 <TooltipTrigger asChild>
                   <a href={written.target.url} target='_blank' rel='noreferrer' className='flex items-center gap-1 text-xs text-emerald-700 hover:underline dark:text-emerald-300'>
-                    <Upload className='size-3.5' /> In {written.target.system}, Version {written.version}
+                    <Upload className='size-3.5' /> {written.label ?? `In ${written.target.system}, Version ${written.version}`}
                   </a>
                 </TooltipTrigger>
-                <TooltipContent>Zurückgeschrieben nach „{written.target.title}“ um {clock(written.at)}</TooltipContent>
+                <TooltipContent>{written.label ? `Pull-Request in ${written.target.title}, Stand ${clock(written.at)}` : `Zurückgeschrieben nach „${written.target.title}“ um ${clock(written.at)}`}</TooltipContent>
               </Tooltip>
             ) : (
               <span className={cn('text-xs', p.state === 'verworfen' ? 'text-muted-foreground' : 'text-emerald-700 dark:text-emerald-300')}>{p.state === 'verworfen' ? 'Verworfen' : 'Übernommen'}</span>

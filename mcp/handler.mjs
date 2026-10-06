@@ -16,6 +16,7 @@ import { docTypeOrder, docTypes } from '../frontend/src/dashboard/features/docs/
 import { log, logError } from './log.mjs'
 import { projectTools, projectTool } from './project-mcp.mjs'
 import { projectUsage } from './project-usage.mjs'
+import { appManifest, completeAppManifest, githubStatus, isPublished, proposalLinks, resetGitHub, scheduleSync, setProjectTarget, syncGitHub, testGitHub } from './github.mjs'
 
 // The MOBIQ showcase reads its dataset (datasets/) as soon as it is loaded, so only showcase mode imports it.
 let showcaseModules
@@ -184,9 +185,35 @@ async function api(req, res, path) {
       localMutation()
       const { scope } = await readJsonBody(req, 1024)
       if (!['projects', 'all'].includes(scope)) throw new Error('scope muss projects oder all sein.')
-      resetProjects()
+      resetProjects(); resetGitHub()
       if (scope === 'all') { resetSettings(); resetConnections(); log.info('reset', 'Profil, Keys und Datenbankverbindungen gelöscht') }
       return send(res, 200, { ok: true, scope })
+    }
+
+    if (path.startsWith('/api/mcp/github/')) {
+      // Approved sections as pull requests: off in the showcase, every change only from this app.
+      if (showcaseOnly()) throw new DraftError('Im Showcase gibt es keine GitHub-Anbindung.', 403)
+      if (req.method === 'GET' && path === '/api/mcp/github/status') return send(res, 200, await githubStatus(activeProject(), { refresh: true }), { 'Cache-Control': 'no-store' })
+      if (req.method === 'GET' && path === '/api/mcp/github/app/callback') {
+        // GitHub sends the browser back here after the app was created; the state from appManifest is the proof.
+        const params = new URL(req.url, 'http://localhost').searchParams
+        const done = await completeAppManifest({ code: params.get('code'), state: params.get('state') }).then((app) => `installieren&slug=${encodeURIComponent(app.slug)}`, (error) => { logError('github', error); return `fehler&grund=${encodeURIComponent(error.message)}` })
+        res.writeHead(302, { Location: `/app/einstellungen?github=${done}` }); return res.end()
+      }
+      if (req.method === 'POST') {
+        localMutation()
+        const body = await readJsonBody(req, 16384)
+        if (path === '/api/mcp/github/sync') return send(res, 200, await syncGitHub(activeProject, { force: body.force === true, only: typeof body.key === 'string' ? body.key : undefined }))
+        if (path === '/api/mcp/github/test') return send(res, 200, await testGitHub(activeProject()))
+        if (path === '/api/mcp/github/target') {
+          const project = activeProject()
+          if (!project) throw new Error('Zuerst ein eigenes Projekt importieren.')
+          setProjectTarget(project, { origin: body.origin, repo: body.repo ? String(body.repo) : '', base: body.base ? String(body.base) : '' })
+          scheduleSync(activeProject)
+          return send(res, 200, await githubStatus(project))
+        }
+        if (path === '/api/mcp/github/app/manifest') return send(res, 200, appManifest({ origin: originOf(req), name: body.name ? String(body.name) : '', org: body.org ? String(body.org).trim() : '' }))
+      }
     }
 
     if (path.startsWith('/api/mcp/db/')) {
@@ -212,9 +239,19 @@ async function api(req, res, path) {
       if (req.method === 'GET' && path === '/api/mcp/drafts') return send(res, 200, project?.generated ?? {})
       if (req.method === 'POST' && path === '/api/mcp/drafts/generate') { localMutation(); const body = await readJsonBody(req); return send(res, 200, await projectDraft(body.id, body.answer)) }
       if (req.method === 'GET' && path === '/api/mcp/decisions') return send(res, 200, project?.decisions ?? {})
-      if (req.method === 'POST' && path === '/api/mcp/decisions') { localMutation(); return send(res, 200, projectDecisions(await readJsonBody(req))) }
-      if (req.method === 'POST' && path === '/api/mcp/decisions/reset') { localMutation(); return send(res, 200, resetProjectDecisions()) }
-      if (req.method === 'GET' && /^\/api\/mcp\/changes\//.test(path)) return send(res, 200, { checks: [], mrComment: null, approvers: approvers({ ...local(), self: true }), writeBack: false, writebacks: [], targets: {} })
+      if (req.method === 'POST' && path === '/api/mcp/decisions') {
+        localMutation(); const body = await readJsonBody(req)
+        // A section merged on GitHub is part of the repository now; changing it is a new change there.
+        if (project && (body.ids || [body.id]).some((id) => isPublished(project.id, id))) throw new DraftError('Diese Änderung ist auf GitHub schon gemergt und lässt sich hier nicht mehr zurücknehmen.', 409)
+        const decisions = projectDecisions(body); scheduleSync(activeProject); return send(res, 200, decisions)
+      }
+      if (req.method === 'POST' && path === '/api/mcp/decisions/reset') { localMutation(); const decisions = resetProjectDecisions(); scheduleSync(activeProject); return send(res, 200, decisions) }
+      if (req.method === 'GET' && /^\/api\/mcp\/changes\//.test(path)) {
+        // Where each approved section is on GitHub: its pull request, open or merged.
+        const links = project ? proposalLinks(project) : {}
+        const writebacks = Object.entries(links).map(([proposal, l]) => ({ proposal, target: { system: 'GitHub', title: `${l.repo}${l.number ? ` #${l.number}` : ''}`, url: l.url ?? `https://github.com/${l.repo}` }, version: l.number ?? 0, at: l.at, label: l.state === 'merged' ? (l.number ? `PR #${l.number} gemergt` : 'Schon im Repository') : l.state === 'edited' ? `PR #${l.number} (von Hand geändert)` : `In PR #${l.number}` }))
+        return send(res, 200, { checks: [], mrComment: null, approvers: approvers({ ...local(), self: true }), writeBack: false, writebacks, targets: {} })
+      }
       if (req.method === 'GET' && path === '/api/mcp/activity') return send(res, 200, { log: [], checks: [], questions: [], writebacks: [], mrComments: [], stats: { calls: 0, answer: 0, raw: 0, perTool: {} } })
       if (req.method === 'POST' && path === '/api/mcp/rules') throw new DraftError('Lokale Projekte verwenden persönliche Freigaben und Dokumentexport.', 400)
       if (req.method === 'GET' && path === '/api/mcp/info') return send(res, 200, {

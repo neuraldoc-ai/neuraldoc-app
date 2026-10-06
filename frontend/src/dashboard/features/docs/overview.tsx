@@ -30,6 +30,7 @@ import {
 import { Frame } from "./ui";
 import { blueSoft, typeIcon } from "./overview-icons";
 import { StartReview } from './start-review';
+import { PublishCard } from "./github-publish";
 
 export function OverviewPage() {
   const sum = useSummary();
@@ -100,7 +101,7 @@ export function OverviewPage() {
               </p>
               <p className="max-w-[64ch] text-sm text-muted-foreground">
                 {project
-                  ? "„Freigaben exportieren“ lädt die korrigierten Dokumente als ZIP herunter. Deine Originaldateien bleiben unverändert."
+                  ? "Mit GitHub verbunden, landen die Freigaben als Pull-Request im Repository. „Freigaben exportieren“ lädt die korrigierten Dokumente zusätzlich als ZIP herunter."
                   : <>Die Vorschläge für {plural(sum.docsTouched, "Dokument", "Dokumente")}{" "}
                     sind übernommen oder verworfen. Um von vorn zu beginnen, setz die
                     Entscheidungen oben rechts zurück.</>}
@@ -257,35 +258,38 @@ export function OverviewPage() {
           </CardContent>
         </Card>
 
-        <Card className="h-fit">
-          <CardHeader>
-            <CardTitle>Bereits geprüft</CardTitle>
-            <CardDescription>Was neuraldoc schon erledigt hat.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ul className="grid gap-3 text-sm">
-              {(checked ?? [
-                `${plural(sum.commits, "Commit", "Commits")} zu ${plural(sum.bundles, "Feature", "Features")} zusammengefasst`,
-                `${plural(superseded, "überholten Zwischenstand", "überholte Zwischenstände")} bei den Vorschlägen ausgelassen`,
-                `${plural(sum.skipped, "Doku-Prüfung", "Doku-Prüfungen")} übersprungen, weil die Änderung die Leser nicht betrifft`,
-                `${plural(done.length, "Feature", "Features")} ohne nötige Textänderung (${done.map((d) => d.title).join(", ")})`,
-                ...(tl ? [`Teillieferung im Ablauf zugeordnet: ${tl.path.slice(-2).join(" › ")}`, `Vorschläge zur Teillieferung für ${plural(routing(tl).filter((r) => r.status === "vorschlaege").length, "Doku-Art", "Doku-Arten")} vorbereitet`] : []),
-              ]).map((t) => (
-                <li key={t} className="flex gap-2.5">
-                  <span
-                    className={cn(
-                      "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border",
-                      blueSoft,
-                    )}
-                  >
-                    <Check className="size-3" />
-                  </span>
-                  {t}
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
+        <div className="grid h-fit gap-4">
+          {project && <PublishCard />}
+          <Card className="h-fit">
+            <CardHeader>
+              <CardTitle>Bereits geprüft</CardTitle>
+              <CardDescription>Was neuraldoc schon erledigt hat.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ul className="grid gap-3 text-sm">
+                {(checked ?? [
+                  `${plural(sum.commits, "Commit", "Commits")} zu ${plural(sum.bundles, "Feature", "Features")} zusammengefasst`,
+                  `${plural(superseded, "überholten Zwischenstand", "überholte Zwischenstände")} bei den Vorschlägen ausgelassen`,
+                  `${plural(sum.skipped, "Doku-Prüfung", "Doku-Prüfungen")} übersprungen, weil die Änderung die Leser nicht betrifft`,
+                  `${plural(done.length, "Feature", "Features")} ohne nötige Textänderung (${done.map((d) => d.title).join(", ")})`,
+                  ...(tl ? [`Teillieferung im Ablauf zugeordnet: ${tl.path.slice(-2).join(" › ")}`, `Vorschläge zur Teillieferung für ${plural(routing(tl).filter((r) => r.status === "vorschlaege").length, "Doku-Art", "Doku-Arten")} vorbereitet`] : []),
+                ]).map((t) => (
+                  <li key={t} className="flex gap-2.5">
+                    <span
+                      className={cn(
+                        "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border",
+                        blueSoft,
+                      )}
+                    >
+                      <Check className="size-3" />
+                    </span>
+                    {t}
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </Frame>
   );

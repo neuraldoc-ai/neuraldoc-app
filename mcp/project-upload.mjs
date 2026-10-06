@@ -9,7 +9,7 @@ import { unzipSync, strFromU8 } from '../frontend/server-deps.mjs'
 import { LIMITS, repoUrl } from '../frontend/src/dashboard/features/docs/import-rules.mjs'
 import { DraftError } from './drafting.mjs'
 import { log } from './log.mjs'
-import { runtimeEnv } from './settings.mjs'
+import { cloneToken } from './github.mjs'
 
 const run = promisify(execFile)
 
@@ -38,8 +38,9 @@ function extract(zip, dir) {
 async function clone(value, dir, label) {
   const parsed = repoUrl(value)
   if (!parsed) throw new DraftError(`${label}: bitte eine https-URL wie https://github.com/organisation/repository angeben.`)
-  const token = runtimeEnv().NEURALDOC_GIT_TOKEN?.trim()
-  const auth = token && /^https:\/\/github\.com\//i.test(parsed.url) ? ['-c', `http.extraHeader=Authorization: Basic ${Buffer.from(`x-access-token:${token}`).toString('base64')}`] : []
+  // The GitHub App's installation token or the personal token; only ever sent to the configured GitHub host.
+  const token = await cloneToken(parsed.url)
+  const auth = token ? ['-c', `http.extraHeader=Authorization: Basic ${Buffer.from(`x-access-token:${token}`).toString('base64')}`] : []
   const started = Date.now()
   log.info('import', `${label}: klone Repository`, { url: parsed.url })
   try {
@@ -52,7 +53,7 @@ async function clone(value, dir, label) {
     throw new DraftError(`${label}: Klonen fehlgeschlagen (${detail.slice(0, 160)}).`, 502)
   }
   log.info('import', `${label}: geklont`, { url: parsed.url, ms: Date.now() - started })
-  return parsed.name
+  return { name: parsed.name, url: parsed.url.replace(/\.git$/, '') }
 }
 
 /** Runs `use` with { name, repo, docs } folders and removes everything afterwards. */
@@ -64,9 +65,9 @@ export async function withUpload(zip, workDir, use) {
     const repoDir = path.join(dir, 'repo'), docsDir = path.join(dir, 'docs')
     const has = (folder) => fs.existsSync(folder) && fs.readdirSync(folder).length > 0
     let repo = null, docs = null
-    if (manifest.repoUrl) { if (has(repoDir)) fs.rmSync(repoDir, { recursive: true }); repo = { dir: repoDir, label: await clone(manifest.repoUrl, repoDir, 'Repository'), source: 'url' } }
+    if (manifest.repoUrl) { if (has(repoDir)) fs.rmSync(repoDir, { recursive: true }); const cloned = await clone(manifest.repoUrl, repoDir, 'Repository'); repo = { dir: repoDir, label: cloned.name, url: cloned.url, source: 'url' } }
     else if (has(repoDir)) repo = { dir: repoDir, label: String(manifest.repoName || 'Repository').slice(0, 100), source: 'upload' }
-    if (manifest.docsUrl) { if (has(docsDir)) fs.rmSync(docsDir, { recursive: true }); docs = { dir: docsDir, label: await clone(manifest.docsUrl, docsDir, 'Dokumentation'), source: 'url' } }
+    if (manifest.docsUrl) { if (has(docsDir)) fs.rmSync(docsDir, { recursive: true }); const cloned = await clone(manifest.docsUrl, docsDir, 'Dokumentation'); docs = { dir: docsDir, label: cloned.name, url: cloned.url, source: 'url' } }
     else if (has(docsDir)) docs = { dir: docsDir, label: String(manifest.docsName || 'Dokumentation').slice(0, 100), source: 'upload' }
     if (!repo) throw new DraftError('Repository fehlt: Ordner oder ZIP hochladen oder eine GitHub-URL angeben.')
     return await use({ name: String(manifest.projectName || repo.label).slice(0, 100), repo, docs })

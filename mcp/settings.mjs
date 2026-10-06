@@ -5,8 +5,11 @@ import path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 
-export const SECRETS = ['TYPESAFE_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'VERTEX_API_KEY', 'NEURALDOC_LLM_API_KEY', 'NEURALDOC_GIT_TOKEN']
-export const VALUES = ['NEURALDOC_USER_NAME', 'NEURALDOC_USER_COMPANY', 'NEURALDOC_USER_ROLE', 'NEURALDOC_JEV_BUDGET_USD', 'NEURALDOC_DRAFT_PROVIDER', 'NEURALDOC_LLM_MODEL', 'GOOGLE_CLOUD_PROJECT', 'GOOGLE_CLOUD_LOCATION', 'NEURALDOC_VERTEX_MODE', 'NEURALDOC_LLM_BASE_URL', 'NEURALDOC_LLM_FORMAT']
+export const SECRETS = ['TYPESAFE_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'VERTEX_API_KEY', 'NEURALDOC_LLM_API_KEY', 'NEURALDOC_GIT_TOKEN', 'NEURALDOC_GITHUB_APP_PRIVATE_KEY']
+export const VALUES = ['NEURALDOC_USER_NAME', 'NEURALDOC_USER_COMPANY', 'NEURALDOC_USER_ROLE', 'NEURALDOC_JEV_BUDGET_USD', 'NEURALDOC_DRAFT_PROVIDER', 'NEURALDOC_LLM_MODEL', 'GOOGLE_CLOUD_PROJECT', 'GOOGLE_CLOUD_LOCATION', 'NEURALDOC_VERTEX_MODE', 'NEURALDOC_LLM_BASE_URL', 'NEURALDOC_LLM_FORMAT',
+  'NEURALDOC_GITHUB_APP_ID', 'NEURALDOC_GITHUB_APP_SLUG', 'NEURALDOC_GITHUB_API_URL', 'NEURALDOC_GITHUB_PR', 'NEURALDOC_GITHUB_PR_GROUP', 'NEURALDOC_GITHUB_BRANCH_PREFIX', 'NEURALDOC_GITHUB_LABELS', 'NEURALDOC_GITHUB_REVIEWERS', 'NEURALDOC_GITHUB_DRAFT_PR']
+// A PEM key spans lines; every other field is one line.
+const MULTILINE = ['NEURALDOC_GITHUB_APP_PRIVATE_KEY']
 const FIELDS = [...SECRETS, ...VALUES]
 const ALIASES = { TYPESAFE_API_KEY: ['JEV_API_KEY'], GEMINI_API_KEY: ['GOOGLE_API_KEY'] }
 
@@ -36,7 +39,8 @@ export function saveSettings(input) {
   for (const [k, v] of Object.entries(input)) {
     if (!FIELDS.includes(k)) throw new Error(`Unbekanntes Feld: ${k}`)
     if (v === null || v === '') { delete next[k]; continue }
-    if (typeof v !== 'string' || v.length > 2000 || /[\r\n\0]/.test(v)) throw new Error(`Ungültiger Wert für ${k}.`)
+    const multiline = MULTILINE.includes(k)
+    if (typeof v !== 'string' || v.length > (multiline ? 10000 : 2000) || (multiline ? /\0/ : /[\r\n\0]/).test(v)) throw new Error(`Ungültiger Wert für ${k}.`)
     next[k] = v.trim()
   }
   fs.mkdirSync(path.dirname(file()), { recursive: true })

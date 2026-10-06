@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { FolderGit2, HardDrive, KeyRound, LoaderCircle, RefreshCw, RotateCcw, Save, UserRound } from "lucide-react";
+import { HardDrive, KeyRound, LoaderCircle, RefreshCw, RotateCcw, Save, UserRound } from "lucide-react";
 import { AppHeader } from "@/components/layout/app-header";
 import { Main } from "@/components/layout/main";
 import {
@@ -27,7 +27,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { loadSetup, useSaveSettings, type Setup } from "./api";
-import { SecretField, SetupForm } from "./keys-form";
+import { SetupForm } from "./keys-form";
+import { GitHubForm } from "./github";
 
 function ProfileForm({ values }: { values: Record<string, string> }) {
   const [name, setName] = useState(values.NEURALDOC_USER_NAME ?? "");
@@ -83,46 +84,6 @@ function ProfileForm({ values }: { values: Record<string, string> }) {
   );
 }
 
-function GitForm({ setup }: { setup: Setup }) {
-  const [token, setToken] = useState("");
-  const save = useSaveSettings(() => setToken(""));
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <FolderGit2 className="size-4" />
-          Private GitHub-Repositories
-        </CardTitle>
-        <CardDescription>
-          Nur nötig, wenn du ein privates Repository per URL importierst. Lesezugriff reicht.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form
-          className="grid gap-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (token.trim()) save.mutate({ NEURALDOC_GIT_TOKEN: token.trim() });
-          }}
-        >
-          <SecretField
-            id="settings-git"
-            label="GitHub-Token"
-            secret={setup.settings.secrets.NEURALDOC_GIT_TOKEN}
-            value={token}
-            onChange={setToken}
-            onRemove={() => save.mutate({ NEURALDOC_GIT_TOKEN: null })}
-          />
-          <Button type="submit" variant="outline" className="w-fit" disabled={save.isPending || !token.trim()}>
-            <Save />
-            Speichern
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
-  );
-}
-
 function Status({ setup, refresh, fetching }: { setup: Setup; refresh: () => void; fetching: boolean }) {
   return (
     <Card>
@@ -160,7 +121,7 @@ const resets = {
   all: {
     label: "Alles zurücksetzen",
     title: "Alles löschen?",
-    text: "Zusätzlich zu allen Projekten werden Profil, Keys, Modellwahl und Datenbankverbindungen gelöscht. neuraldoc startet danach wie frisch installiert. Deine Originaldateien sind nicht betroffen.",
+    text: "Zusätzlich zu allen Projekten werden Profil, Keys, GitHub-Anbindung, Modellwahl und Datenbankverbindungen gelöscht. Pull-Requests auf GitHub bleiben bestehen. neuraldoc startet danach wie frisch installiert. Deine Originaldateien sind nicht betroffen.",
   },
 } as const;
 
@@ -230,7 +191,7 @@ function Storage() {
       </CardHeader>
       <CardContent className="grid gap-2 text-xs text-muted-foreground">
         <p>
-          Profil, Keys, Datenbankverbindungen, importierte Projekte und Freigaben liegen im Docker-Volume{" "}
+          Profil, Keys, GitHub-Anbindung, Datenbankverbindungen, importierte Projekte und Freigaben liegen im Docker-Volume{" "}
           <code className="rounded bg-muted px-1 py-0.5">neuraldoc-data</code> und bleiben bei einem Neustart erhalten.
         </p>
         <p>
@@ -257,7 +218,7 @@ export function SettingsPage() {
           <span className="text-xs text-muted-foreground">Deine Installation</span>
           <h1 className="text-[28px] leading-tight font-medium tracking-[-0.025em]">Einstellungen</h1>
           <p className="max-w-2xl text-sm text-muted-foreground">
-            Dein Name und deine eigenen Keys. Keys brauchst du erst, wenn du dein eigenes Projekt prüfst.
+            Dein Name, deine eigenen Keys und die Anbindung an GitHub. Keys brauchst du erst, wenn du dein eigenes Projekt prüfst.
           </p>
         </div>
         {query.isPending ? (
@@ -283,10 +244,10 @@ export function SettingsPage() {
                 key={[v.NEURALDOC_DRAFT_PROVIDER, v.NEURALDOC_LLM_MODEL, v.GOOGLE_CLOUD_PROJECT, v.NEURALDOC_LLM_BASE_URL, v.NEURALDOC_JEV_BUDGET_USD].join("|")}
                 setup={setup}
               />
+              <GitHubForm setup={setup} />
             </div>
             <div className="grid gap-5">
               <Status setup={setup} refresh={() => void query.refetch()} fetching={query.isFetching} />
-              <GitForm setup={setup} />
               <ResetCard />
               <Storage />
             </div>
