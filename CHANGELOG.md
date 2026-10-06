@@ -33,6 +33,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - The initial check runs in the background with a progress display; `GET /api/mcp/project/check` reports phase and progress.
 - Evaluation benchmarks for a README-only library (chalk), a long README (ky), a separate documentation repository (axios-docs) and a Django app with database (linkding); planted outdated statements per benchmark (`mutations`).
 - MCP `check_change` lists every change of a proposal with its reason and evidence.
+- Comment check (command line, `mcp/comment-check-cli.mjs`): comments and docstrings inside the code against the code they describe, with exact quotes, code evidence, a German reason and the corrected comment. Evaluated on 36 planted and 7 real wrong comments in ky, httpx, cobra, axios and linkding (`mcp/eval/comments-run.mjs`).
 
 ### Changed
 
@@ -40,6 +41,10 @@ All notable changes to this project are documented here. The format follows [Kee
 - Documents are split into one section per heading (code blocks are never cut); sections without prose are not checked. A document is one page in the editor.
 - Corrections keep list markers, blank-line structure and code formatting of the original; replacements are cut down to the lines that change; whitespace-only changes are dropped.
 - Makefile, Dockerfile, shell scripts and `.env.example` count as code.
+- Changes from the Git history of an own project are described in plain German (what is different now, for whom, which parts) instead of showing commit subjects; their kind is Neue Funktion, Geändertes Verhalten, Fehlerbehebung or Intern, and the pages list the project's own documents instead of the showcase's doc types.
+- The initial check weighs every single fact of a section before it reports, and long sections get the exact code lines behind their names and numbers; undocumented environment variables are found wherever the code reads them. On neuraldoc's own repository with ten planted mismatches it finds 8 instead of 6; the other benchmarks stay as they were, linkding improves from 50 to 67 %.
+- Uploading a working folder or a ZIP of it: files its `.gitignore` excludes stay out, a ZIP is read as a stream and only kept entries are unpacked (a 135 MB ZIP with `node_modules` in about a second), and ZIPs made on Windows (backslash paths) are filtered correctly.
+- For a repository imported by URL, the initial check reads the diffs since the last release without a model: a section that still states an old value or an old name gets the change as a hint, and if the proposal still states it, a question with the commit ("Gilt jetzt 0.5?"). A setting the code sets to different values in different places becomes a question ("Welcher Wert gilt?") instead of a guess. On neuraldoc's own repository with ten planted mismatches, imported with history: 10 of 10.
 - Model answers of the check are cached by content in `check-cache/`, shared by all projects.
 - Drafts for your own project are line edits on the numbered section with quoted findings. A draft needs at least one finding whose quotes appear in the section and in a code excerpt; untouched lines cannot be lost, and a draft that switches the section's language (German/English) is rejected.
 - Default Gemini model for drafts is `gemini-3.5-flash-lite` (fewest false statements in the evaluation, about 0.002 USD per draft).
@@ -48,6 +53,10 @@ All notable changes to this project are documented here. The format follows [Kee
 - Repository renamed from `neuraldoc-dashboard` to `neuraldoc-app`.
 - README rewritten around the Docker start.
 - The import no longer takes local paths, Git revisions or component JSON, and no longer compares two commits.
+
+### Security
+
+- An uploaded folder or ZIP can no longer bring a `.git` folder (its config could make the history reader run commands); only a clone by URL has a history, and `git show` runs without external diff tools or text conversion.
 
 ## [0.1.0] - 2026-10-04
 

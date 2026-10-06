@@ -1,0 +1,230 @@
+{
+  "name": "self",
+  "language": "JavaScript/TypeScript (neuraldoc-app itself, docs inside the repository)",
+  "notes": "neuraldoc's own repository as a user would import it by GitHub URL (tracked files plus uncommitted work, no submodules), with ten planted mismatches of ten different kinds: five where the documentation was edited to a wrong statement, five where the code changed and the documentation stayed. Each item names the files where a correct finding must quote the stale statement (quote) or add the missing name (added). Nothing here is read by the product. With --history the documentation mutations are part of the tagged release and every code mutation comes as a commit after it (field commit), as in a repository imported by URL.",
+  "mutations": [
+    {
+      "item": "self-1",
+      "side": "code",
+      "file": "mcp/projects.mjs",
+      "find": "budget: Number(env.NEURALDOC_JEV_BUDGET_USD || .25)",
+      "replace": "budget: Number(env.NEURALDOC_JEV_BUDGET_USD || .5)",
+      "all": true,
+      "commit": "feat: higher default Jev budget per check"
+    },
+    {
+      "item": "self-2",
+      "side": "docs",
+      "file": "README.md",
+      "find": "- Up to 1,500 code files (100 KB each)",
+      "replace": "- Up to 3,000 code files (100 KB each)"
+    },
+    {
+      "item": "self-3",
+      "side": "docs",
+      "file": "README.md",
+      "find": "and `check_change` (documentation impact of a finished change).",
+      "replace": "and `doc_impact` (documentation impact of a finished change)."
+    },
+    {
+      "item": "self-4",
+      "side": "code",
+      "file": "mcp/db-connections.mjs",
+      "find": "rows: 1000, timeoutMs",
+      "replace": "rows: 500, timeoutMs",
+      "commit": "perf: smaller limits for database queries and clones"
+    },
+    {
+      "item": "self-5",
+      "side": "docs",
+      "file": "README.md",
+      "find": "(the last release; without a tag the last 90 days)",
+      "replace": "(the last release; without a tag the last 30 days)"
+    },
+    {
+      "item": "self-6",
+      "side": "code",
+      "file": "mcp/project-upload.mjs",
+      "find": "'clone', '--depth', '300'",
+      "replace": "'clone', '--depth', '50'",
+      "commit": "perf: smaller limits for database queries and clones"
+    },
+    {
+      "item": "self-7",
+      "side": "docs",
+      "file": "README.md",
+      "find": "(stored in `/data/settings.json`, file mode 600)",
+      "replace": "(stored in `/data/settings.json`, file mode 644)"
+    },
+    {
+      "item": "self-8",
+      "side": "code",
+      "file": "mcp/project-upload.mjs",
+      "find": "NEURALDOC_GIT_TOKEN",
+      "replace": "NEURALDOC_GITHUB_TOKEN",
+      "all": true,
+      "commit": "refactor: name the token variable after GitHub"
+    },
+    {
+      "item": "self-8",
+      "side": "code",
+      "file": "mcp/settings.mjs",
+      "find": "NEURALDOC_GIT_TOKEN",
+      "replace": "NEURALDOC_GITHUB_TOKEN",
+      "all": true,
+      "commit": "refactor: name the token variable after GitHub"
+    },
+    {
+      "item": "self-8",
+      "side": "code",
+      "file": "frontend/src/dashboard/features/settings/index.tsx",
+      "find": "NEURALDOC_GIT_TOKEN",
+      "replace": "NEURALDOC_GITHUB_TOKEN",
+      "all": true,
+      "commit": "refactor: name the token variable after GitHub"
+    },
+    {
+      "item": "self-9",
+      "side": "code",
+      "file": "mcp/projects.mjs",
+      "find": "export async function checkProject({ createClient = createJevClient, fetchImpl, concurrency = 3, jevVeto = true } = {}) {",
+      "replace": "export async function checkProject({ createClient = createJevClient, fetchImpl, concurrency = Number(runtimeEnv().NEURALDOC_CHECK_CONCURRENCY || 3), jevVeto = true } = {}) {",
+      "commit": "feat: configurable number of sections checked at a time"
+    },
+    {
+      "item": "self-10",
+      "side": "docs",
+      "file": "README.md",
+      "find": "Repeating it costs nothing: answers are cached by content.",
+      "replace": "Every repetition calls the model again; answers are not cached."
+    }
+  ],
+  "items": [
+    {
+      "id": "self-1",
+      "kind": "changed default (code)",
+      "what": "Jev budget default is 0.5 USD in the code, the docs say 0.25",
+      "expect": [
+        {
+          "file": "README.md",
+          "quote": "`0.25`"
+        },
+        {
+          "file": "docs/llm-providers.md",
+          "quote": "default 0.25 USD"
+        }
+      ]
+    },
+    {
+      "id": "self-2",
+      "kind": "wrong number (docs)",
+      "what": "LIMITS.codeFiles is 1500, the README says 3,000",
+      "expect": [
+        {
+          "file": "README.md",
+          "quote": "3,000 code files"
+        }
+      ]
+    },
+    {
+      "id": "self-3",
+      "kind": "name that does not exist (docs)",
+      "what": "the MCP tool is check_change, the README says doc_impact",
+      "expect": [
+        {
+          "file": "README.md",
+          "quote": "doc_impact"
+        }
+      ]
+    },
+    {
+      "id": "self-4",
+      "kind": "changed limit (code)",
+      "what": "queries return at most 500 rows, the README says 1,000",
+      "expect": [
+        {
+          "file": "README.md",
+          "quote": "1,000 rows"
+        },
+        {
+          "file": "ARCHITECTURE.md",
+          "quote": "1,000"
+        }
+      ]
+    },
+    {
+      "id": "self-5",
+      "kind": "wrong time window (docs)",
+      "what": "without a tag the history covers 90 days, the README says 30",
+      "expect": [
+        {
+          "file": "README.md",
+          "quote": "30 days"
+        }
+      ]
+    },
+    {
+      "id": "self-6",
+      "kind": "changed constant (code)",
+      "what": "the server clones with --depth 50, ARCHITECTURE.md says 300",
+      "expect": [
+        {
+          "file": "ARCHITECTURE.md",
+          "quote": "--depth 300"
+        }
+      ]
+    },
+    {
+      "id": "self-7",
+      "kind": "wrong file mode (docs)",
+      "what": "settings.json is written with mode 0o600, the README says 644",
+      "expect": [
+        {
+          "file": "README.md",
+          "quote": "644"
+        }
+      ]
+    },
+    {
+      "id": "self-8",
+      "kind": "renamed environment variable (code)",
+      "what": "the token variable is NEURALDOC_GITHUB_TOKEN now, the README still names NEURALDOC_GIT_TOKEN",
+      "expect": [
+        {
+          "file": "README.md",
+          "quote": "NEURALDOC_GIT_TOKEN"
+        }
+      ]
+    },
+    {
+      "id": "self-9",
+      "kind": "undocumented new option (code)",
+      "what": "NEURALDOC_CHECK_CONCURRENCY sets how many sections are checked at a time; the configuration table lacks it",
+      "expect": [
+        {
+          "file": "README.md",
+          "added": "NEURALDOC_CHECK_CONCURRENCY"
+        },
+        {
+          "file": "docs/llm-providers.md",
+          "added": "NEURALDOC_CHECK_CONCURRENCY"
+        },
+        {
+          "file": "ARCHITECTURE.md",
+          "added": "NEURALDOC_CHECK_CONCURRENCY"
+        }
+      ]
+    },
+    {
+      "id": "self-10",
+      "kind": "wrong behaviour (docs)",
+      "what": "check answers are cached by content, the README says they are not",
+      "expect": [
+        {
+          "file": "README.md",
+          "quote": "not cached"
+        }
+      ]
+    }
+  ]
+}

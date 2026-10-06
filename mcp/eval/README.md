@@ -74,6 +74,77 @@ Known limits: architecture prose about internal flows (which function calls whic
 
 Spent on these measurements: about 5 USD in model calls (most of it during prompt iterations, each of which invalidates the cache) and 0.6 USD for the judge.
 
+## neuraldoc on itself, with ten planted mismatches (6 October 2026)
+
+`self-run.mjs` imports this repository as a GitHub clone would bring it (tracked and new files, no submodules, without `benchmarks/`) and plants the ten mismatches of `benchmarks/self.json`, each of a different kind: five where the documentation was edited to a wrong statement (a number, a tool name that does not exist, a time window, a file mode, a behaviour), five where the code changed and the documentation stayed (a default, a row limit, a clone depth, a renamed environment variable, a new undocumented one). An item counts when a finding quotes the stale statement or adds the missing name. Every other finding was read by hand.
+
+```powershell
+node --use-system-ca --env-file=frontend/.env.local mcp/eval/self-run.mjs [--label name] [--clean] [--history]
+node --env-file=frontend/.env.local mcp/eval/section-why.mjs "README › Configuration"   # what one section saw and answered, from the cache
+```
+
+| Variant | Planted found | Other findings: correct / false alarm | Other benchmarks (must / all) |
+|---|---|---|---|
+| section check of 5 October | 6 of 10 | 2 / 4 | unchanged |
+| plus exact places for names and numbers | 7 | 3 / 7 | – |
+| plus a list of every fact before the findings, for every section | 9 | 6 / 4 | chalk 71 / 78 %, ky 83 / 64 %, mobiq 63 / 61 %: worse |
+| **final:** exact places and fact list only for sections that state many values; other sections keep the prompt of 5 October word for word | **8** (best of the runs: 9) | 5 / 3 | chalk 86 / 89 %, ky 100 / 71 %, axios 100 / 92 %, mobiq 83 / 79 % (all as before), linkding 60 / 67 % (before 40 / 50 %) |
+
+Confusion matrix of the final run, per documentation section (71 checked): 7 sections with a planted mismatch reported, 2 not reported, 3 sections without a planted mismatch reported (one of them real drift: environment variables missing in `mcp/README.md`), 59 correctly left alone. Per finding: 17 findings, 14 correct (9 on planted mismatches, 5 on real drift such as undocumented environment variables), 3 false alarms (a ratio read the wrong way round, a security rule about `VITE_` keys read as contradicted by public `VITE_` settings, an evaluation-only variable proposed for the product documentation).
+
+The two misses: the Jev budget default was changed in one of three places that set it (`.env.example` and an older mapping script still say 0.25), so the model took the wrong place as the reference; "answers are not cached" names nothing the code has and its evidence is spread over several files, so it was found in two of six runs. What did not work and is not used: the fact list on every section (it crowded out missing entries on tables of fields and terms), and a coarse fact list (one entry per table row checked whether a name exists, not its default). `NEURALDOC_CHECK_STATEMENTS=on|off` forces the fact list for experiments. Spent on these runs: about 7 USD.
+
+**Values and the history** (`mcp/change-facts.mjs`, no model). With `--history` the repository comes as a clone by URL would: the documentation mutations are part of the release tagged `v1.0`, every code mutation is a commit after it (field `commit` in `self.json`). The diffs show 4 changes (Jev budget 0.25 → 0.5, rows 1000 → 500, clone depth 300 → 50, `NEURALDOC_GIT_TOKEN` → `NEURALDOC_GITHUB_TOKEN`); sections that still state them get the change as a hint.
+
+| Variant | Planted found | Questions to the reviewer | LLM cost |
+|---|---|---|---|
+| upload without history, value conflicts as questions | 9 of 10 (the Jev budget as a question) | 3, all on the Jev budget | 0.77 USD |
+| with history, hints only | 8 (the model saw the Jev budget, the second look dropped it) | 0 | 0.86 USD |
+| **with history, a hint the proposal still states becomes a question** | **10** ("not cached" found by chance this time) | 6: Jev budget in README (planted), rows in README (real, missed by the model), Jev budget in three places about the mapping run (where 0.25 is still the mapping's own default), the depth example in this architecture text | 0.47 USD (rest cached) |
+
+## Comments inside the code (6 October 2026)
+
+`mcp/comment-check.mjs` checks comments and docstrings against the code next to them. Ground truth is in `benchmarks/comments.json`:
+
+| Set | What | Items |
+|---|---|---|
+| planted | wrong comments planted into copies of ky v2.1.0 (`source/`), httpx 0.28.1, cobra v1.10.1, axios v1.20.0 (`lib/`), linkding v1.47.0 (`bookmarks/`): wrong defaults, units, inverted rules, swapped order, stale names, wrong parameters; 30 provable in the same file, 6 only with code from another file | 36 |
+| real | a wrong comment in the released code: linkding's `parse_timestamp` says milliseconds where the code starts with seconds | 1 |
+| history | comments cobra's maintainers fixed later in commits that changed only comments (found by `mine-comment-fixes.mjs`); the check runs on the parent commit | 6 |
+
+```powershell
+node --use-system-ca --env-file=frontend/.env.local mcp/eval/comments-run.mjs [--repo ky,httpx] [--label name] [--dry]
+node --use-system-ca --env-file=frontend/.env.local mcp/eval/comments-history.mjs
+node --env-file=frontend/.env.local mcp/eval/comments-why.mjs ky-7,httpx-3   # the model's verdict for a missed item, from the cache
+```
+
+An item is found when a reported finding lies in its comment block. Everything else the check reports was read by hand.
+
+| Variant (`gemini-3.5-flash-lite`, thinking medium) | Planted found | Other findings | Cost of a full run |
+|---|---|---|---|
+| one prompt, windows of 450 lines, second look | 28 of 36 | 38, about 35 correct | 1.4 USD |
+| plus a verdict for every comment block first (checklist) | 29 | 31 | 1.5 USD |
+| plus windows of 200 lines | 30 | 35 | 0.9 USD (larger files only) |
+| plus findings-only prompt, union of both; signals next to their comment | **32 (89 %)**, real item found | 44, **39 correct (89 %)**, 5 wrong or debatable | 3.3 USD |
+| history (cobra, real later fixes) | 3 of 6 found, 1 more found but rejected by the second look | – | 0.9 USD |
+
+What the parts contribute:
+
+| Part | Effect |
+|---|---|
+| Related code: definitions of names in the comment, places that use a documented option or field, definitions of called functions, then BM25 excerpts | the cross-file items (defaults in `normalize.ts`, `codes.is_error`) became findable; BM25 alone filled the budget with unrelated excerpts |
+| Free signals without a model: documented parameters missing in the signature, Go doc comments naming another function, names in comments that no code line has | found real rot before any model call: axios `@param config` on `dispatchRequest(_config)`, a "FormData" doc comment above `getGlobal()`, cobra `CommandDisplayNameAnnoation` |
+| Server verification: the quote must be inside a comment, the evidence must be code lines (not comments), the correction must still be a comment and change more than whitespace | evidence quotes the model attributed to the wrong excerpt are looked up in all files; a "//" comment the model retyped as " * " is still located |
+| Second look | removes interpretations and intent comments ("this function does not modify the flags"); it also removed about one correct finding in five, which is why it keeps library names when the code imports another library |
+
+Correct findings in the released code of these projects, each checked by hand: httpx `_CookieCompatResponse` documented as wrapping a `Request`, the transport docstring's `response.stream.read()` (the stream has no `read`), "Requires `pip install brotlipy`" while the code imports `brotli`/`brotlicffi`, "ASCII bytestrings" for `str` components; cobra's Markdown, reST and YAML generators copying "the file `cmd-sub-third.1`" from the man page generator, `ParsedFlags()` for `ParseFlags()`, `Eq` "unsupported types will panic" (only arrays, maps, slices and channels do); axios `@param {string}` for objects, arrays and booleans in `toFormData`, `@returns` on functions without a return value, "afterRedirects" for `beforeRedirects`, `isStandardBrowserEnv` for `hasStandardBrowserEnv`; linkding "Use URLField" above a `CharField`, the dev and prod settings both saying "Start from development settings".
+
+On neuraldoc's own code (`mcp/`, `frontend/src/`, 168 windows, 2.0 USD, `comment-check-cli.mjs . --under mcp/,frontend/src/`): 10 findings, 7 correct and fixed (a log helper documented to log the cause, a ticket format `#128` the regular expression does not match, "two" editors where there are three, the `edited` field also set on a plain approval, a stale return description), 3 wrong (comments that explain why rather than what).
+
+Spent on the comment experiments, including all prompt variants: 11.7 USD in 1,946 model calls.
+
+Misses and limits: reasoning over several branches (ky: "413 is never retried" while a retry timing header makes it retry), code that runs only on another platform (cobra's `command_win.go`), regular expression semantics (axios: protocol-relative URLs). A doc comment that stands above the wrong function is found, but the proposed fix rewrites or deletes it instead of moving it. Spelling-level name findings (`requestURL` for `requestedURL`) are correct but trivial.
+
 ## Earlier results (4 October 2026): Jev check with separate drafts
 
 The check below rated sections with Jev only and drafted corrections in a second step; the variants are in commits `be7355f` and `2433c97`.

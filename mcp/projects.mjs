@@ -3,11 +3,13 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { importProject, digest, BUNDLE_ID } from './project-import.mjs'
 import { withFeatures } from './project-features.mjs'
+import { describeFeatures } from './feature-texts.mjs'
+import { codeChanges, sectionChanges, valueConflicts } from './change-facts.mjs'
 import { withUpload } from './project-upload.mjs'
 import { createJevClient, MODEL } from './semantic-mapping.mjs'
 import { codeChunks } from './retrieval.mjs'
 import { DraftError, draftingConfig, draftingStatus } from './drafting.mjs'
-import { applyLineEdits, CHECK_PROMPT_VERSION, checkDocumentLists, checkSection, codeIndex, createSectionRetriever, excerptId, pool, verifyWithJev } from './check.mjs'
+import { applyLineEdits, CHECK_PROMPT_VERSION, checkDocumentLists, checkSection, codeIndex, createSectionRetriever, excerptId, pool, sectionTerms, verifyWithJev } from './check.mjs'
 import { log, logError } from './log.mjs'
 import { profile, reviewer, runtimeEnv } from './settings.mjs'
 
@@ -95,7 +97,12 @@ const TYPE_LABELS = { nutzer: 'Nutzerhandbuch', dialog: 'Dialogbeschreibung', pa
 // Jev's second opinion on a finding. Confirmed findings are marked "sicher", findings Jev clearly refutes are dropped,
 // everything else stays "prüfen". Thresholds tuned on the benchmarks in mcp/eval (README there).
 const JEV_SURE = 0.7, JEV_VETO = 0.75, JEV_VETO_CONFIDENCE = 0.6
-const sectionDocument = (p, section) => ({ title: p.docSources.find((s) => s.id === section.source)?.title ?? section.title, path: section.path, kind: TYPE_LABELS[section.type] || 'Dokumentation' })
+/** What the code says about the values of a section: changes since the last release it still states, and values the code sets differently in different places (change-facts.mjs). */
+function valueFacts(section, retriever, changes) {
+  return { changes: sectionChanges(section.text, changes), conflicts: valueConflicts(section.text, sectionTerms(section.text), (n) => retriever.values(n)) }
+}
+
+export const sectionDocument = (p, section) => ({ title: p.docSources.find((s) => s.id === section.source)?.title ?? section.title, path: section.path, kind: TYPE_LABELS[section.type] || 'Dokumentation' })
 
 /** Jev weighs the findings of one section: clear contradictions are dropped, deletions need a confirmation. */
 async function weigh(p, section, result, jev, jevVeto = true) {
@@ -134,7 +141,8 @@ function generationOf(result, section) {
     text: status === 'draft' ? result.text : section.text,
     why: result.summary || (status === 'draft' ? `${result.findings.length} Abweichung${result.findings.length === 1 ? '' : 'en'} zum aktuellen Code.` : 'Rückfrage zur Prüfung.'),
     confidence: result.findings.length && result.findings.every((f) => f.sure) ? 'hoch' : 'pruefen',
-    question: status === 'needs_context' ? result.question : '',
+    // A draft can carry a question too: two places in the code set different values for what the section states.
+    question: result.question || '',
     generation: {
       status, recommendation: result.summary, id: `check-${digest(JSON.stringify(result.findings)).slice(0, 16)}`, model: result.model, createdAt: new Date().toISOString(),
       evidenceIds: [...new Set(result.findings.flatMap((f) => f.evidence.map((e) => e.id)))],
@@ -176,13 +184,27 @@ export async function checkProject({ createClient = createJevClient, fetchImpl, 
     const jev = createClient({ key: key(env), cachePath: path.join(projectsDir, p.id, 'jev-cache.json'), budget: Number(env.NEURALDOC_JEV_BUDGET_USD || .25) })
     const config = draftingConfig({ ...env, NEURALDOC_STATE_DIR: path.join(projectsDir, p.id) })
     const code = codeIndex(p.files), retriever = createSectionRetriever(p.files), cacheDir = checkCache
+    // Values and names the commits since the last release changed (from the stored diffs; none for an uploaded folder).
+    const changes = p.history ? codeChanges(p.history, projectDiffs(p)) : []
     const targets = p.docFiles.filter((d) => d.checkable !== false)
     log.info('check', 'Erstprüfung gestartet', { project: p.name, sections: targets.length, skipped: p.docFiles.length - targets.length, excerpts: retriever.chunks.length, model: config.model })
     let done = 0, failures = 0, firstError = null
     const llm = { calls: 0, cached: 0, inputTokens: 0, outputTokens: 0, usd: 0 }
+    // The changes of the history in plain words (a few cents, cached): what is different now, for whom, where.
+    if (p.history?.features?.length) {
+      progress({ phase: 'features' })
+      try {
+        const described = await describeFeatures({ name: p.name, history: p.history, diffs: projectDiffs(p), config, cacheDir, fetchImpl })
+        p.featureTexts = described.texts
+        llm.calls += described.usage.calls; llm.cached += described.usage.cached; llm.usd += described.usage.usd
+      } catch (error) {
+        if (error.status === 503 || [401, 403].includes(error.httpStatus)) throw error
+        log.warn('check', 'Änderungen nicht beschrieben', { error: error.message })
+      }
+    }
     const results = await pool(targets, concurrency, async (section) => {
       try {
-        const r = await checkSection({ section, document: sectionDocument(p, section), code, retriever, config, cacheDir, fetchImpl })
+        const r = await checkSection({ section, document: sectionDocument(p, section), code, retriever, config, cacheDir, fetchImpl, ...valueFacts(section, retriever, changes) })
         if (r.usage) { llm[r.cached ? 'cached' : 'calls']++; if (!r.cached) { llm.inputTokens += r.usage.inputTokens || 0; llm.outputTokens += r.usage.outputTokens || 0; llm.usd += r.usage.costUsd || 0 } }
         return r
       } catch (error) {
@@ -260,7 +282,8 @@ export async function projectDraft(id, answer, { createClient = createJevClient,
     const config = draftingConfig({ ...env, NEURALDOC_STATE_DIR: path.join(projectsDir, p.id) })
     const jev = createClient({ key: key(env), cachePath: path.join(projectsDir, p.id, 'jev-cache.json'), budget: Number(env.NEURALDOC_JEV_BUDGET_USD || .25) })
     const started = Date.now()
-    const checked = await checkSection({ section, document: sectionDocument(p, section), code: codeIndex(p.files), retriever: createSectionRetriever(p.files), config, cacheDir: checkCache, answer, fetchImpl })
+    const retriever = createSectionRetriever(p.files)
+    const checked = await checkSection({ section, document: sectionDocument(p, section), code: codeIndex(p.files), retriever, config, cacheDir: checkCache, answer, fetchImpl, ...valueFacts(section, retriever, p.history ? codeChanges(p.history, projectDiffs(p)) : []) })
     const r = await weigh(p, section, checked, jev)
     const generated = r.status === 'findings' || r.status === 'unclear' ? generationOf({ ...r, answer }, section) : { text: section.text, why: r.summary || 'Laut Prüfung stimmt der Abschnitt mit dem Code überein.', confidence: 'pruefen', question: '', generation: { status: 'no_change', recommendation: r.summary, id: `check-none-${digest(section.id).slice(0, 8)}`, model: r.model ?? config.model, createdAt: new Date().toISOString(), evidenceIds: [], findings: [], usage: r.usage ?? { inputTokens: null, outputTokens: 0, costUsd: null }, ...(answer ? { answer } : {}) } }
     // Other sections may have been saved meanwhile: read, change and write without awaiting in between.

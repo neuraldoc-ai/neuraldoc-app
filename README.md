@@ -162,10 +162,12 @@ Keys, provider and model are set in the app under **Einstellungen** (stored in `
 | `NEURALDOC_GIT_TOKEN` | GitHub token, only for importing private repositories by URL (also in Einstellungen) | none |
 | `NEURALDOC_DRAFT_PROVIDER` | `openai`, `anthropic`, `gemini`, `vertex` or `local` | none |
 | `NEURALDOC_LLM_MODEL` | Model used for drafting | provider default |
-| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` / `VERTEX_API_KEY` / `NEURALDOC_LLM_API_KEY` | Key for the chosen provider | none |
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) / `VERTEX_API_KEY` / `NEURALDOC_LLM_API_KEY` | Key for the chosen provider | none |
 | `NEURALDOC_LLM_BASE_URL` | OpenAI-compatible server for `local` (Ollama, LM Studio, vLLM) | none |
 | `NEURALDOC_MODE` | `showcase`: prepared MOBIQ sample only, no import, no model calls (set by the `showcase` image) | empty |
 | `NEURALDOC_MCP_TOKEN` | Bearer token for the MCP endpoint | random per installation, shown on the MCP page |
+| `NEURALDOC_USER_NAME` / `NEURALDOC_USER_COMPANY` / `NEURALDOC_USER_ROLE` | Your profile, shown in the sidebar and on approvals (also in Einstellungen) | empty |
+| `NEURALDOC_CHECK_REVIEW` | `off` skips the second look of the initial check | on |
 | `PORT` | Port inside the container | `8080` |
 
 | Provider | `NEURALDOC_DRAFT_PROVIDER` | Example model |
@@ -201,7 +203,7 @@ This is an early release. Known limits:
 - Scanned PDFs without a text layer cannot be read. Images and diagrams in documents are not checked.
 - Deep analysis for Java, Kotlin, TypeScript/TSX, Pascal and SQL; other languages are compared as plain text.
 - Code places are found by the names a section mentions and by shared terms (BM25). A section that describes behaviour in entirely different words than the code can be missed.
-- Measured on five projects with known answers ([mcp/eval/README.md](mcp/eval/README.md)): a README-only library (chalk), a long README (ky), a separate documentation repository (axios-docs), a Django app with database (linkding) and the MOBIQ sample. The check reports 50 to 92 % of the expected changes (must-have changes: 40 to 100 %), and on MOBIQ every reported section had an expected change. Of about 40 findings checked by hand, none was wrong; some were trivial (an alternative name for a key). On neuraldoc's own documentation it reported 8 changes, none wrong, 4 of them trivial; without the second look it had been 17, 7 of them wrong.
+- Measured on five projects with known answers ([mcp/eval/README.md](mcp/eval/README.md)): a README-only library (chalk), a long README (ky), a separate documentation repository (axios-docs), a Django app with database (linkding) and the MOBIQ sample. The check reports 67 to 92 % of the expected changes (must-have changes: 60 to 100 %), and on MOBIQ every reported section had an expected change. On neuraldoc's own repository with ten planted mismatches of ten different kinds it found 8, with 3 false alarms among 17 findings. Of about 40 findings checked by hand, none was wrong; some were trivial (an alternative name for a key). On neuraldoc's own documentation it reported 8 changes, none wrong, 4 of them trivial; without the second look it had been 17, 7 of them wrong.
 - Overviews of internal flows (architecture prose) are the weak spot: the check sees only some code places and cannot tell what calls what.
 - A check costs about 0.01 USD per section with `gemini-3.5-flash-lite` (0.1 USD for a short README, 0.5 USD for a documentation site with 60 sections). Repeating it costs nothing: answers are cached by content.
 - Corrections keep the language of the section (German and English are checked) and its Markdown format.

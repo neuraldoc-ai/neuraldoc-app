@@ -19,7 +19,7 @@ const { createJevClient, MODEL } = await import('./semantic-mapping.mjs')
 const { middleware } = await import('./handler.mjs')
 const { projectTool } = await import('./project-mcp.mjs')
 const { documentText, sections } = await import('./doc-text.mjs')
-const { classify, repoUrl } = await import('../frontend/src/dashboard/features/docs/import-rules.mjs')
+const { classify, gitignore, repoUrl } = await import('../frontend/src/dashboard/features/docs/import-rules.mjs')
 after(() => fs.rmSync(root, { recursive: true, force: true }))
 
 /** The browser's upload format: repo/…, docs/… and a manifest. */
@@ -135,6 +135,15 @@ test('import rules: repository documents, ignored folders, secrets and URLs', ()
   for (const bad of ['file:///etc', 'git@github.com:org/repo.git', 'ssh://host/repo', 'https://github.com', 'ext::sh -c id']) assert.equal(repoUrl(bad), null, bad)
 })
 
+test('a working folder: its .gitignore files decide what Git would not track', () => {
+  const skip = gitignore({
+    '': '# local state\n*.log\n/tmp/\nstate/\n!keep.log\ngenerated/**/*.js\nsecret?.txt\n',
+    'web': 'cache\n/only-root.md\n',
+  })
+  for (const p of ['a.log', 'src/b.log', 'tmp/x.js', 'mcp/state/projects.json', 'generated/a/b.js', 'generated/x.js', 'secret1.txt', 'web/cache/x', 'web/src/cache', 'web/only-root.md']) assert.equal(skip(p), true, p)
+  for (const p of ['keep.log', 'src/tmp/x.js', 'generated/a/b.ts', 'secret12.txt', 'cache/x', 'web/src/only-root.md', 'README.md']) assert.equal(skip(p), false, p)
+})
+
 test('documents: PDF, Word, Excel, PowerPoint and HTML become text; sections are exact slices', async () => {
   assert.match(await documentText('a.pdf', pdf(['Hallo PDF'])), /Seite 1[\s\S]*Hallo PDF/)
   assert.match(await documentText('a.docx', docs['handbuch/rabatt.docx']), /^# Rabatt im Handbuch\nAb 1000 EUR/)
@@ -167,6 +176,13 @@ test('upload: code and documents only; secrets, dependencies, legal texts and fi
   assert.equal(first.dataset.bundles[0].commits.length, 0)
   assert.ok(!JSON.stringify(first.dataset).includes('MOBIQ'))
   assert.ok(!fs.readdirSync(projects.projectsDir).some((f) => f.startsWith('.upload-')), 'upload folder removed')
+})
+
+test('an upload never brings Git metadata: a .git folder in the ZIP is not unpacked, so no history is read', async () => {
+  const withGit = await projects.addProject(upload({ ...repo, '.git/HEAD': 'ref: refs/heads/main\n', '.git/config': '[diff "x"]\n\ttextconv = calc.exe\n' }, docs, { repoName: 'mit-git' }))
+  assert.equal(withGit.history, null)
+  assert.ok(!withGit.project.warnings.some((w) => /Git-Historie/.test(w)))
+  projects.activateProject(first.project.id)
 })
 
 test('repository only: README and docs/ count as documentation; without any document the import stops', async () => {
