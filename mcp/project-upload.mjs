@@ -26,7 +26,8 @@ function extract(zip, dir) {
   for (const [name, bytes] of Object.entries(entries)) {
     if (name === 'manifest.json') { try { manifest = JSON.parse(strFromU8(bytes)) } catch { throw new DraftError('Upload ist beschädigt (manifest.json).') }; continue }
     const normal = path.posix.normalize(name)
-    if (!/^(repo|docs)\//.test(normal) || normal.includes('..') || name.includes('\\') || path.posix.isAbsolute(name)) continue
+    // An upload never brings Git metadata: a .git folder's config could make the history reader run commands.
+    if (!/^(repo|docs)\//.test(normal) || normal.includes('..') || name.includes('\\') || path.posix.isAbsolute(name) || /(^|\/)\.git(\/|$)/i.test(normal)) continue
     const target = path.resolve(dir, normal)
     if (!target.startsWith(dir + path.sep)) continue
     fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, bytes)

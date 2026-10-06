@@ -13,7 +13,7 @@ const SEP = '\x1f', END = '\x1e'
 
 const git = async (dir, args) => (await run('git', ['-C', dir, '-c', 'core.quotepath=off', ...args], { maxBuffer: 64 * 1024 * 1024, windowsHide: true })).stdout
 
-/** Ticket keys such as MOB-4812 (Jira style) or #128 in a branch name or message. */
+/** Ticket keys such as MOB-4812 (Jira style) or MOB4812 in a branch name or message. */
 export const ticketOf = (text) => (text.match(/\b([A-Z][A-Z0-9]{1,9})-(\d{1,6})\b/) ?? text.match(/\b([A-Z]{2,10})(\d{1,6})\b/))?.slice(1).join('-') ?? null
 
 /** Merge commit subjects of GitLab, GitHub and plain git. */
@@ -88,7 +88,7 @@ export async function readHistory(dir) {
   const diffs = {}
   for (const c of commits) {
     // Merges: what the branch brought in, as GitLab shows it (first-parent diff).
-    const args = c.parent_ids.length > 1 ? ['show', '--format=', '--patch', '--find-renames', '--no-color', '-m', '--first-parent', c.id] : ['show', '--format=', '--patch', '--find-renames', '--no-color', c.id]
+    const args = c.parent_ids.length > 1 ? ['show', '--format=', '--patch', '--find-renames', '--no-color', '--no-ext-diff', '--no-textconv', '-m', '--first-parent', c.id] : ['show', '--format=', '--patch', '--find-renames', '--no-color', '--no-ext-diff', '--no-textconv', c.id]
     let files = splitPatch(await git(dir, args).catch(() => ''))
     let total = 0
     files = files.slice(0, LIMITS.filesPerCommit).map((f) => { total += f.diff.length; return total > LIMITS.commitDiffChars ? { ...f, diff: '', too_large: true } : f })
