@@ -437,10 +437,15 @@ export async function testGitHub(p, { fetchImpl } = {}) {
     const call = client(config, { owner: '', repo: '' }, fetchImpl)
     result.account = (await call.request('GET', '/user')).login
   } else {
-    const response = await (fetchImpl ?? fetch)(`${config.api}/app`, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'neuraldoc', Authorization: `Bearer ${appJwt(config.appId, config.key)}` } }).catch(() => null)
+    const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'neuraldoc', Authorization: `Bearer ${appJwt(config.appId, config.key)}` }
+    const response = await (fetchImpl ?? fetch)(`${config.api}/app`, { headers }).catch(() => null)
     if (!response?.ok) throw new GitHubError(response?.status === 401 ? 'GitHub lehnt App-ID oder privaten Schlüssel ab.' : 'GitHub ist nicht erreichbar.', 400)
     result.account = `${(await response.json()).slug}[bot]`
+    const installed = await (fetchImpl ?? fetch)(`${config.api}/app/installations`, { headers }).catch(() => null)
+    if (installed?.ok) result.installations = (await installed.json()).map((i) => ({ account: i.account?.login, all: i.repository_selection === 'all' }))
+    result.installUrl = config.appSlug ? `https://${config.host}/apps/${config.appSlug}/installations/new` : null
   }
+  result.project = !!p
   const targets = p ? projectTargets(p, config) : {}
   for (const [origin, target] of Object.entries(targets)) {
     if (!target?.owner) continue
