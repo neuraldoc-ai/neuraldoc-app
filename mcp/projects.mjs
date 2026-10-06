@@ -13,6 +13,7 @@ import { applyLineEdits, CHECK_PROMPT_VERSION, checkDocumentLists, checkSection,
 import { log, logError } from './log.mjs'
 import { profile, reviewer, runtimeEnv } from './settings.mjs'
 import { scheduleSync } from './github.mjs'
+import { fileFindings, fileTree } from './file-refs.mjs'
 
 export const projectsDir = path.join(process.env.NEURALDOC_STATE_DIR || fileURLToPath(new URL('./state/', import.meta.url)), 'projects')
 const activePath = path.join(projectsDir, 'active.json')
@@ -107,10 +108,12 @@ export const sectionDocument = (p, section) => ({ title: p.docSources.find((s) =
 
 /** Jev weighs the findings of one section: clear contradictions are dropped, deletions need a confirmation. */
 async function weigh(p, section, result, jev, jevVeto = true) {
-  if (!result.findings.length || !jev) return result
-  const opinions = await verifyWithJev(jev, { section, findings: result.findings, excerpts: result.excerpts, total: p.files.length })
-  const findings = [], dropped = [...result.dropped]
-  result.findings.forEach((f, i) => {
+  // Links and file names checked against the repository are facts, not opinions: Jev does not weigh them.
+  const facts = result.findings.filter((f) => f.files), open = result.findings.filter((f) => !f.files)
+  if (!open.length || !jev) return result
+  const opinions = await verifyWithJev(jev, { section, findings: open, excerpts: result.excerpts, total: p.files.length })
+  const findings = [...facts], dropped = [...result.dropped]
+  open.forEach((f, i) => {
     const o = opinions[i]
     if (jevVeto && o.verdict === 'refuted' && o.refuted >= JEV_VETO && o.confidence >= JEV_VETO_CONFIDENCE) dropped.push({ kind: f.kind, doc_quote: f.doc_quote, reason: `Jev widerspricht (${Math.round(o.refuted * 100)} %)` })
     // Deleting text rests on a name the uploaded code lacks; dependencies are never uploaded. So a deletion needs Jev's confirmation too.
@@ -119,6 +122,23 @@ async function weigh(p, section, result, jev, jevVeto = true) {
   })
   if (findings.length === result.findings.length) return { ...result, findings }
   return { ...result, findings, dropped, status: findings.length ? 'findings' : 'ok', text: findings.length ? applyLineEdits(section.text, findings.flatMap((f) => f.edits)) : section.text }
+}
+
+/** The repository's files as the import saw them (projects imported before October 2026 have none). */
+const projectTrees = (p) => ({ repo: fileTree(p.trees?.repo), docs: fileTree(p.trees?.docs) })
+
+/** Adds links and file names that point to files the repository does not have; a model result may be missing (error, skipped). */
+function mergeFileFindings(result, section, source, trees) {
+  const { findings, questions } = source ? fileFindings(section, source, trees) : { findings: [], questions: [] }
+  if (!findings.length && !questions.length) return result
+  const base = result ?? { status: 'ok', findings: [], dropped: [], excerpts: [], terms: [] }
+  const kept = base.status === 'error' ? [] : [...base.findings]
+  for (const f of findings) {
+    try { applyLineEdits(section.text, [...kept, f].flatMap((x) => x.edits)); kept.push(f) } catch { /* overlaps a model finding on the same line */ }
+  }
+  const question = base.question || questions.join(' ')
+  if (!kept.length) return { ...base, status: base.status === 'findings' ? 'findings' : 'unclear', question, findings: [], text: section.text, summary: base.summary || 'Rückfrage zu einer Datei, die es nicht mehr gibt.' }
+  return { ...base, status: 'findings', findings: kept, question, model: base.model ?? 'Dateiabgleich', text: applyLineEdits(section.text, kept.flatMap((x) => x.edits)), summary: base.findings?.length && base.status !== 'error' ? base.summary : `${kept.length} Abweichung${kept.length === 1 ? '' : 'en'} zum aktuellen Repository.` }
 }
 
 /** Adds the entries the completeness pass found to a section's result, unless they touch the same lines or names. */
@@ -147,7 +167,7 @@ function generationOf(result, section) {
     generation: {
       status, recommendation: result.summary, id: `check-${digest(JSON.stringify(result.findings)).slice(0, 16)}`, model: result.model, createdAt: new Date().toISOString(),
       evidenceIds: [...new Set(result.findings.flatMap((f) => f.evidence.map((e) => e.id)))],
-      findings: result.findings.map(({ kind, doc_quote, explanation, evidence, absent, edits, jev, sure }) => ({ kind, doc_quote, explanation, evidence, absent, edits, sure: !!sure, jev: jev ? { verdict: jev.verdict, probability: jev.probability } : null })),
+      findings: result.findings.map(({ kind, doc_quote, explanation, evidence, absent, edits, jev, sure, files }) => ({ kind, doc_quote, explanation, evidence, absent, edits, sure: !!sure, jev: jev ? { verdict: jev.verdict, probability: jev.probability } : null, ...(files ? { files: true } : {}) })),
       usage: result.usage ?? { inputTokens: null, outputTokens: 0, costUsd: null },
       ...(result.answer ? { answer: result.answer } : {}),
     },
@@ -238,6 +258,15 @@ export async function checkProject({ createClient = createJevClient, fetchImpl, 
       }
     })
     lists.forEach((l) => { for (const [id, extra] of Object.entries(l.bySection)) { const i = targets.findIndex((t) => t.id === id); if (i >= 0 && results[i].status !== 'error') results[i] = mergeListFindings(results[i], targets[i], extra, l.excerpts) } })
+    // Links and file names: every section, also those without prose (a list of links is where dead links are).
+    const trees = projectTrees(p)
+    if (trees.repo || trees.docs) {
+      targets.forEach((section, i) => { results[i] = mergeFileFindings(results[i], section, p.docSources.find((s) => s.id === section.source), trees) })
+      for (const section of p.docFiles.filter((d) => d.checkable === false)) {
+        const r = mergeFileFindings(null, section, p.docSources.find((s) => s.id === section.source), trees)
+        if (r) { targets.push(section); results.push(r) }
+      }
+    }
     progress({ phase: 'jev' })
     // Jev weighs every finding (one request per section with findings).
     const weighed = await pool(results, concurrency, (r, i) => r.findings.length ? weigh(p, targets[i], r, jev, jevVeto).catch((error) => { if (/Jev lehnt den Key ab|Jev-Budget/.test(error.message)) throw error; log.warn('check', 'Jev-Prüfung fehlgeschlagen', { doc: targets[i].path, error: error.message }); return r }) : r)
@@ -257,7 +286,7 @@ export async function checkProject({ createClient = createJevClient, fetchImpl, 
       // A decision on a different correction no longer applies.
       if (p.decisions[id] && previous[id]?.text !== generated.text) delete p.decisions[id]
       for (const file of new Set(r.findings.flatMap((f) => f.evidence.map((e) => `file:${e.file}`)))) {
-        if (p.graph.edges.some((e) => e.id === `check:${section.source}:${file}`)) continue
+        if (p.graph.edges.some((e) => e.id === `check:${section.source}:${file}`) || !p.graph.nodes.some((node) => node.id === file)) continue
         p.graph.edges.push({ id: `check:${section.source}:${file}`, source: `doc:${section.source}`, target: file, kind: 'semantic', certainty: 'abgeleitet', evidence: { source: 'Erstprüfung', text: r.findings.filter((f) => f.evidence.some((e) => `file:${e.file}` === file)).map((f) => f.explanation).join(' '), method: `${r.model} + Jev` } })
       }
     })
@@ -286,7 +315,7 @@ export async function projectDraft(id, answer, { createClient = createJevClient,
     const started = Date.now()
     const retriever = createSectionRetriever(p.files)
     const checked = await checkSection({ section, document: sectionDocument(p, section), code: codeIndex(p.files), retriever, config, cacheDir: checkCache, answer, fetchImpl, ...valueFacts(section, retriever, p.history ? codeChanges(p.history, projectDiffs(p)) : []) })
-    const r = await weigh(p, section, checked, jev)
+    const r = await weigh(p, section, mergeFileFindings(checked, section, p.docSources.find((s) => s.id === section.source), projectTrees(p)), jev)
     const generated = r.status === 'findings' || r.status === 'unclear' ? generationOf({ ...r, answer }, section) : { text: section.text, why: r.summary || 'Laut Prüfung stimmt der Abschnitt mit dem Code überein.', confidence: 'pruefen', question: '', generation: { status: 'no_change', recommendation: r.summary, id: `check-none-${digest(section.id).slice(0, 8)}`, model: r.model ?? config.model, createdAt: new Date().toISOString(), evidenceIds: [], findings: [], usage: r.usage ?? { inputTokens: null, outputTokens: 0, costUsd: null }, ...(answer ? { answer } : {}) } }
     // Other sections may have been saved meanwhile: read, change and write without awaiting in between.
     const fresh = requireProject()

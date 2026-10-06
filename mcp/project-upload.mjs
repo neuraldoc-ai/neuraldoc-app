@@ -53,7 +53,42 @@ async function clone(value, dir, label) {
     throw new DraftError(`${label}: Klonen fehlgeschlagen (${detail.slice(0, 160)}).`, 502)
   }
   log.info('import', `${label}: geklont`, { url: parsed.url, ms: Date.now() - started })
-  return { name: parsed.name, url: parsed.url.replace(/\.git$/, '') }
+  return { name: parsed.name, url: parsed.url.replace(/\.git$/, ''), tree: await trackedTree(dir) }
+}
+
+/**
+ * Every tracked path of a clone, the submodules (their content is not cloned, but exists) and the .gitignore rules:
+ * links and file names in the documents are checked against them.
+ */
+async function trackedTree(dir) {
+  const { stdout } = await run('git', ['-C', dir, 'ls-files', '-s', '-z'], { maxBuffer: 64 * 1024 * 1024, windowsHide: true })
+  const paths = [], gitlinks = [], gitignore = {}
+  for (const entry of stdout.split('\0').filter(Boolean)) {
+    const [meta, file] = entry.split('\t')
+    if (meta.startsWith('160000')) gitlinks.push(file); else paths.push(file)
+  }
+  for (const file of paths.filter((f) => f.split('/').pop() === '.gitignore').slice(0, 200)) {
+    try { gitignore[file.split('/').slice(0, -1).join('/')] = fs.readFileSync(path.join(dir, file), 'utf8').slice(0, 100_000) } catch { /* unreadable: no rules */ }
+  }
+  // Deleted and renamed files of the history (as deep as the clone): "gibt es nicht mehr" rests on them, a rename gives the new place.
+  const deleted = new Set(), renamed = {}
+  try {
+    const { stdout: log } = await run('git', ['-C', dir, 'log', '--format=', '--name-status', '--diff-filter=DR', '-M', '-z'], { maxBuffer: 64 * 1024 * 1024, windowsHide: true, timeout: 60000 })
+    const tokens = log.split('\0').map((t) => t.replace(/^\n+/, ''))
+    for (let i = 0; i < tokens.length;) {
+      const status = tokens[i]
+      if (status.startsWith('R')) { renamed[tokens[i + 1]] ??= tokens[i + 2]; i += 3 } else if (status === 'D') { deleted.add(tokens[i + 1]); i += 2 } else i++
+    }
+  } catch { /* no history: nothing counts as deleted */ }
+  const current = new Set(paths)
+  return { paths: paths.slice(0, 50_000), gitlinks, gitignore, deleted: [...deleted].filter((f) => !current.has(f)).slice(0, 20_000), renamed: Object.fromEntries(Object.entries(renamed).filter(([from, to]) => !current.has(from) && current.has(to)).slice(0, 20_000)) }
+}
+
+/** What the browser sent about an uploaded folder: its paths and .gitignore rules (not trusted beyond strings). */
+function uploadedTree(value) {
+  if (!value || !Array.isArray(value.paths)) return null
+  const clean = (p) => typeof p === 'string' && p.length < 1000 && !p.includes('\0')
+  return { paths: value.paths.filter(clean).slice(0, 50_000), gitlinks: [], gitignore: Object.fromEntries(Object.entries(value.gitignore ?? {}).filter(([k, v]) => clean(k) && typeof v === 'string').slice(0, 200).map(([k, v]) => [k, v.slice(0, 100_000)])) }
 }
 
 /** Runs `use` with { name, repo, docs } folders and removes everything afterwards. */
@@ -65,10 +100,10 @@ export async function withUpload(zip, workDir, use) {
     const repoDir = path.join(dir, 'repo'), docsDir = path.join(dir, 'docs')
     const has = (folder) => fs.existsSync(folder) && fs.readdirSync(folder).length > 0
     let repo = null, docs = null
-    if (manifest.repoUrl) { if (has(repoDir)) fs.rmSync(repoDir, { recursive: true }); const cloned = await clone(manifest.repoUrl, repoDir, 'Repository'); repo = { dir: repoDir, label: cloned.name, url: cloned.url, source: 'url' } }
-    else if (has(repoDir)) repo = { dir: repoDir, label: String(manifest.repoName || 'Repository').slice(0, 100), source: 'upload' }
-    if (manifest.docsUrl) { if (has(docsDir)) fs.rmSync(docsDir, { recursive: true }); const cloned = await clone(manifest.docsUrl, docsDir, 'Dokumentation'); docs = { dir: docsDir, label: cloned.name, url: cloned.url, source: 'url' } }
-    else if (has(docsDir)) docs = { dir: docsDir, label: String(manifest.docsName || 'Dokumentation').slice(0, 100), source: 'upload' }
+    if (manifest.repoUrl) { if (has(repoDir)) fs.rmSync(repoDir, { recursive: true }); const cloned = await clone(manifest.repoUrl, repoDir, 'Repository'); repo = { dir: repoDir, label: cloned.name, url: cloned.url, tree: cloned.tree, source: 'url' } }
+    else if (has(repoDir)) repo = { dir: repoDir, label: String(manifest.repoName || 'Repository').slice(0, 100), tree: uploadedTree(manifest.repoTree), source: 'upload' }
+    if (manifest.docsUrl) { if (has(docsDir)) fs.rmSync(docsDir, { recursive: true }); const cloned = await clone(manifest.docsUrl, docsDir, 'Dokumentation'); docs = { dir: docsDir, label: cloned.name, url: cloned.url, tree: cloned.tree, source: 'url' } }
+    else if (has(docsDir)) docs = { dir: docsDir, label: String(manifest.docsName || 'Dokumentation').slice(0, 100), tree: uploadedTree(manifest.docsTree), source: 'upload' }
     if (!repo) throw new DraftError('Repository fehlt: Ordner oder ZIP hochladen oder eine GitHub-URL angeben.')
     return await use({ name: String(manifest.projectName || repo.label).slice(0, 100), repo, docs })
   } finally {

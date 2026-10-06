@@ -93,19 +93,19 @@ function FindingItem({ id, f, n, checked, focused, onToggle, onFocus }: { id: st
       <div className="grid min-w-0 flex-1 gap-1.5 text-sm">
         <span className="flex flex-wrap items-center gap-1.5">
           <Badge variant="outline" className={cn("font-normal", KIND[f.kind].tone)}>{KIND[f.kind].label}</Badge>
-          {f.sure && <Badge variant="outline" className="font-normal text-muted-foreground">von Jev bestätigt</Badge>}
+          {f.files ? <Badge variant="outline" className="font-normal text-muted-foreground">im Repository geprüft</Badge> : f.sure && <Badge variant="outline" className="font-normal text-muted-foreground">von Jev bestätigt</Badge>}
         </span>
         <p className="leading-snug"><InlineMarkdown text={f.explanation} /></p>
         {f.evidence.map((e, k) => (
           <figure key={k} className="grid gap-1">
-            <figcaption className="text-xs text-muted-foreground">Im Code: {e.source.replace(/:(\d+)-(\d+)$/, ", Zeilen $1–$2")}</figcaption>
+            <figcaption className="text-xs text-muted-foreground">{f.files ? "Im Repository" : "Im Code"}: {e.source.replace(/:(\d+)-(\d+)$/, ", Zeilen $1–$2")}</figcaption>
             <pre className="max-h-28 overflow-auto rounded-md border bg-muted/40 px-2.5 py-1.5 font-mono text-[12px] leading-5 whitespace-pre-wrap">{e.quote}</pre>
           </figure>
         ))}
         {f.kind === "removed" && f.absent.length > 0 && (
           <p className="text-xs text-muted-foreground">
             {f.absent.map((a, k) => <code key={k} className="me-1 rounded bg-muted px-1 font-mono">{a}</code>)}
-            kommt in keiner der {files} Code-Dateien vor.
+            {f.files ? "gibt es im Repository nicht." : `kommt in keiner der ${files} Code-Dateien vor.`}
           </p>
         )}
       </div>

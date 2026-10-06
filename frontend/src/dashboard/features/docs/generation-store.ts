@@ -8,6 +8,8 @@ export type Finding = {
   explanation: string
   evidence: { id: string; quote: string; source: string; file: string }[]
   absent: string[]
+  /** A link or file name checked against the repository's files (no model, no Jev). */
+  files?: boolean
   edits: { op: "replace" | "insert_after" | "delete"; start: number; end: number; text: string }[]
   /** Jev confirmed the finding. */
   sure: boolean

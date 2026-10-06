@@ -2,7 +2,9 @@
 import { classify, gitignore, ignored, LIMITS } from './import-rules.mjs'
 
 export type Role = 'repo' | 'docs'
-export type Picked = { name: string; files: { path: string; data: Uint8Array }[]; code: number; docs: number; bytes: number }
+/** Every path of the folder (also files neuraldoc does not read) and its .gitignore files: links and file names in the documents are checked against them. */
+export type Tree = { paths: string[]; gitignore: Record<string, string> }
+export type Picked = { name: string; files: { path: string; data: Uint8Array }[]; code: number; docs: number; bytes: number; tree: Tree }
 type Candidate = { path: string; size: number; read: () => Promise<Uint8Array> }
 
 const fromFile = (file: File, path: string): Candidate => ({ path, size: file.size, read: async () => new Uint8Array(await file.arrayBuffer()) })
@@ -23,7 +25,11 @@ async function fromZip(file: File, role?: Role): Promise<Candidate[]> {
   const unzip = new Unzip((entry) => {
     // ZIPs made with Windows tools (PowerShell, .NET) separate folders with backslashes.
     const name = entry.name.replace(/\\/g, '/')
-    if (!wanted(name, entry.originalSize ?? 0)) return
+    if (!wanted(name, entry.originalSize ?? 0)) {
+      // Not read, but its path counts: a document may link to it.
+      if (!name.endsWith('/') && !ignored(name)) out.push({ path: name, size: entry.originalSize ?? 0, read: async () => new Uint8Array() })
+      return
+    }
     pending.push(new Promise<void>((resolve, reject) => {
       const chunks: Uint8Array[] = []
       entry.ondata = (error, data, final) => {
@@ -87,24 +93,28 @@ async function withoutGitignored(list: Candidate[]): Promise<Candidate[]> {
   const files: Record<string, string> = {}
   for (const c of rules) files[c.path.split('/').slice(0, -1).join('/')] = new TextDecoder().decode(await c.read())
   const skip = gitignore(files)
-  return list.filter((c) => !rules.includes(c) && !skip(c.path))
+  // The .gitignore files stay in the list: pick() sends their rules along with the paths.
+  return list.filter((c) => rules.includes(c) || !skip(c.path))
 }
 
 /** Strips a shared top folder (as in GitHub ZIPs), filters by the import rules and reads the remaining files. */
 export async function pick(list: Candidate[], role: Role): Promise<Picked> {
   const tops = new Set(list.map((c) => c.path.includes('/') ? c.path.split('/')[0] : ''))
   const top = tops.size === 1 && !tops.has('') ? [...tops][0] : ''
-  const kept = list.map((c) => ({ ...c, path: top ? c.path.slice(top.length + 1) : c.path })).map((c) => ({ ...c, kind: classify(c.path, role) })).filter((c) => c.kind && c.size <= (c.kind === 'code' ? LIMITS.codeBytes : LIMITS.fileBytes))
+  const all = list.map((c) => ({ ...c, path: top ? c.path.slice(top.length + 1) : c.path }))
+  const tree: Tree = { paths: all.map((c) => c.path).slice(0, 50_000), gitignore: {} }
+  for (const c of all.filter((c) => c.path.split('/').pop() === '.gitignore')) tree.gitignore[c.path.split('/').slice(0, -1).join('/')] = new TextDecoder().decode(await c.read())
+  const kept = all.map((c) => ({ ...c, kind: classify(c.path, role) })).filter((c) => c.kind && c.size <= (c.kind === 'code' ? LIMITS.codeBytes : LIMITS.fileBytes))
   const bytes = kept.reduce((sum, c) => sum + c.size, 0)
   if (bytes > LIMITS.uploadBytes) throw new Error(`Zu groß: ${Math.round(bytes / 1e6)} MB nach dem Filtern, erlaubt sind ${LIMITS.uploadBytes / 1e6} MB.`)
   const files = await Promise.all(kept.map(async (c) => ({ path: c.path, data: await c.read() })))
   const name = (top || list[0]?.path.split('/')[0] || '').replace(/\.zip$/i, '').replace(/-(main|master)$/, '') || (role === 'repo' ? 'Repository' : 'Dokumentation')
-  return { name, files, code: kept.filter((c) => c.kind === 'code').length, docs: kept.filter((c) => c.kind === 'doc').length, bytes }
+  return { name, files, code: kept.filter((c) => c.kind === 'code').length, docs: kept.filter((c) => c.kind === 'doc').length, bytes, tree }
 }
 
 export async function archive(repo: Picked | null, docs: Picked | null, manifest: { repoUrl?: string; docsUrl?: string; projectName?: string }) {
   const { zipSync, strToU8 } = await import('fflate')
-  const entries: Record<string, Uint8Array> = { 'manifest.json': strToU8(JSON.stringify({ ...manifest, repoName: repo?.name, docsName: docs?.name })) }
+  const entries: Record<string, Uint8Array> = { 'manifest.json': strToU8(JSON.stringify({ ...manifest, repoName: repo?.name, docsName: docs?.name, repoTree: repo?.tree, docsTree: docs?.tree })) }
   for (const file of repo?.files ?? []) entries[`repo/${file.path}`] = file.data
   for (const file of docs?.files ?? []) entries[`docs/${file.path}`] = file.data
   return zipSync(entries, { level: 1 })
