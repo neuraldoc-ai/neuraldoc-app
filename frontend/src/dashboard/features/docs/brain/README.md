@@ -2,7 +2,7 @@
 
 The index connects the supplied MOBIQ source snapshot: features, Jira tickets, original commits and their authors, files, declared functions, product modules, parameters, SQL tables, views, columns and foreign keys. Documents are linked through the existing dashboard proposals. Departments are derived from the product modules; actual team ownership is not evidenced.
 
-`npm run brain:index` in `frontend/` builds `source-graph.json` with `mcp/build-brain.mjs`. The build uses GitLab diffs, the final repository snapshot and the schema/migration files. It never executes product code or imports SQL data. Yearly SQL partitions are shown as a template, not as queried runtime objects. The source snapshot contains more changes than the seven dashboard features.
+`pnpm brain:index` in `frontend/` builds `source-graph.json` with `mcp/build-brain.mjs`. The build uses GitLab diffs, the final repository snapshot and the schema/migration files. It never executes product code or imports SQL data. Yearly SQL partitions are shown as a template, not as queried runtime objects. The source snapshot contains more changes than the seven dashboard features.
 
 Every relationship carries a source reference and a text excerpt. `belegt` (evidenced) means a directly contained declaration, code/SQL reference or source assignment. `abgeleitet` (derived) covers module/department assignments and name matches between entities and tables. `zugeordnet` (assigned) marks documentation proposals. Function calls are captured statically from visible names and type declarations; there is no complete language, persistence or runtime analysis. A function mentioned in a commit diff is not automatically treated as fully changed.
 

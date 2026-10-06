@@ -18,7 +18,7 @@ The dataset lives in four repositories. The showcase includes them as Git submod
 | [`mobiq-docs`](https://github.com/neuraldoc-ai/mobiq-docs) | Confluence pages and SharePoint files |
 | [`mobiq-db`](https://github.com/neuraldoc-ai/mobiq-db) | PostgreSQL scripts and `docker compose` |
 
-The showcase image contains `mobiq/data`, `mobiq-docs` and `mobiq-db`; the app image contains none of them. `mobiq-code` is only needed to rebuild the code graph. For local development of the showcase run `npm run dev:showcase` in `frontend/`.
+The showcase image contains `mobiq/data`, `mobiq-docs` and `mobiq-db`; the app image contains none of them. `mobiq-code` is only needed to rebuild the code graph. For local development of the showcase run `pnpm dev:showcase` in `frontend/`.
 
 The code reads the data in the original layout (`gitlab/…`, `repo/…`, `postgres/…`); [`mcp/dataset.mjs`](../mcp/dataset.mjs) and [`frontend/vite.config.ts`](../frontend/vite.config.ts) map it to the repositories. To regenerate the dataset, run `node generate.mjs && node publish.mjs` in the `mobiq` repository.
 
@@ -34,10 +34,10 @@ In the `frontend` folder:
 
 | Command | What it does | Cost |
 | --- | --- | --- |
-| `npm run brain:index` | Builds the code graph offline | free |
-| `npm run brain:map` | Calls Jev for module and document mapping; unchanged requests come from the cache | paid, capped by `NEURALDOC_JEV_BUDGET_USD` |
-| `npm run brain:test` | Tests the graph builder | free |
-| `npm run brain:evaluate` | Checks 13 manually labelled pairs with Jev | paid |
-| `npm run brain:report` | Writes [MAPPING_REPORT.md](../MAPPING_REPORT.md) | free |
+| `pnpm brain:index` | Builds the code graph offline | free |
+| `pnpm brain:map` | Calls Jev for module and document mapping; unchanged requests come from the cache | paid, capped by `NEURALDOC_JEV_BUDGET_USD` |
+| `pnpm brain:test` | Tests the graph builder | free |
+| `pnpm brain:evaluate` | Checks 13 manually labelled pairs with Jev | paid |
+| `pnpm brain:report` | Writes [MAPPING_REPORT.md](../MAPPING_REPORT.md) | free |
 
 The key is `TYPESAFE_API_KEY` in `frontend/.env.local`. Jev runs with the pinned model `jev-1.13.0` ([TypeSafe API](https://docs.typesafe.ai/api)). Caches and raw reports in `mcp/state/` are ignored by Git; stale results are not loaded when the input changes.

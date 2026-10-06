@@ -4,9 +4,9 @@
 
 ## How tested
 
-- [ ] `npm test`
-- [ ] `npm run build`
-- [ ] `npm run lint`
+- [ ] `pnpm test`
+- [ ] `pnpm build`
+- [ ] `pnpm lint`
 - [ ] checked in the browser (showcase and/or own project)
 
 ## Notes

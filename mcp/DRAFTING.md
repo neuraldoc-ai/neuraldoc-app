@@ -8,7 +8,7 @@ Up to four different texts are requested in parallel; identical concurrent reque
 
 ## Setup
 
-With Docker, put these into the file passed with `--env-file` and start the container again; with `npm run dev`, set them in `frontend/.env.local` and restart Vite (Vertex example; other providers are listed in the main README):
+With Docker, put these into the file passed with `--env-file` and start the container again; with `pnpm dev`, set them in `frontend/.env.local` and restart Vite (Vertex example; other providers are listed in the main README):
 
 ```dotenv
 NEURALDOC_DRAFT_PROVIDER=vertex

@@ -9,24 +9,24 @@ You need Git and Node.js 24. Docker is only needed to test the image.
 ```bash
 git clone --recursive https://github.com/neuraldoc-ai/neuraldoc-app.git
 cd neuraldoc-app/frontend
-npm ci
-npm run dev        # http://localhost:5173/app/
+pnpm install
+pnpm dev           # http://localhost:5173/app/
 ```
 
-The submodules hold the MOBIQ showcase; tests, type checks and `npm run dev:showcase` need them, the app itself does not (`npm run build:app` builds without them). On Windows, clone with `git -c core.autocrlf=false clone --recursive …` so the sample code keeps its line endings. If you cloned without `--recursive`, run `git submodule update --init`.
+The submodules hold the MOBIQ showcase; tests, type checks and `pnpm dev:showcase` need them, the app itself does not (`pnpm build:app` builds without them). On Windows, clone with `git -c core.autocrlf=false clone --recursive …` so the sample code keeps its line endings. If you cloned without `--recursive`, run `git submodule update --init`.
 
 ## Checks
 
 Run these in `frontend/` before you open a pull request. CI runs the same commands.
 
 ```bash
-npm test           # backend tests; Jev and LLMs are mocked, nothing is billed
-npm run build      # type check and production build
-npm run lint
+pnpm test           # backend tests; Jev and LLMs are mocked, nothing is billed
+pnpm build         # type check and production build
+pnpm lint
 docker build -t neuraldoc ..   # optional: the image
 ```
 
-Tests must never call a paid API. Use the injection options of the Jev client and the draft generator, as the existing tests in `mcp/*.test.mjs` do. Real provider runs (`npm run brain:map`, `npm run brain:evaluate`) are manual and cost money.
+Tests must never call a paid API. Use the injection options of the Jev client and the draft generator, as the existing tests in `mcp/*.test.mjs` do. Real provider runs (`pnpm brain:map`, `pnpm brain:evaluate`) are manual and cost money.
 
 ## Guidelines
 

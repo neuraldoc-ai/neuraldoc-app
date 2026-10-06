@@ -15,8 +15,9 @@
 # The interface is built once on the build machine; the result is the same on every platform.
 FROM --platform=$BUILDPLATFORM node:24-alpine AS deps
 WORKDIR /app/frontend
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci --no-audit --no-fund
+RUN corepack enable
+COPY frontend/package.json frontend/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 COPY frontend/ ./
 COPY mcp/ /app/mcp/
 ARG VITE_LANDING_URL=
@@ -25,14 +26,14 @@ ENV VITE_LANDING_URL=$VITE_LANDING_URL
 # Without datasets/ the showcase parts are built from an empty stand-in (see vite.config.ts).
 # Type checking needs the submodules and runs in CI.
 FROM deps AS build
-RUN npm run build:app
+RUN pnpm run build:app
 
 FROM deps AS build-showcase
 # MOBIQ example (git submodules): eval data, docs and database. The code repository is only needed for brain:index.
 COPY datasets/mobiq/data/ /app/datasets/mobiq/data/
 COPY datasets/mobiq-docs/ /app/datasets/mobiq-docs/
 COPY datasets/mobiq-db/ /app/datasets/mobiq-db/
-RUN npm run build
+RUN pnpm run build
 
 FROM node:24-alpine AS runtime
 LABEL org.opencontainers.image.title="neuraldoc-app" \
@@ -42,8 +43,8 @@ LABEL org.opencontainers.image.title="neuraldoc-app" \
 # Git clones repositories given by URL in the import dialog.
 RUN apk add --no-cache git
 WORKDIR /app/frontend
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
+COPY frontend/package.json frontend/pnpm-lock.yaml ./
+RUN corepack enable && pnpm install --prod --frozen-lockfile && pnpm store prune && rm -rf /root/.cache /root/.local/share/pnpm
 WORKDIR /app
 # The server shares import rules and vocabulary with the UI.
 COPY frontend/src/dashboard/features/docs/import-rules.mjs frontend/src/dashboard/features/docs/vocabulary.ts ./frontend/src/dashboard/features/docs/

@@ -266,14 +266,14 @@ Keys saved under **Einstellungen** apply immediately and win over environment va
 
 ## Development
 
-Without Docker you need Node.js 24:
+Without Docker you need Node.js 24 and pnpm (`corepack enable` installs the version pinned in `frontend/package.json`):
 
 ```bash
 cd frontend
-npm ci
-npm run dev            # http://localhost:5173/app/, with hot reload
-npm test               # backend tests, Jev and LLM mocked, no costs
-npm run build          # type check and production build
+pnpm install
+pnpm dev          # http://localhost:5173/app/, with hot reload
+pnpm test         # backend tests, Jev and LLM mocked, no costs
+pnpm build        # type check and production build
 ```
 
 Keys for development go into `frontend/.env.local` (template: `frontend/.env.example`). Project layout, data flow and how the showcase is built: [ARCHITECTURE.md](ARCHITECTURE.md). The MOBIQ sample dataset: [docs/mobiq-showcase.md](docs/mobiq-showcase.md).

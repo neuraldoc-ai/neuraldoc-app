@@ -23,7 +23,7 @@ body:
     id: run
     attributes:
       label: How do you run neuraldoc?
-      options: [Docker, npm run dev, npm run start]
+      options: [Docker, pnpm dev, pnpm start]
     validations:
       required: true
   - type: input

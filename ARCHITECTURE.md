@@ -76,7 +76,7 @@ Everything lives below `NEURALDOC_STATE_DIR` (`/data` in Docker, `mcp/state/` ot
 
 ```
 ├── Dockerfile               two-stage build: interface on the build platform, slim runtime with Git
-├── frontend/                React app, Vite config, npm scripts
+├── frontend/                React app, Vite config, pnpm scripts
 │   └── src/dashboard/
 │       ├── features/docs/   overview, changes, editor, evidence, MCP page, project import
 │       ├── features/docs/brain/   Company Brain graph (React Flow)

@@ -53,11 +53,11 @@ All responses received so far in the two local caches (including development run
 In the frontend folder:
 
 ```powershell
-npm run brain:index     # offline, uses existing matching model results
-npm run brain:map       # runs Jev explicitly; unchanged requests come from the cache
-npm run brain:evaluate  # checks the labelled cases
-npm run brain:test      # local parser, graph and API contract tests, no model costs
-npm run brain:report    # writes this report from the local results
+pnpm brain:index     # offline, uses existing matching model results
+pnpm brain:map       # runs Jev explicitly; unchanged requests come from the cache
+pnpm brain:evaluate  # checks the labelled cases
+pnpm brain:test      # local parser, graph and API contract tests, no model costs
+pnpm brain:report    # writes this report from the local results
 ```
 
 TYPESAFE_API_KEY lives only in frontend/.env.local (ignored), never in VITE_* variables. NEURALDOC_JEV_BUDGET_USD limits the mapping run (default 0.25 USD; at most 1 USD per run). Cache and raw reports live in mcp/state/ (ignored). The graph contains only decisions and provenance, no credentials. Node uses the operating system's certificate store; TLS verification stays enabled.
