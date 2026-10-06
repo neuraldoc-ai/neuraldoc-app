@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useSaveSettings, type Setup } from "./api";
 import { SecretField } from "./keys-form";
 
-type TestResult = { auth: "app" | "token"; account: string; repositories: { origin: string; repo: string; base?: string; ok: boolean; message: string }[] };
+type TestResult = { auth: "app" | "token"; account: string; project: boolean; installUrl?: string | null; installations?: { account: string; all: boolean }[]; repositories: { origin: string; repo: string; base?: string; ok: boolean; message: string }[] };
 
 async function post<T>(url: string, body: unknown): Promise<T> {
   const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -309,7 +309,10 @@ export function GitHubForm({ setup }: { setup: Setup }) {
                 {r.repo}{r.base ? ` → ${r.base}` : ""}: {r.message}
               </span>
             ))}
-            {!test.data.repositories.length && <span className="text-muted-foreground">Das aktive Projekt hat noch kein GitHub-Repository.</span>}
+            {test.data.installations && (test.data.installations.length
+              ? <span>Installiert bei {test.data.installations.map((i) => `${i.account}${i.all ? " (alle Repositories)" : ""}`).join(", ")}</span>
+              : <span className="text-muted-foreground">Die App ist noch nirgends installiert.{test.data.installUrl && <> <a className="underline" href={test.data.installUrl} target="_blank" rel="noreferrer">Jetzt installieren</a></>}</span>)}
+            {!test.data.repositories.length && <span className="text-muted-foreground">{test.data.project ? "Dem Projekt ist kein GitHub-Repository zugeordnet. Importiere es per GitHub-URL oder lege das Repository im Projekt fest." : "Noch kein Projekt aktiv. Lege eines an, dann prüfe ich den Schreibzugriff auf sein Repository."}</span>}
           </div>
         )}
         <Tabs defaultValue={token && !app ? "token" : "app"}>
