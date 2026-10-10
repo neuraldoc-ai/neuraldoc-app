@@ -49,6 +49,10 @@ restores documented behaviour, a revert, unused code behind a "feat" message). D
 | + Jev, p ≥ 0.7 | 87 / 85 | 66 % | 4 / 5 | 0.007 USD |
 | + Jev, p ≥ 0.7, rules (release notes, unused code) | 87 / 85 | 75 % | 4 / 5 | 0.004 USD |
 | same without commit messages, p ≥ 0.6 | 87 / 82 | 78 % | 5 / 5 | 0.004 USD |
+| Jev p ≥ 0.5 + local 9B checks each flagged section and writes the correction | 94 / 90 | 64 % | 4 / 5 | 0 (about 20 min of laptop GPU) |
+
+The local 9B as second stage keeps the recall of the loose Jev threshold but removes only 6 of 61 hits; a stricter
+Jev threshold alone gets more precision. Its corrections are not judged yet.
 
 What made the difference:
 - The enclosing element of each changed line (nearest less-indented lines: the YAML key above `standard: 25`, the
