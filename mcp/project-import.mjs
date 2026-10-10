@@ -9,7 +9,7 @@ import { readHistory } from './git-history.mjs'
 
 export const digest = (value) => crypto.createHash('sha256').update(value).digest('hex')
 // Part of the project id: a changed importer builds a fresh project instead of reusing a stale graph.
-const IMPORTER_VERSION = 8
+const IMPORTER_VERSION = 9
 export const BUNDLE_ID = 'erstpruefung'
 
 /** Every regular file below root as a POSIX path; symlinks and ignored folders are never followed. */
@@ -46,7 +46,7 @@ const checkable = (text) => !linkList(text) && (proseWords(text).length >= 6 || 
  * input: { name, repo: { dir, label, source }, docs?: { dir, label, source } }
  */
 export async function importProject(input, { projectsDir }) {
-  const started = Date.now(), warnings = [], files = [], docSources = []
+  const started = Date.now(), warnings = [...(input.docs?.warnings ?? [])], files = [], docSources = []
   const name = String(input.name || input.repo?.label || '').trim().slice(0, 100) || 'Projekt'
   const collect = async (origin, root) => {
     const pending = []
@@ -155,5 +155,5 @@ export async function importProject(input, { projectsDir }) {
   if (history) fs.writeFileSync(path.join(projectsDir, id, 'diffs.json'), JSON.stringify(history.diffs))
   const graph = { nodes, edges, metadata: { snapshot: date, sources: ['Repository', 'Dokumente'], method: 'Tree-sitter, TypeScript-Symbolauflösung und PostgreSQL AST; statische Analyse.', analysis: parserReport, semantic: { status: 'missing' } } }
   log.info('import', 'Projekt analysiert', { name, commits: history?.commits.length ?? 0, features: history?.features.length ?? 0, code: files.length, documents: docSources.length, sections: docFiles.length, warnings: warnings.length, ms: Date.now() - started })
-  return { id, name, sources: { repo: { label: input.repo.label, source: input.repo.source, ...(input.repo.url ? { url: input.repo.url } : {}) }, docs: input.docs?.dir ? { label: input.docs.label, source: input.docs.source, ...(input.docs.url ? { url: input.docs.url } : {}) } : null }, createdAt: now, files, docSources, docFiles, moduleDefs, warnings, dataset, graph, history: history && { ref: history.ref, tag: history.tag, head: history.head, commits: history.commits, mergeRequests: history.mergeRequests, features: history.features }, mapping: null, generated: {}, decisions: {}, events: [], trees: { repo: input.repo.tree ?? null, docs: input.docs?.tree ?? null } }
+  return { id, name, sources: { repo: { label: input.repo.label, source: input.repo.source, ...(input.repo.url ? { url: input.repo.url } : {}) }, docs: input.docs?.dir ? { label: input.docs.label, source: input.docs.source, ...(input.docs.url ? { url: input.docs.url } : {}), ...(input.docs.live ? { live: input.docs.live } : {}) } : null }, createdAt: now, files, docSources, docFiles, moduleDefs, warnings, dataset, graph, history: history && { ref: history.ref, tag: history.tag, head: history.head, commits: history.commits, mergeRequests: history.mergeRequests, features: history.features }, mapping: null, generated: {}, decisions: {}, events: [], trees: { repo: input.repo.tree ?? null, docs: input.docs?.tree ?? null } }
 }

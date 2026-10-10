@@ -10,6 +10,7 @@ import { LIMITS, repoUrl } from '../frontend/src/dashboard/features/docs/import-
 import { DraftError } from './drafting.mjs'
 import { log } from './log.mjs'
 import { cloneToken } from './github.mjs'
+import { fetchConfluence, fetchDrive } from './live-sources.mjs'
 
 const run = promisify(execFile)
 
@@ -102,7 +103,17 @@ export async function withUpload(zip, workDir, use) {
     let repo = null, docs = null
     if (manifest.repoUrl) { if (has(repoDir)) fs.rmSync(repoDir, { recursive: true }); const cloned = await clone(manifest.repoUrl, repoDir, 'Repository'); repo = { dir: repoDir, label: cloned.name, url: cloned.url, tree: cloned.tree, source: 'url' } }
     else if (has(repoDir)) repo = { dir: repoDir, label: String(manifest.repoName || 'Repository').slice(0, 100), tree: uploadedTree(manifest.repoTree), source: 'upload' }
-    if (manifest.docsUrl) { if (has(docsDir)) fs.rmSync(docsDir, { recursive: true }); const cloned = await clone(manifest.docsUrl, docsDir, 'Dokumentation'); docs = { dir: docsDir, label: cloned.name, url: cloned.url, tree: cloned.tree, source: 'url' } }
+    const spaces = Array.isArray(manifest.confluence?.spaces) ? manifest.confluence.spaces.map(String).slice(0, 50) : [], folder = typeof manifest.drive?.folder === 'string' ? manifest.drive.folder.slice(0, 500) : ''
+    if (spaces.length || folder) {
+      // Live sources: Confluence spaces and a Drive folder are read into the docs folder like an upload.
+      if (has(docsDir)) fs.rmSync(docsDir, { recursive: true })
+      fs.mkdirSync(docsDir, { recursive: true })
+      const live = {}, warnings = []
+      if (spaces.length) live.confluence = await fetchConfluence(docsDir, spaces)
+      if (folder) { const drive = await fetchDrive(docsDir, folder); live.drive = { folder: drive.folder, files: drive.files }; warnings.push(...drive.warnings) }
+      const label = [live.confluence && `Confluence ${live.confluence.spaces.map((s) => s.key).join(', ')}`, live.drive && `Drive „${live.drive.folder.name}“`].filter(Boolean).join(' + ')
+      docs = { dir: docsDir, label, source: 'live', live, tree: null, warnings }
+    } else if (manifest.docsUrl) { if (has(docsDir)) fs.rmSync(docsDir, { recursive: true }); const cloned = await clone(manifest.docsUrl, docsDir, 'Dokumentation'); docs = { dir: docsDir, label: cloned.name, url: cloned.url, tree: cloned.tree, source: 'url' } }
     else if (has(docsDir)) docs = { dir: docsDir, label: String(manifest.docsName || 'Dokumentation').slice(0, 100), tree: uploadedTree(manifest.docsTree), source: 'upload' }
     if (!repo) throw new DraftError('Repository fehlt: Ordner oder ZIP hochladen oder eine GitHub-URL angeben.')
     return await use({ name: String(manifest.projectName || repo.label).slice(0, 100), repo, docs })

@@ -17,6 +17,7 @@ import { log, logError } from './log.mjs'
 import { projectTools, projectTool } from './project-mcp.mjs'
 import { projectUsage } from './project-usage.mjs'
 import { appManifest, completeAppManifest, githubStatus, isPublished, proposalLinks, resetGitHub, scheduleSync, setProjectTarget, syncGitHub, testGitHub } from './github.mjs'
+import { confluenceConfig, confluenceLinks, confluenceStatus, driveConfig, isWritten, resetConfluence, scheduleConfluence, syncConfluence, testConfluence, testDrive } from './live-sources.mjs'
 
 // The MOBIQ showcase reads its dataset (datasets/) as soon as it is loaded, so only showcase mode imports it.
 let showcaseModules
@@ -185,7 +186,7 @@ async function api(req, res, path) {
       localMutation()
       const { scope } = await readJsonBody(req, 1024)
       if (!['projects', 'all'].includes(scope)) throw new Error('scope muss projects oder all sein.')
-      resetProjects(); resetGitHub()
+      resetProjects(); resetGitHub(); resetConfluence()
       if (scope === 'all') { resetSettings(); resetConnections(); log.info('reset', 'Profil, Keys und Datenbankverbindungen gelöscht') }
       return send(res, 200, { ok: true, scope })
     }
@@ -216,6 +217,27 @@ async function api(req, res, path) {
       }
     }
 
+    if (path.startsWith('/api/mcp/sources/') || path.startsWith('/api/mcp/confluence/')) {
+      // Confluence and Google Drive as live documentation: off in the showcase, every change only from this app.
+      if (showcaseOnly()) throw new DraftError('Im Showcase gibt es keine Confluence- oder Drive-Anbindung.', 403)
+      if (req.method === 'GET' && path === '/api/mcp/confluence/status') {
+        const project = activeProject()
+        return send(res, 200, { configured: confluenceConfig().configured, live: !!project?.sources?.docs?.live?.confluence, ...confluenceStatus, links: project ? confluenceLinks(project) : {} }, { 'Cache-Control': 'no-store' })
+      }
+      if (req.method === 'POST') {
+        localMutation()
+        const body = await readJsonBody(req, 4096)
+        if (path === '/api/mcp/sources/test') {
+          const settle = (work) => work.then((value) => ({ ok: true, ...value }), (error) => ({ ok: false, message: error.message }))
+          return send(res, 200, {
+            confluence: confluenceConfig().configured ? await settle(testConfluence()) : null,
+            drive: driveConfig().configured || driveConfig().invalid ? await settle(testDrive(typeof body.folder === 'string' ? body.folder : '')) : null,
+          })
+        }
+        if (path === '/api/mcp/confluence/sync') { const project = activeProject(); if (!project) throw new DraftError('Zuerst ein Projekt importieren.', 400); return send(res, 200, { ...(await syncConfluence(activeProject)), links: confluenceLinks(project) }) }
+      }
+    }
+
     if (path.startsWith('/api/mcp/db/')) {
       // Own PostgreSQL connections: off in the public showcase, every change and query only from this app.
       if (showcaseOnly()) throw new DraftError('Im Showcase lassen sich keine Datenbanken verbinden.', 403)
@@ -243,13 +265,16 @@ async function api(req, res, path) {
         localMutation(); const body = await readJsonBody(req)
         // A section merged on GitHub is part of the repository now; changing it is a new change there.
         if (project && (body.ids || [body.id]).some((id) => isPublished(project.id, id))) throw new DraftError('Diese Änderung ist auf GitHub schon gemergt und lässt sich hier nicht mehr zurücknehmen.', 409)
-        const decisions = projectDecisions(body); scheduleSync(activeProject); return send(res, 200, decisions)
+        if (project && (body.ids || [body.id]).some((id) => isWritten(project.id, id))) throw new DraftError('Diese Änderung steht schon in Confluence. Zurücknehmen geht dort über den Seitenverlauf.', 409)
+        const decisions = projectDecisions(body); scheduleSync(activeProject); scheduleConfluence(activeProject); return send(res, 200, decisions)
       }
       if (req.method === 'POST' && path === '/api/mcp/decisions/reset') { localMutation(); const decisions = resetProjectDecisions(); scheduleSync(activeProject); return send(res, 200, decisions) }
       if (req.method === 'GET' && /^\/api\/mcp\/changes\//.test(path)) {
         // Where each approved section is on GitHub: its pull request, open or merged.
         const links = project ? proposalLinks(project) : {}
         const writebacks = Object.entries(links).map(([proposal, l]) => ({ proposal, target: { system: 'GitHub', title: `${l.repo}${l.number ? ` #${l.number}` : ''}`, url: l.url ?? `https://github.com/${l.repo}` }, version: l.number ?? 0, at: l.at, label: l.state === 'merged' ? (l.number ? `PR #${l.number} gemergt` : 'Schon im Repository') : l.state === 'edited' ? `PR #${l.number} (von Hand geändert)` : `In PR #${l.number}` }))
+        // Sections written back to Confluence: the page with its new version.
+        for (const [proposal, l] of Object.entries(project ? confluenceLinks(project) : {})) if (l.state === 'written') writebacks.push({ proposal, target: { system: 'Confluence', title: `Seite ${l.pageId}`, url: l.url }, version: l.version, at: l.at, label: l.partial ? `Confluence Version ${l.version} (teilweise)` : `In Confluence, Version ${l.version}` })
         return send(res, 200, { checks: [], mrComment: null, approvers: approvers({ ...local(), self: true }), writeBack: false, writebacks, targets: {} })
       }
       if (req.method === 'GET' && path === '/api/mcp/activity') return send(res, 200, { log: [], checks: [], questions: [], writebacks: [], mrComments: [], stats: { calls: 0, answer: 0, raw: 0, perTool: {} } })

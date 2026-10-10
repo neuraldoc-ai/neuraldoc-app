@@ -112,7 +112,7 @@ export async function pick(list: Candidate[], role: Role): Promise<Picked> {
   return { name, files, code: kept.filter((c) => c.kind === 'code').length, docs: kept.filter((c) => c.kind === 'doc').length, bytes, tree }
 }
 
-export async function archive(repo: Picked | null, docs: Picked | null, manifest: { repoUrl?: string; docsUrl?: string; projectName?: string }) {
+export async function archive(repo: Picked | null, docs: Picked | null, manifest: { repoUrl?: string; docsUrl?: string; projectName?: string; confluence?: { spaces: string[] }; drive?: { folder: string } }) {
   const { zipSync, strToU8 } = await import('fflate')
   const entries: Record<string, Uint8Array> = { 'manifest.json': strToU8(JSON.stringify({ ...manifest, repoName: repo?.name, docsName: docs?.name, repoTree: repo?.tree, docsTree: docs?.tree })) }
   for (const file of repo?.files ?? []) entries[`repo/${file.path}`] = file.data

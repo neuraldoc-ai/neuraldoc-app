@@ -160,7 +160,8 @@ export function planPullRequests(p, config = githubConfig(), state = readState()
     const decision = p.decisions?.[proposal.id]
     if (decision?.state !== 'uebernommen' || published[proposal.id]) continue
     const section = p.docFiles.find((d) => d.id === (proposal.section ?? proposal.doc)), source = section && p.docSources.find((s) => s.id === section.source)
-    if (!section || !source) continue
+    // Documentation read live from Confluence or Drive goes back there, not into a pull request (live-sources.mjs).
+    if (!section || !source || source.origin === 'docs' && p.sources?.docs?.live) continue
     const item = { proposal: proposal.id, title: section.title, path: repoPath(source), source: source.id, find: section.text, content: decision.edited?.text ?? p.generated[proposal.id]?.text, edited: !!decision.edited, by: decision.by, at: decision.at, why: p.generated[proposal.id]?.why ?? '', findings: p.generated[proposal.id]?.generation?.findings ?? [] }
     const target = targets[source.origin]
     // Confluence pages in storage format are XML in the repository: changed words go back into their text nodes.

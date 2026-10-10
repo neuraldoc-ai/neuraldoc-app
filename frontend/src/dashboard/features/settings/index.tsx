@@ -29,6 +29,7 @@ import { Label } from "@/components/ui/label";
 import { loadSetup, useSaveSettings, type Setup } from "./api";
 import { SetupForm } from "./keys-form";
 import { GitHubForm } from "./github";
+import { SourcesForm } from "./sources";
 
 function ProfileForm({ values }: { values: Record<string, string> }) {
   const [name, setName] = useState(values.NEURALDOC_USER_NAME ?? "");
@@ -121,7 +122,7 @@ const resets = {
   all: {
     label: "Alles zurücksetzen",
     title: "Alles löschen?",
-    text: "Zusätzlich zu allen Projekten werden Profil, Keys, GitHub-Anbindung, Modellwahl und Datenbankverbindungen gelöscht. Pull-Requests auf GitHub bleiben bestehen. neuraldoc startet danach wie frisch installiert. Deine Originaldateien sind nicht betroffen.",
+    text: "Zusätzlich zu allen Projekten werden Profil, Keys, GitHub-, Confluence- und Drive-Anbindung, Modellwahl und Datenbankverbindungen gelöscht. Pull-Requests auf GitHub bleiben bestehen. neuraldoc startet danach wie frisch installiert. Deine Originaldateien sind nicht betroffen.",
   },
 } as const;
 
@@ -245,6 +246,7 @@ export function SettingsPage() {
                 setup={setup}
               />
               <GitHubForm setup={setup} />
+              <SourcesForm key={[v.NEURALDOC_CONFLUENCE_URL, v.NEURALDOC_CONFLUENCE_EMAIL].join("|")} setup={setup} />
             </div>
             <div className="grid gap-5">
               <Status setup={setup} refresh={() => void query.refetch()} fetching={query.isFetching} />

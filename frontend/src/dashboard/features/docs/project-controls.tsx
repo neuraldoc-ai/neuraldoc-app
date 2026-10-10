@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Download, FileText, FolderGit2, FolderOpen, GitBranch, KeyRound, LoaderCircle, Upload, X } from 'lucide-react'
+import { BookOpen, Download, FileText, FolderGit2, FolderOpen, GitBranch, HardDrive, KeyRound, LoaderCircle, Upload, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -53,6 +53,11 @@ function Dropzone({ role, value, url, onPicked, onUrl, disabled }: { role: Role;
 export function ProjectControls({ prominent }: { prominent?: boolean }) {
   const [open, setOpen] = useState(false), [pending, setPending] = useState(''), [error, setError] = useState('')
   const [repo, setRepo] = useState<Picked | null>(null), [docsPicked, setDocs] = useState<Picked | null>(null), [repoLink, setRepoLink] = useState(''), [docsLink, setDocsLink] = useState('')
+  const [spaces, setSpaces] = useState(''), [folder, setFolder] = useState('')
+  const setup = useQuery({ queryKey: ['setup'], queryFn: loadSetup, enabled: open })
+  const secrets = setup.data?.settings.secrets, values = setup.data?.settings.values
+  const canConfluence = !!(values?.NEURALDOC_CONFLUENCE_URL && secrets?.NEURALDOC_CONFLUENCE_TOKEN?.set), canDrive = !!secrets?.NEURALDOC_GOOGLE_SA_KEY?.set
+  const spaceKeys = spaces.split(/[\s,;]+/).map((k) => k.trim().toUpperCase()).filter(Boolean), live = spaceKeys.length > 0 || !!folder.trim()
   async function run(action: string, work: () => Promise<void>) {
     setPending(action); setError('')
     try { await work() } catch (cause) { setError(cause instanceof Error ? cause.message : 'Das hat nicht geklappt. Versuch es noch einmal.') } finally { setPending('') }
@@ -62,6 +67,7 @@ export function ProjectControls({ prominent }: { prominent?: boolean }) {
   async function submit() {
     if (repoLink.trim() && !repoUrl(repoLink)) throw new Error('Bitte eine gültige GitHub-URL angeben, z. B. https://github.com/organisation/repository.')
     if (!docsValid) throw new Error('Die URL der Dokumentation ist keine gültige GitHub-URL.')
+    if (live) { await importProject(await archive(repo, null, { ...(repo ? {} : { repoUrl: repoUrl(repoLink)!.url }), ...(spaceKeys.length ? { confluence: { spaces: spaceKeys } } : {}), ...(folder.trim() ? { drive: { folder: folder.trim() } } : {}) })); return }
     await importProject(await archive(repo, docsPicked, { ...(repo ? {} : { repoUrl: repoUrl(repoLink)!.url }), ...(docsPicked || !docsLink.trim() ? {} : { docsUrl: repoUrl(docsLink)!.url }) }))
   }
   return <div className='grid gap-2'>
@@ -72,9 +78,15 @@ export function ProjectControls({ prominent }: { prominent?: boolean }) {
           <DialogHeader><DialogTitle>Eigenes Projekt prüfen</DialogTitle><DialogDescription>neuraldoc liest deinen Code und deine Doku und zeigt, wo sie nicht mehr zusammenpassen. Deine Dateien werden nicht verändert.</DialogDescription></DialogHeader>
           <form className='grid gap-5' onSubmit={(event) => { event.preventDefault(); void run('import', submit) }}>
             <div className='grid gap-2'><Label>Repository <span className='font-normal text-muted-foreground'>· Pflicht</span></Label><Dropzone role='repo' value={repo} url={repoLink} onPicked={setRepo} onUrl={setRepoLink} disabled={!!pending} /></div>
-            <div className='grid gap-2'><Label>Dokumentation <span className='font-normal text-muted-foreground'>· optional</span></Label><Dropzone role='docs' value={docsPicked} url={docsLink} onPicked={setDocs} onUrl={setDocsLink} disabled={!!pending} /><p className='text-xs text-muted-foreground'>Ohne Doku prüft neuraldoc die READMEs und den docs-Ordner im Repository.</p></div>
+            <div className='grid gap-2'><Label>Dokumentation <span className='font-normal text-muted-foreground'>· optional</span></Label>{!live && <Dropzone role='docs' value={docsPicked} url={docsLink} onPicked={setDocs} onUrl={setDocsLink} disabled={!!pending} />}<p className='text-xs text-muted-foreground'>Ohne Doku prüft neuraldoc die READMEs und den docs-Ordner im Repository.</p></div>
+            {(canConfluence || canDrive) && !docsPicked && !docsLink.trim() && <div className='grid gap-2 rounded-xl border bg-muted/30 p-3'>
+              <p className='text-sm font-medium'>Oder live aus deinen Systemen</p>
+              {canConfluence && <div className='relative'><BookOpen className='pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground' /><Input aria-label='Confluence-Bereiche' className='pl-9' value={spaces} disabled={!!pending} onChange={(e) => setSpaces(e.target.value)} placeholder='Confluence-Bereiche, z. B. HANDBUCH, TECH' /></div>}
+              {canDrive && <div className='relative'><HardDrive className='pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground' /><Input aria-label='Google-Drive-Ordner' className='pl-9' value={folder} disabled={!!pending} onChange={(e) => setFolder(e.target.value)} placeholder='Link zum Google-Drive-Ordner' /></div>}
+              <p className='text-xs text-muted-foreground'>Freigaben für Confluence-Seiten schreibt neuraldoc dort als neue Version zurück. Drive-Dateien bleiben beim Export.</p>
+            </div>}
             {error && <p role='alert' className='text-sm text-destructive'>{error}</p>}
-            <Button disabled={!!pending || !repoValid} type='submit'>{pending === 'import' ? <LoaderCircle className='animate-spin' /> : <Upload />}{pending === 'import' ? (repo ? 'Wird hochgeladen und analysiert …' : 'Wird geklont und analysiert …') : 'Importieren'}</Button>
+            <Button disabled={!!pending || !repoValid} type='submit'>{pending === 'import' ? <LoaderCircle className='animate-spin' /> : <Upload />}{pending === 'import' ? (live ? 'Wird gelesen und analysiert …' : repo ? 'Wird hochgeladen und analysiert …' : 'Wird geklont und analysiert …') : 'Importieren'}</Button>
           </form>
           <p className='text-xs text-muted-foreground'>Nur ausprobieren? <button type='button' disabled={!!pending} className='text-brand-700 underline-offset-4 hover:underline disabled:opacity-60 dark:text-brand-300' onClick={() => void run('import', importSample)}>Beispielprojekt MOBIQ laden</button></p>
           {!!projectState.projects?.length && <div className='grid gap-1 border-t pt-3'><p className='text-xs text-muted-foreground'>Bisherige Projekte</p>{projectState.projects.map((project) => <Button key={project.id} variant='ghost' className='justify-between' disabled={!!pending} onClick={() => void run('activate', () => projectAction('activate', { id: project.id }))}><span>{project.name}</span><span className='text-xs text-muted-foreground'>{new Date(project.createdAt).toLocaleDateString('de-DE')}</span></Button>)}</div>}
