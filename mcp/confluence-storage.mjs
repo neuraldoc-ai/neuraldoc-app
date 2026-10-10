@@ -3,8 +3,9 @@
 // the XML. Every changed line is reduced to the words that changed ("5 Tage" → "3 Tage": "5" → "3") and replaced
 // inside the one text node it comes from; markup, macros and attachments stay byte for byte. What cannot be placed
 // that way (a new table row, a deleted paragraph, a change across formatting) is reported, never guessed.
+import { NAMED_ENTITIES } from './html-entities.mjs'
 
-const NAMED = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' }
+const NAMED = NAMED_ENTITIES
 const decode = (entity) => {
   const m = entity.match(/^&(?:#x([0-9a-f]+)|#(\d+)|(\w+));$/i)
   if (!m) return entity

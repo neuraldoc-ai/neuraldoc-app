@@ -2,11 +2,13 @@
 // Office files are ZIP archives of XML; PDF goes through pdf.js (unpdf).
 import { unzipSync, strFromU8 } from '../frontend/server-deps.mjs'
 import { LIMITS } from '../frontend/src/dashboard/features/docs/import-rules.mjs'
+import { NAMED_ENTITIES } from './html-entities.mjs'
 
 const BINARY = /\.(pdf|docx|xlsx|pptx)$/i
 export const isBinaryDoc = (file) => BINARY.test(file)
 
-const entities = (s) => s.replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d))).replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&')
+// &amp; last, so "&amp;auml;" stays the text "&auml;".
+const entities = (s) => s.replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d))).replace(/&([a-z][a-z\d]*);/gi, (m, name) => name === 'amp' ? m : NAMED_ENTITIES[name] ?? m).replace(/&amp;/g, '&')
 const runs = (xml, tag) => [...xml.matchAll(new RegExp(`<${tag}(?:\\s[^>]*)?>([^<]*)</${tag}>`, 'g'))].map((m) => entities(m[1])).join('')
 /** Rows of cells as a Markdown table: the first row is the header, short rows are padded, | inside a cell is escaped. */
 export function markdownTable(rows) {
@@ -60,11 +62,14 @@ function xlsx(files) {
     out.push(`## ${entities(sheet[1])}`, '')
     const rows = []
     for (const row of (xml.match(/<row[ >][\s\S]*?<\/row>/g) || []).slice(0, 2000)) {
-      const cells = (row.match(/<c [^>]*?(?:\/>|>[\s\S]*?<\/c>)/g) || []).map((c) => {
+      // Excel leaves out empty cells: each cell goes to the column of its reference (r="E5"), not to the next free one.
+      const cells = []
+      for (const c of row.match(/<c [^>]*?(?:\/>|>[\s\S]*?<\/c>)/g) || []) {
         const type = c.match(/ t="(\w+)"/)?.[1], value = c.match(/<v>([^<]*)<\/v>/)?.[1] ?? ''
-        return type === 's' ? shared[Number(value)] ?? '' : type === 'inlineStr' ? runs(c, 't') : entities(value)
-      })
-      rows.push(cells)
+        const column = c.match(/ r="([A-Z]{1,3})\d+"/)?.[1]
+        cells[column ? [...column].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1 : cells.length] = type === 's' ? shared[Number(value)] ?? '' : type === 'inlineStr' ? runs(c, 't') : entities(value)
+      }
+      rows.push(Array.from(cells, (v) => v ?? ''))
     }
     out.push(markdownTable(rows), '')
   }
