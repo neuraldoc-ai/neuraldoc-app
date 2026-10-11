@@ -102,17 +102,81 @@ export async function documentText(file, bytes) {
   }
 }
 
-/** Offsets of the line starts outside fenced code blocks, with the heading level of each line (0 = no heading). */
-function lineStarts(text) {
+const plainTitle = (s) => s.replace(/`+([^`]*)`+/g, '$1').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/:\w+:`([^`<]*)(?:<[^>]*>)?`/g, '$1').replace(/[*_]{1,3}([^*_]+)[*_]{1,3}/g, '$1').replace(/<[^>]+>/g, '').replace(/\s+#+\s*$/, '').replace(/\s*\{#[^}]*\}\s*$/, '').trim()
+const RST_UNDERLINE = /^([=\-~^"'`#*+:.!$%&,;<>?@\\/_|])\1{2,}\s*$/
+
+/**
+ * Headings of a document in Markdown (ATX and setext), reStructuredText (under- and overlined titles) or AsciiDoc
+ * (= titles): [{ line, level, title, lines }] with 0-based line numbers; `lines` is how many lines the heading takes.
+ */
+export function headingsOf(text, file = 'x.md') {
+  const lines = text.split('\n'), out = []
+  const format = /\.rst$/i.test(file) ? 'rst' : /\.(adoc|asciidoc)$/i.test(file) ? 'adoc' : 'md'
+  let fence = null
+  const styles = []
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].replace(/\r$/, '')
+    if (format === 'md') {
+      const marker = line.match(/^\s{0,3}(`{3,}|~{3,})/)?.[1]
+      if (fence) { if (marker && marker[0] === fence[0] && marker.length >= fence.length) fence = null; continue }
+      if (marker) { fence = marker; continue }
+      const atx = line.match(/^(#{1,6})\s+(.+?)\s*$/)
+      if (atx) { out.push({ line: i, level: atx[1].length, title: plainTitle(atx[2]), lines: 1 }); continue }
+      const next = lines[i + 1]?.replace(/\r$/, '')
+      if (next && /^(=+|-+)\s*$/.test(next) && next.trim().length >= 2 && line.trim() && !/^\s*([-*+>|]|\d+\.)\s/.test(line) && !/^\s{4}/.test(line) && (i === 0 || !lines[i - 1].trim())) {
+        out.push({ line: i, level: next.trim()[0] === '=' ? 1 : 2, title: plainTitle(line), lines: 2 }); i++
+      }
+    } else if (format === 'adoc') {
+      if (/^(-{4,}|\.{4,}|={4,}|\+{4,}|_{4,}|\*{4,})\s*$/.test(line)) { const d = line.trim(); if (fence === d) fence = null; else if (!fence) fence = d; continue }
+      if (fence) continue
+      const m = line.match(/^(={1,6})\s+(.+?)\s*$/)
+      if (m) out.push({ line: i, level: m[1].length, title: plainTitle(m[2]), lines: 1 })
+    } else {
+      const next = lines[i + 1]?.replace(/\r$/, '')
+      const title = line.trim()
+      if (!title || RST_UNDERLINE.test(line) || !next || !RST_UNDERLINE.test(next) || next.trim().length < Math.min(title.length, 3)) continue
+      const over = i > 0 && RST_UNDERLINE.test(lines[i - 1]) && lines[i - 1].trim()[0] === next.trim()[0]
+      const style = `${next.trim()[0]}${over ? '^' : ''}`
+      if (!styles.includes(style)) styles.push(style)
+      out.push({ line: over ? i - 1 : i, level: styles.indexOf(style) + 1, title: plainTitle(title), lines: over ? 3 : 2 }); i++
+    }
+  }
+  return out
+}
+
+/** The document with every heading written as an ATX Markdown heading (levels above 4 stay text), for one splitter. */
+export function markdownHeadings(text, file) {
+  const hs = headingsOf(text, file)
+  if (/\.(md|mdx|markdown)$/i.test(file) && hs.every((h) => h.lines === 1)) return text
+  const lines = text.split('\n'), out = []
+  let h = 0
+  for (let i = 0; i < lines.length; i++) {
+    if (hs[h]?.line === i) { out.push(`${'#'.repeat(Math.min(hs[h].level, 6))} ${hs[h].title}`); i += hs[h].lines - 1; h++; continue }
+    out.push(lines[i])
+  }
+  return out.join('\n')
+}
+
+const otherFormat = (file) => /\.(rst|adoc|asciidoc)$/i.test(file ?? '')
+
+/**
+ * Offsets of the line starts outside fenced code blocks, with the heading level of each line (0 = no heading).
+ * reStructuredText and AsciiDoc headings (underlined titles, `== Title`) start where their first line starts.
+ */
+function lineStarts(text, file) {
   const out = []
   let fence = null
-  for (let at = 0; at < text.length;) {
+  const other = otherFormat(file) ? new Map(headingsOf(text, file).map((h) => [h.line, h.level])) : null
+  for (let at = 0, i = 0; at < text.length; i++) {
     const end = text.indexOf('\n', at), line = text.slice(at, end < 0 ? text.length : end)
-    const marker = line.match(/^\s{0,3}(`{3,}|~{3,})/)?.[1]
-    if (fence) { if (marker && marker[0] === fence[0] && marker.length >= fence.length) fence = null; out.push({ at, level: 0, fenced: true }) }
+    if (other) out.push({ at, level: (other.get(i) ?? 0) <= 4 ? other.get(i) ?? 0 : 0, fenced: false, blank: !line.trim() })
     else {
-      if (marker) fence = marker
-      out.push({ at, level: marker ? 0 : (line.match(/^(#{1,4})\s+\S/)?.[1].length ?? 0), fenced: !!marker, blank: !line.trim() })
+      const marker = line.match(/^\s{0,3}(`{3,}|~{3,})/)?.[1]
+      if (fence) { if (marker && marker[0] === fence[0] && marker.length >= fence.length) fence = null; out.push({ at, level: 0, fenced: true }) }
+      else {
+        if (marker) fence = marker
+        out.push({ at, level: marker ? 0 : (line.match(/^(#{1,4})\s+\S/)?.[1].length ?? 0), fenced: !!marker, blank: !line.trim() })
+      }
     }
     if (end < 0) break
     at = end + 1
@@ -122,10 +186,11 @@ function lineStarts(text) {
 
 /**
  * Splits text into exact, consecutive sections: one per heading (levels 1–4), tiny ones merged into the next,
- * long ones cut at blank lines outside code blocks. Joining the sections gives back the text.
+ * long ones cut at blank lines outside code blocks. Joining the sections gives back the text. `file` names the
+ * format: reStructuredText and AsciiDoc are cut at their own headings, everything else at Markdown headings.
  */
-export function sections(text, { max = LIMITS.sectionChars, min = 400 } = {}) {
-  const lines = lineStarts(text)
+export function sections(text, { max = LIMITS.sectionChars, min = 400, file } = {}) {
+  const lines = lineStarts(text, file)
   const cuts = [0, ...lines.filter((l) => l.level && l.at > 0).map((l) => l.at), text.length]
   const parts = []
   for (let i = 0; i < cuts.length - 1; i++) if (cuts[i + 1] > cuts[i]) parts.push([cuts[i], cuts[i + 1]])
@@ -154,16 +219,20 @@ export function sections(text, { max = LIMITS.sectionChars, min = 400 } = {}) {
   return result
 }
 
-/** Front matter title, first Markdown or HTML h1, else null. */
-export function documentTitle(text) {
+/** Front matter title, first Markdown or HTML h1 (in reStructuredText and AsciiDoc: the first top-level title), else null. */
+export function documentTitle(text, file) {
+  if (otherFormat(file)) { const h = headingsOf(text, file).find((x) => x.level === 1); return h ? h.title.slice(0, 120) : null }
   const front = text.match(/^---\n([\s\S]*?)\n---/)?.[1]?.match(/^title:\s*["']?(.+?)["']?\s*$/m)?.[1]
   const h1 = text.match(/^#\s+(.+)$/m)?.[1] ?? text.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1]?.replace(/<[^>]*>/g, ' ')
   const title = front ?? h1 ? plainHeading(front ?? h1) : null
   return title ? title.slice(0, 120) : null
 }
 
-/** First heading of a section, without Markdown. */
-export const sectionHeading = (text) => { const h = text.match(/^#{1,4}\s+(.+)$/m)?.[1]; return h ? plainHeading(h.replace(/\s+#+$/, '')).slice(0, 100) : null }
+/** First heading of a section, without Markdown (in reStructuredText and AsciiDoc: its first title). */
+export const sectionHeading = (text, file) => {
+  if (otherFormat(file)) return headingsOf(text, file).find((x) => x.level <= 4)?.title.slice(0, 100) ?? null
+  const h = text.match(/^#{1,4}\s+(.+)$/m)?.[1]; return h ? plainHeading(h.replace(/\s+#+$/, '')).slice(0, 100) : null
+}
 /** A heading without Markdown: code ticks, tags and emphasis go, underscores inside names stay. */
 function plainHeading(h) {
   return h.replace(/<[^>]+>/g, ' ').replace(/`/g, '').replace(/\*\*|(?<!\w)__|__(?!\w)/g, '').replace(/(?<!\w)[*_](?=\S)|(?<=\S)[*_](?!\w)/g, '').replace(/\s+/g, ' ').trim()

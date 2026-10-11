@@ -6,10 +6,11 @@ import { classify, ignored, LIMITS } from '../frontend/src/dashboard/features/do
 import { documentText, documentTitle, isBinaryDoc, proseWords, sectionHeading, sections } from './doc-text.mjs'
 import { log } from './log.mjs'
 import { readHistory } from './git-history.mjs'
+import { buildCodeBrain } from './code-brain.mjs'
 
 export const digest = (value) => crypto.createHash('sha256').update(value).digest('hex')
 // Part of the project id: a changed importer builds a fresh project instead of reusing a stale graph.
-const IMPORTER_VERSION = 9
+const IMPORTER_VERSION = 10
 export const BUNDLE_ID = 'erstpruefung'
 
 /** Every regular file below root as a POSIX path; symlinks and ignored folders are never followed. */
@@ -33,7 +34,7 @@ const docType = (file) => DOC_TYPES.find(([pattern]) => pattern.test(file.toLowe
 const fileTitle = (file) => { const name = path.basename(file, path.extname(file)).replace(/_+/g, ' ').trim(); return /^readme$/i.test(name) ? 'README' : name }
 // PDF pages, slides and sheets get generated headings ("Seite 1"); their title is the file name. A README is called
 // README even when its first heading is a badge row or the project logo.
-const titleOf = (text, file, format) => (!/^(pdf|pptx|xlsx|csv)$/.test(format) && !/^readme$/i.test(fileTitle(file)) && documentTitle(text)) || fileTitle(file)
+const titleOf = (text, file, format) => (!/^(pdf|pptx|xlsx|csv)$/.test(format) && !/^readme$/i.test(fileTitle(file)) && documentTitle(text, file)) || fileTitle(file)
 // Sections without prose (badges, logos, link lists, a bare heading) have nothing the code could contradict.
 // A list of links (related projects, sponsors) is not checkable either.
 // A line counts as a link line when hardly any text is left outside its links (a list item explaining a linked file is prose).
@@ -81,11 +82,11 @@ export async function importProject(input, { projectsDir }) {
   // The dashboard shows a document as one page with its sections as blocks.
   const docFiles = []
   for (const source of docSources) {
-    const parts = sections(source.text).filter((part) => part.trim())
+    const parts = sections(source.text, { file: source.path }).filter((part) => part.trim())
     const title = titleOf(source.text, source.path, source.format)
     source.title = title
     parts.forEach((text, i) => {
-      const head = sectionHeading(text)
+      const head = sectionHeading(text, source.path)
       const own = head && head !== title ? head : null
       docFiles.push({ id: `doc-${digest(`${source.id}:${i}`).slice(0, 12)}`, source: source.id, path: source.path, origin: source.origin, format: source.format, part: i + 1, parts: parts.length, title: parts.length > 1 && own ? `${title} › ${own}` : parts.length > 1 ? `${title} › ${i === 0 ? 'Einleitung' : `Teil ${i + 1}`}` : title, heading: own, type: docType(source.path), text, checkable: !!text.trim() && checkable(text) })
     })
@@ -138,6 +139,19 @@ export async function importProject(input, { projectsDir }) {
   const unparsed = files.filter((f) => !analyses.some((a) => a.file === f.path) && !/\.sql$/i.test(f.path)).length
   if (unparsed) warnings.push(`${unparsed} Dateien ohne Strukturanalyse (z. B. Konfiguration oder Sprachen ohne Parser); sie werden trotzdem mit der Doku verglichen.`)
 
+  // Which code each section describes (code-brain.mjs): no model, a few seconds. Documents link to the files their
+  // sections describe; the links carry the sections and the names that tie them together.
+  const brain = buildCodeBrain({ files, docFiles })
+  for (const source of docSources) {
+    const targets = new Map()
+    for (const d of docFiles.filter((x) => x.source === source.id)) for (const l of brain.links[d.id] ?? []) {
+      const t = targets.get(l.path) ?? { sections: [], names: new Set(), p: 0 }
+      t.sections.push(d.heading ?? d.title); for (const n of l.names) t.names.add(n.split(':')[0]); t.p = Math.max(t.p, l.p)
+      targets.set(l.path, t)
+    }
+    for (const [file, t] of targets) link(`doc:${source.id}`, `file:${file}`, 'describes', { source: 'Code-Brain', text: [...new Set(t.sections)].slice(0, 6).join(' · ') + (t.names.size ? ` — ${[...t.names].slice(0, 8).join(', ')}` : ''), method: 'Namen, Pfade, Imports und Begriffe; gelernte Gewichtung, ohne Modell' }, 'abgeleitet')
+  }
+  log.info('import', 'Code-Brain erstellt', brain.stats)
   const now = new Date().toISOString(), date = now.slice(0, 10)
   nodes.push({ id: `f:${BUNDLE_ID}`, type: 'feature', label: 'Erstprüfung', sub: `${docFiles.length} Doku-Abschnitte`, description: 'Alle Dokumente gegen den aktuellen Code.' })
   for (const source of docSources) nodes.push({ id: `doc:${source.id}`, type: 'doc', label: source.title, sub: source.path, doc: source.id, evidence: [{ source: source.path, text: source.text.slice(0, 1800) }] })
@@ -155,5 +169,5 @@ export async function importProject(input, { projectsDir }) {
   if (history) fs.writeFileSync(path.join(projectsDir, id, 'diffs.json'), JSON.stringify(history.diffs))
   const graph = { nodes, edges, metadata: { snapshot: date, sources: ['Repository', 'Dokumente'], method: 'Tree-sitter, TypeScript-Symbolauflösung und PostgreSQL AST; statische Analyse.', analysis: parserReport, semantic: { status: 'missing' } } }
   log.info('import', 'Projekt analysiert', { name, commits: history?.commits.length ?? 0, features: history?.features.length ?? 0, code: files.length, documents: docSources.length, sections: docFiles.length, warnings: warnings.length, ms: Date.now() - started })
-  return { id, name, sources: { repo: { label: input.repo.label, source: input.repo.source, ...(input.repo.url ? { url: input.repo.url } : {}) }, docs: input.docs?.dir ? { label: input.docs.label, source: input.docs.source, ...(input.docs.url ? { url: input.docs.url } : {}), ...(input.docs.live ? { live: input.docs.live } : {}) } : null }, createdAt: now, files, docSources, docFiles, moduleDefs, warnings, dataset, graph, history: history && { ref: history.ref, tag: history.tag, head: history.head, commits: history.commits, mergeRequests: history.mergeRequests, features: history.features }, mapping: null, generated: {}, decisions: {}, events: [], trees: { repo: input.repo.tree ?? null, docs: input.docs?.tree ?? null } }
+  return { id, name, sources: { repo: { label: input.repo.label, source: input.repo.source, ...(input.repo.url ? { url: input.repo.url } : {}) }, docs: input.docs?.dir ? { label: input.docs.label, source: input.docs.source, ...(input.docs.url ? { url: input.docs.url } : {}), ...(input.docs.live ? { live: input.docs.live } : {}) } : null }, createdAt: now, files, docSources, docFiles, moduleDefs, warnings, dataset, graph, history: history && { ref: history.ref, tag: history.tag, head: history.head, commits: history.commits, mergeRequests: history.mergeRequests, features: history.features }, brain, mapping: null, generated: {}, decisions: {}, events: [], trees: { repo: input.repo.tree ?? null, docs: input.docs?.tree ?? null } }
 }

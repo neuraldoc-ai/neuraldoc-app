@@ -2,6 +2,8 @@
 
 How well does the initial check find documentation that no longer matches the code, and how good are the corrections it proposes? This folder measures that on eight benchmarks with real LLM and Jev calls. The product never reads anything from here.
 
+Which code each documentation section describes (the code brain of the import) is measured separately on fifteen repositories, with ground truth from the maintainers' own commits: [brain/README.md](brain/README.md).
+
 ## Benchmarks
 
 | Benchmark | Case | Documentation | Code | Expected changes |

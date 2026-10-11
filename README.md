@@ -141,7 +141,7 @@ Every link in the graph is marked as **proven** (read from the code) or **derive
 
 ### For coding agents (MCP)
 
-The same container serves an MCP endpoint at `http://localhost:8080/mcp` with three tools: `ticket_context` (before coding), `ask` (domain questions with sources) and `check_change` (documentation impact of a finished change).
+The same container serves an MCP endpoint at `http://localhost:8080/mcp` with three tools: `ticket_context` (before coding), `ask` (domain questions with sources) and `check_change` (documentation impact of a finished change). An imported project of your own adds `code_map`: which documentation sections describe a code file, which files belong to a topic, and what the documentation lacks.
 
 ```bash
 claude mcp add --transport http neuraldoc http://localhost:8080/mcp \

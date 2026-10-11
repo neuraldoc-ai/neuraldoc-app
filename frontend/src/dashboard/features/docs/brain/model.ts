@@ -56,6 +56,7 @@ export type EdgeKind =
   | "changes"
   | "touches"
   | "documents"
+  | "describes"
   | "mentions"
   | "supports"
   | "audience";
@@ -107,6 +108,7 @@ export const edgeLabel: Record<SemanticEdgeKind, string> = {
   changes: "ändert Datei",
   touches: "betrifft Modul",
   documents: "Doku-Vorschlag für",
+  describes: "beschreibt Code in",
   mentions: "nennt Funktion im Diff",
   supports: "Beleg im Doku-Vorschlag",
   audience: "Zielgruppe",

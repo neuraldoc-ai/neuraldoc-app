@@ -10,7 +10,7 @@ Three tools for the development team's coding agent (Claude Code, Cursor, VS Cod
 | `ask` | for a domain question | short quotes with sources, each marked "correct", "outdated" (with what the code does), "incomplete" or "updated" |
 | `check_change` | when the feature is done (MR, branch, ticket or commits) | the complete list of sources found with original names, locations and required change, plus prepared drafts, questions, manual work and **one link** to review and approve |
 
-For an imported project of your own, `ask` and `ticket_context` search the uploaded code and documents, and `check_change` returns the result of the initial check; see the main README.
+For an imported project of your own, `ask` and `ticket_context` search the uploaded code and documents, and `check_change` returns the result of the initial check; see the main README. `code_map` answers from the code brain the import builds ([`code-brain.mjs`](code-brain.mjs), no model): with `path` the sections that describe a file, with `query` the files behind the sections on a topic, without arguments the clean-up (interface names no document mentions, documented names no code has, sections without code).
 
 ## Completeness before brevity
 
