@@ -63,14 +63,15 @@ export function SourceSync() {
           <RefreshCw className={cn('size-3.5', pending === 'look' && 'animate-spin')} />
         </Button>
       </div>
-      <div className='flex items-start gap-3'>
+      {/* Documentation this installation cannot read (no Confluence or Drive access) is not shown at all. */}
+      {(docs || s.running === 'docs') && <div className='flex items-start gap-3'>
         <span className={cn('mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border bg-muted/50', docs?.open && 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300')}><FileText className='size-3.5' /></span>
         <div className='grid min-w-0 flex-1 gap-0.5'>
           <span className='font-medium'>Doku</span>
           <span className='flex items-center gap-1.5 text-xs text-muted-foreground'>{s.running === 'docs' && <LoaderCircle className='size-3 animate-spin' />}{s.running === 'docs' ? 'Doku wird gelesen …' : docs ? docs.text : s.docsWatch?.reason}</span>
         </div>
         {docs && <Button variant={docs.open ? 'default' : 'outline'} size='sm' className='shrink-0' disabled={busy} onClick={() => act('docs')}>Doku prüfen</Button>}
-      </div>
+      </div>}
       {(error || s.error) && <p role='alert' className='text-xs text-destructive'>{error || `Quellen nicht erreichbar: ${s.error}`}</p>}
     </CardContent>
   </Card>
