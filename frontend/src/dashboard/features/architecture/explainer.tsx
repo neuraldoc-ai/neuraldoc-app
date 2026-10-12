@@ -35,11 +35,11 @@ const explanations: Explanation[] = [
     note: "Die Analyse nutzt Syntaxbäume (AST). Dynamische Aufrufe lassen sich nicht immer eindeutig auflösen.",
   },
   {
-    title: "Jev",
-    summary: "Jev ergänzt die technische Struktur um fachliche Zuordnungen.",
+    title: "Code-Brain",
+    summary: "Das Code-Brain ordnet jedem Doku-Abschnitt die Codestellen zu, die er beschreibt, ganz ohne Modell.",
     result:
-      "Zum Beispiel: Jev ordnet eine geänderte Druckfunktion der Komponente „Belege & Druck“ und einer passenden Dokumentation zu.",
-    note: "Jev-Zuordnungen bleiben als Modellentscheidung erkennbar. Unsichere Ergebnisse bleiben offen.",
+      "Zum Beispiel: Der Abschnitt „Druckmanagement“ gehört zu VorlagenEngine.java, weil er ihre Namen, Pfade und Begriffe nennt.",
+    note: "Jede Zuordnung nennt ihren Grund. Ein Entscheidungsmodell kann Befunde optional gegenprüfen.",
   },
   {
     title: "Dein LLM",

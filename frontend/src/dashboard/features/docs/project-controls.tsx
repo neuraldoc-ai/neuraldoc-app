@@ -98,7 +98,7 @@ export function ProjectControls({ prominent }: { prominent?: boolean }) {
   </div>
 }
 
-/** The big call to action on the overview until the initial check has run. Without a Jev key it leads to the settings first. */
+/** The big call to action on the overview until the initial check has run. Without an LLM it leads to the settings first. */
 export function StartCheck() {
   const [pending, setPending] = useState(false), [error, setError] = useState('')
   const setup = useQuery({ queryKey: ['setup'], queryFn: loadSetup })
@@ -109,8 +109,8 @@ export function StartCheck() {
     if (status.data?.running) wasRunning.current = true
     else if (wasRunning.current && status.data?.phase === 'done') window.location.reload()
   }, [status.data])
-  // The check only makes sense when its findings can be turned into corrections: Jev and an LLM first.
-  const missing = setup.data ? [!setup.data.jev.configured && 'Jev-Key', !setup.data.drafting.configured && 'LLM'].filter(Boolean) : []
+  // The check only makes sense when its findings can be turned into corrections: an LLM first. The decision model is optional.
+  const missing = setup.data ? [!setup.data.drafting.configured && 'LLM'].filter(Boolean) : []
   if (missing.length) return <div className='grid justify-items-start gap-2 md:justify-items-end'>
     <Button size='lg' asChild><Link to='/einstellungen'><KeyRound />Einrichtung abschließen</Link></Button>
     <p className='max-w-[42ch] text-xs text-muted-foreground md:text-right'>Für die Erstprüfung fehlt noch: {missing.join(' und ')}.</p>
@@ -124,7 +124,7 @@ export function StartCheck() {
   </div>
 }
 
-const phaseLabel = { features: 'Änderungen werden beschrieben', sections: 'Abschnitte werden mit dem Code verglichen', lists: 'Listen werden auf Vollständigkeit geprüft', jev: 'Jev prüft die Befunde gegen' } as const
+const phaseLabel = { features: 'Änderungen werden beschrieben', sections: 'Abschnitte werden mit dem Code verglichen', lists: 'Listen werden auf Vollständigkeit geprüft', jev: 'Das Entscheidungsmodell prüft die Befunde gegen' } as const
 
 /** While the check runs: how far it is. It takes about two to five seconds per section. */
 function CheckProgress({ status }: { status?: CheckStatus }) {

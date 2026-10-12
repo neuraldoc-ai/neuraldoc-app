@@ -101,10 +101,10 @@ function Status({ setup, refresh, fetching }: { setup: Setup; refresh: () => voi
       <CardContent className="flex flex-wrap items-center gap-3">
         <Badge variant="outline">
           <KeyRound className="mr-1 size-3" />
-          Jev · {setup.jev.configured ? "Key hinterlegt" : "Key fehlt"}
+          {setup.drafting.label || "LLM"} · {setup.drafting.configured ? "eingerichtet" : "fehlt"}
         </Badge>
         <Badge variant="outline">
-          {setup.drafting.label || "LLM"} · {setup.drafting.configured ? "eingerichtet" : "fehlt"}
+          Entscheidungsmodell · {setup.decision.provider === "off" ? "aus" : setup.decision.configured ? setup.decision.label : `${setup.decision.label} unvollständig`}
         </Badge>
         {setup.drafting.model && <span className="text-xs text-muted-foreground">{setup.drafting.model}</span>}
         {setup.drafting.error && <p className="w-full text-xs text-muted-foreground">{setup.drafting.error}</p>}
@@ -242,7 +242,7 @@ export function SettingsPage() {
             <div className="grid gap-5">
               <ProfileForm values={v} />
               <SetupForm
-                key={[v.NEURALDOC_DRAFT_PROVIDER, v.NEURALDOC_LLM_MODEL, v.GOOGLE_CLOUD_PROJECT, v.NEURALDOC_LLM_BASE_URL, v.NEURALDOC_JEV_BUDGET_USD].join("|")}
+                key={[v.NEURALDOC_DRAFT_PROVIDER, v.NEURALDOC_LLM_MODEL, v.GOOGLE_CLOUD_PROJECT, v.NEURALDOC_LLM_BASE_URL, v.NEURALDOC_JEV_BUDGET_USD, setup.decision.provider, v.NEURALDOC_DECISION_URL, v.NEURALDOC_DECISION_MODEL].join("|")}
                 setup={setup}
               />
               <GitHubForm setup={setup} />

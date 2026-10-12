@@ -21,7 +21,17 @@ export const MODULES = {
 }
 const hash = (value) => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex')
 const unit = (v) => Number.isFinite(v) && v >= 0 && v <= 1
-export function validateResponse(data, request) {
+/**
+ * Checks a decision model's answer against its request. `strict` (Jev) also requires the model name echoed and token
+ * usage; Microsoft-Decision-1 answers with the underlying model's name and Laya may leave out usage and confidence.
+ */
+export function validateResponse(data, request, { strict = true, label = 'Jev' } = {}) {
+  if (!strict && data && typeof data === 'object') {
+    data = { ...data, model: request.model, usage: { input_tokens: Number.isInteger(data.usage?.input_tokens) ? data.usage.input_tokens : 0, output_tokens: Number.isInteger(data.usage?.output_tokens) ? data.usage.output_tokens : 0 }, answers: Object.fromEntries(Object.entries(data.answers ?? {}).map(([id, a]) => [id, a?.type === 'choice' && !unit(a.confidence) ? { ...a, confidence: unit(a.answer_confidence) ? a.answer_confidence : a.probabilities?.[a.choice] } : a])) }
+  }
+  try { return checkResponse(data, request) } catch (error) { throw new Error(error.message.replace('Jev-Antwort', `${label}-Antwort`)) }
+}
+function checkResponse(data, request) {
   if (!data || data.model !== request.model || !data.answers || !Number.isInteger(data.usage?.input_tokens) || data.usage.input_tokens < 0 || !Number.isInteger(data.usage?.output_tokens) || data.usage.output_tokens < 0) throw new Error('Ungültige Jev-Antwort: Modell oder Usage')
   for (const [id, q] of Object.entries(request.questions)) {
     const a = data.answers[id]
@@ -59,36 +69,42 @@ function loadKey(root) {
   if (!key) throw new Error('TYPESAFE_API_KEY fehlt in frontend/.env.local')
   return key.trim()
 }
-export function createJevClient({ key, cachePath, budget = 0.25, fetchImpl = fetch }) {
-  if (!Number.isFinite(budget) || budget <= 0 || budget > 1) throw new Error('Jev-Budget muss zwischen 0 und 1 USD liegen')
+/**
+ * A client for the decision API (POST …/v1/systemone): Jev by default, or any compatible model (decision.mjs) with
+ * its own url, model, headers and price. Answers are cached by request; paid calls stop at the budget.
+ */
+export function createJevClient({ key, cachePath, budget = 0.25, fetchImpl = fetch, url = 'https://api.typesafe.ai/v1/systemone', model = MODEL, headers, strict = true, price = INPUT_USD_PER_MILLION, label = 'Jev' }) {
+  if (price > 0 && (!Number.isFinite(budget) || budget <= 0 || budget > 1)) throw new Error(`${label}-Budget muss zwischen 0 und 1 USD liegen`)
   const cache = fs.existsSync(cachePath) ? JSON.parse(fs.readFileSync(cachePath, 'utf8')) : {}
   const usage = { requests: 0, cached: 0, inputTokens: 0, outputTokens: 0, estimatedUsd: 0, reservedUsd: 0 }
   const save = () => { fs.mkdirSync(path.dirname(cachePath), { recursive: true }); fs.writeFileSync(cachePath + '.tmp', JSON.stringify(cache, null, 2)); fs.renameSync(cachePath + '.tmp', cachePath) }
+  const options = { strict, label }
   async function evaluate(state, questions) {
-    const request = { model: MODEL, state, questions }, fingerprint = hash(request)
-    if (cache[fingerprint]) { validateResponse(cache[fingerprint].response, request); usage.cached++; return { ...cache[fingerprint], fingerprint, cached: true } }
+    const request = { model, state, questions }, fingerprint = hash(request)
+    if (cache[fingerprint]) { validateResponse(cache[fingerprint].response, request, options); usage.cached++; return { ...cache[fingerprint], fingerprint, cached: true } }
     const payload = JSON.stringify(request)
     // Byte count bounds tokenization conservatively, plus protocol overhead per question.
-    const reserve = (Buffer.byteLength(payload) + Object.keys(questions).length * 1000) * INPUT_USD_PER_MILLION / 1e6
-    if (Buffer.byteLength(JSON.stringify(state)) > 80000) throw new Error('Jev-State zu groß; Kandidaten eingrenzen')
+    const reserve = (Buffer.byteLength(payload) + Object.keys(questions).length * 1000) * price / 1e6
+    if (Buffer.byteLength(JSON.stringify(state)) > 80000) throw new Error(`${label}-State zu groß; Kandidaten eingrenzen`)
     let response
     for (let attempt = 0; attempt < 3; attempt++) {
-      if (usage.reservedUsd + reserve > budget) throw new Error('Jev-Budget erreicht; bereits erhaltene Antworten sind gecacht')
+      if (price > 0 && usage.reservedUsd + reserve > budget) throw new Error(`${label}-Budget erreicht; bereits erhaltene Antworten sind gecacht`)
       usage.reservedUsd += reserve
       const started = Date.now()
       // Network/time-out failures are not retried: the provider may already have billed them.
-      const res = await fetchImpl('https://api.typesafe.ai/v1/systemone', { method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, body: payload, signal: AbortSignal.timeout(90000) })
+      const res = await fetchImpl(url, { method: 'POST', headers: { ...(headers ?? { Authorization: `Bearer ${key}` }), 'Content-Type': 'application/json' }, body: payload, signal: AbortSignal.timeout(90000) })
+        .catch((error) => { throw new Error(`${label} ist nicht erreichbar (${error.cause?.code || error.message}).`) })
       if ([429, 529].includes(res.status) && attempt < 2) { await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt)); continue }
-      if (!res.ok) throw new Error([401, 403].includes(res.status) ? `Jev lehnt den Key ab (HTTP ${res.status}). TYPESAFE_API_KEY prüfen.` : `Jev HTTP ${res.status}`)
-      const data = validateResponse(await res.json(), request)
+      if (!res.ok) throw new Error([401, 403].includes(res.status) ? `${label} lehnt den Key ab (HTTP ${res.status}). Key unter Einstellungen prüfen.` : `${label} HTTP ${res.status}`)
+      const data = validateResponse(await res.json(), request, options)
       response = { response: data, elapsedMs: Date.now() - started, createdAt: new Date().toISOString(), fingerprint }
       usage.requests++; usage.inputTokens += data.usage.input_tokens; usage.outputTokens += data.usage.output_tokens
-      usage.estimatedUsd = usage.inputTokens * INPUT_USD_PER_MILLION / 1e6
+      usage.estimatedUsd = usage.inputTokens * price / 1e6
       cache[fingerprint] = response; save(); break
     }
     return { ...response, cached: false }
   }
-  return { evaluate, usage }
+  return { evaluate, usage, model, label }
 }
 
 function subjects(graph, root) {

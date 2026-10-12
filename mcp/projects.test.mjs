@@ -210,16 +210,6 @@ test('approval is refused before any draft exists', async () => {
   assert.throws(() => projects.projectDecisions({ id: 'missing', decision: { state: 'uebernommen' } }), /Unbekannter/)
 })
 
-test('Jev is required: without a key no check and no proposal exist', async () => {
-  const key = process.env.TYPESAFE_API_KEY
-  delete process.env.TYPESAFE_API_KEY
-  try {
-    await assert.rejects(projects.checkProject(run(() => assert.fail('no model request without Jev'))), /Jev-Key fehlt/)
-    assert.throws(() => projects.startCheck(), /Jev-Key fehlt/)
-  } finally { process.env.TYPESAFE_API_KEY = key }
-  assert.equal(projects.activeProject().mapping, null)
-})
-
 test('an LLM is required too: without one nothing is called', async () => {
   const provider = process.env.NEURALDOC_DRAFT_PROVIDER, model = process.env.NEURALDOC_LLM_MODEL
   delete process.env.NEURALDOC_DRAFT_PROVIDER; delete process.env.NEURALDOC_LLM_MODEL
@@ -478,6 +468,20 @@ test('partial check: only the given sections go to the model; other proposals an
   stored.docFiles.find((d) => d.id === install.id).text += '\nNeu: Docker.\n'
   fs.writeFileSync(file, JSON.stringify(stored))
   assert.deepEqual(projects.pendingDocs(), [install.id])
+})
+
+test('without a decision model the check runs on the LLM alone: nothing is dropped, nothing is marked sure', async () => {
+  const key = process.env.TYPESAFE_API_KEY
+  delete process.env.TYPESAFE_API_KEY
+  try {
+    await projects.addProject(upload(repo, docs, { repoName: 'ohne-entscheidungsmodell' }))
+    const payload = await projects.checkProject(run(llmFetch(), async () => assert.fail('no decision model request')))
+    const p = projects.activeProject(), rabatt = payload.dataset.proposals.find((x) => x.title === 'Rabatt')
+    assert.equal(p.mapping.verifier, null)
+    assert.deepEqual(p.generated[rabatt.id].generation.findings.map((f) => [f.kind, f.sure]), [['contradicts', false], ['removed', false]], 'the deletion stays, to be reviewed')
+    assert.equal(p.generated[rabatt.id].confidence, 'pruefen')
+    assert.equal(payload.dataset.proposals.length, 3, 'the PDF finding a decision model would refute stays for the reviewer')
+  } finally { process.env.TYPESAFE_API_KEY = key }
 })
 
 test('GitHub push webhook: only with its secret and a valid signature', async () => {

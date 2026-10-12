@@ -18,7 +18,7 @@ import { importSample } from './project'
 export function EmptyStart() {
   const setup = useQuery({ queryKey: ['setup'], queryFn: loadSetup })
   const [pending, setPending] = useState(false), [error, setError] = useState('')
-  const ready = !!setup.data?.jev.configured && !!setup.data?.drafting.configured
+  const ready = !!setup.data?.drafting.configured
   return (
     <>
       <AppHeader crumbs={[{ label: 'Start' }]} />
@@ -51,12 +51,12 @@ export function EmptyStart() {
         </div>
         <Card className='gap-3'>
           <CardHeader>
-            <CardTitle className='flex items-center gap-2 text-base'><KeyRound className='size-4' />Für die Prüfung brauchst du eigene Keys</CardTitle>
-            <CardDescription>Jev findet die veralteten Stellen, dein LLM formuliert die Korrekturen. Importieren geht auch ohne Keys.</CardDescription>
+            <CardTitle className='flex items-center gap-2 text-base'><KeyRound className='size-4' />Für die Prüfung brauchst du ein LLM</CardTitle>
+            <CardDescription>Dein LLM findet die veralteten Stellen und formuliert die Korrekturen. Ein Entscheidungsmodell als zweite Meinung ist optional. Importieren geht auch ohne Keys.</CardDescription>
           </CardHeader>
           <CardContent className='flex flex-wrap items-center gap-3'>
-            <Badge variant='outline'>{setup.data?.jev.configured && <Check />}Jev · {setup.data?.jev.configured ? 'hinterlegt' : 'fehlt'}</Badge>
             <Badge variant='outline'>{setup.data?.drafting.configured && <Check />}LLM · {setup.data?.drafting.configured ? 'eingerichtet' : 'fehlt'}</Badge>
+            <Badge variant='outline'>{setup.data?.decision.configured && <Check />}Entscheidungsmodell · {setup.data?.decision.configured ? setup.data.decision.label : 'optional'}</Badge>
             {!ready && <Button asChild variant='link' size='sm' className='px-0'><Link to='/einstellungen'>Zu den Einstellungen <ArrowRight /></Link></Button>}
           </CardContent>
         </Card>

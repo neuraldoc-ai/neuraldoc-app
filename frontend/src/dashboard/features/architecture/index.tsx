@@ -33,13 +33,13 @@ const steps = [
     icon: GitBranch,
   },
   {
-    title: "3. Jev",
-    text: "Verbindet fachlich passende Komponenten und Dokumente.",
+    title: "3. Code-Brain",
+    text: "Ordnet jedem Doku-Abschnitt seine Codestellen zu, ohne Modell.",
     icon: Braces,
   },
   {
     title: "4. Dein LLM",
-    text: "Formuliert einen Entwurf aus den ausgewählten Belegen.",
+    text: "Vergleicht Abschnitt und Code und formuliert die Korrektur. Optional prüft ein Entscheidungsmodell gegen.",
     icon: Sparkles,
   },
   {
@@ -60,7 +60,7 @@ export function ArchitecturePage() {
             Architektur
           </h1>
           <p className="max-w-2xl text-sm text-muted-foreground">
-            Vom Code zum geprüften Dokument. Jev ordnet zu, dein LLM formuliert.
+            Vom Code zum geprüften Dokument. Das Code-Brain ordnet zu, dein LLM prüft und formuliert.
           </p>
         </div>
         <div className="grid gap-3 md:grid-cols-5">
@@ -91,8 +91,8 @@ export function ArchitecturePage() {
             </CardHeader>
             <CardContent className="grid gap-2 text-sm text-muted-foreground">
               <p>
-                Code-Beziehungen haben Quellen. Jev-Verbindungen bleiben als
-                Modellzuordnung gekennzeichnet.
+                Code-Beziehungen haben Quellen. Jeder Befund nennt die Codestelle,
+                die ihn belegt.
               </p>
               <p>
                 Fehlende Belege führen zu einer Rückfrage. Jeder Entwurf
@@ -116,10 +116,9 @@ export function ArchitecturePage() {
             </CardHeader>
             <CardContent className="grid gap-4">
               <ol className="grid list-decimal gap-1.5 pl-4 text-sm text-muted-foreground">
-                <li>Keys für Jev und ein LLM unter Einstellungen hinterlegen.</li>
+                <li>Ein LLM unter Einstellungen einrichten, optional ein Entscheidungsmodell.</li>
                 <li>„Eigenes Projekt“: Repository und Doku hineinziehen oder GitHub-URL angeben.</li>
-                <li>„Erstprüfung starten“: Jev findet jede Stelle, an der die Doku nicht zum Code passt.</li>
-                <li>„Starten“: dein LLM formuliert die Korrekturen.</li>
+                <li>„Erstprüfung starten“: dein LLM findet jede Stelle, an der die Doku nicht zum Code passt, und formuliert die Korrektur.</li>
                 <li>Prüfen, übernehmen, „Freigaben exportieren“.</li>
               </ol>
               {projectState?.canImport && (

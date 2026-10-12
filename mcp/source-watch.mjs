@@ -62,8 +62,8 @@ export async function look() {
   return syncState()
 }
 
-// The check after a sync needs an LLM and Jev; without them the sources are still read and the change is shown.
-const canCheck = () => { const env = runtimeEnv(); return draftingStatus(env).configured && !!(env.TYPESAFE_API_KEY || env.JEV_API_KEY)?.trim?.() }
+// The check after a sync needs an LLM; without one the sources are still read and the change is shown.
+const canCheck = () => draftingStatus(runtimeEnv()).configured
 
 /** Code changed: read the sources again, then check the sections that describe a changed file. */
 export async function syncCode() {

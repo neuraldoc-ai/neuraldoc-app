@@ -43,5 +43,5 @@ server.listen(port, '0.0.0.0', () => {
   log.info('server', `neuraldoc läuft auf http://localhost:${port}/app/`, { mode, state: process.env.NEURALDOC_STATE_DIR || 'mcp/state' })
   startWatch()
   if (!fs.existsSync(path.join(root, 'app', 'index.html'))) log.error('server', 'Oberfläche fehlt: frontend/dist wurde nicht gebaut (npm run build).')
-  log.info('server', 'Konfiguration', { jev: setup.jev.configured ? 'Key gesetzt' : 'Key fehlt', llm: setup.drafting.configured ? `${setup.drafting.label} ${setup.drafting.model}` : `nicht eingerichtet (${setup.drafting.error || 'Key fehlt'})` })
+  log.info('server', 'Konfiguration', { entscheidungsmodell: setup.decision.configured ? setup.decision.label : setup.decision.provider === 'off' ? 'aus' : `${setup.decision.label} unvollständig`, llm: setup.drafting.configured ? `${setup.drafting.label} ${setup.drafting.model}` : `nicht eingerichtet (${setup.drafting.error || 'Key fehlt'})` })
 })

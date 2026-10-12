@@ -42,7 +42,7 @@ export function WorkflowVisual({ step }: { step: number }) {
   const titles = [
     "Quellen fließen in einen gemeinsamen Kontext.",
     "Aus Code entsteht ein Graph aus Funktionen und Aufrufen.",
-    "Jev bewertet Kandidaten und markiert die passende Komponente.",
+    "Das Code-Brain ordnet jedem Abschnitt seine Codestellen zu.",
     "Aus Belegen entsteht Zeile für Zeile ein Dokumentationsentwurf.",
     "Quellen werden geprüft, dann wird der Entwurf freigegeben.",
     "Eine Verbindung führt zurück zu ihrer konkreten Quelle.",
@@ -192,7 +192,7 @@ export function WorkflowVisual({ step }: { step: number }) {
               className="visual-box"
             />
             <text x="250" y="122" textAnchor="middle" className="visual-label">
-              Jev
+              Brain
             </text>
             <rect
               x="228"

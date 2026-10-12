@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { KeyRound, Laptop, Save, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -59,6 +60,16 @@ const providers: Record<
   },
 };
 const isProvider = (p: string): p is Provider => p in providers;
+
+/** The optional second opinion on findings (mcp/decision.mjs). */
+type Decision = "off" | "jev" | "microsoft" | "laya";
+const decisions: Record<Decision, { label: string; hint: string }> = {
+  off: { label: "Aus", hint: "Die Prüfung läuft mit dem LLM allein. Befunde werden nicht gegengeprüft, Streichungen bleiben zur Prüfung stehen." },
+  jev: { label: "Jev · TypeSafe (Cloud, USA)", hint: "Textausschnitte gehen an TypeSafe in den USA. Klärt das vorher mit eurem Datenschutz." },
+  microsoft: { label: "Microsoft-Decision-1 · Azure Foundry", hint: "Läuft in eurer Azure-Ressource. Mit einer DataZoneStandard-Bereitstellung bleibt die Verarbeitung in der EU-Datenzone." },
+  laya: { label: "Laya · selbst betrieben (Open Source)", hint: "Läuft auf eurem eigenen Server (laya-serve), nichts verlässt euer Netz. Kurze Abschnitte bewertet es am besten." },
+};
+const isDecision = (d: string): d is Decision => d in decisions;
 
 export function SecretField({
   id,
@@ -175,8 +186,11 @@ export function SetupForm({ setup }: { setup: Setup }) {
   const [model, setModel] = useState(
     values.NEURALDOC_LLM_MODEL || providers[provider].model,
   );
+  const [decision, setDecision] = useState<Decision>(isDecision(setup.decision.provider) ? setup.decision.provider : "off");
   const [fields, setFields] = useState<Record<string, string>>({
     NEURALDOC_JEV_BUDGET_USD: values.NEURALDOC_JEV_BUDGET_USD || "0.25",
+    NEURALDOC_DECISION_URL: values.NEURALDOC_DECISION_URL || "",
+    NEURALDOC_DECISION_MODEL: values.NEURALDOC_DECISION_MODEL || "",
     GOOGLE_CLOUD_PROJECT: values.GOOGLE_CLOUD_PROJECT || "",
     NEURALDOC_LLM_BASE_URL:
       values.NEURALDOC_LLM_BASE_URL || "http://host.docker.internal:11434/v1",
@@ -192,8 +206,13 @@ export function SetupForm({ setup }: { setup: Setup }) {
     const body: Record<string, string | null> = {
       NEURALDOC_DRAFT_PROVIDER: provider,
       NEURALDOC_LLM_MODEL: model.trim() || p.model,
-      NEURALDOC_JEV_BUDGET_USD: fields.NEURALDOC_JEV_BUDGET_USD.trim(),
+      NEURALDOC_DECISION_PROVIDER: decision,
     };
+    if (decision === "jev" || decision === "microsoft") body.NEURALDOC_JEV_BUDGET_USD = fields.NEURALDOC_JEV_BUDGET_USD.trim();
+    if (decision === "microsoft" || decision === "laya") {
+      body.NEURALDOC_DECISION_URL = fields.NEURALDOC_DECISION_URL.trim();
+      body.NEURALDOC_DECISION_MODEL = fields.NEURALDOC_DECISION_MODEL.trim();
+    }
     if (provider === "vertex") {
       body.GOOGLE_CLOUD_PROJECT = fields.GOOGLE_CLOUD_PROJECT.trim();
       body.GOOGLE_CLOUD_LOCATION = "global";
@@ -237,29 +256,7 @@ export function SetupForm({ setup }: { setup: Setup }) {
           }}
         >
           <div className="grid gap-4">
-            <p className="text-sm font-medium">Jev · findet veraltete Stellen</p>
-            <SecretField
-              id="setup-jev"
-              label="Jev-Key (TypeSafe)"
-              secret={secrets.TYPESAFE_API_KEY}
-              value={keys.TYPESAFE_API_KEY ?? ""}
-              onChange={(v) => setKey("TYPESAFE_API_KEY", v)}
-              onRemove={() => save.mutate({ TYPESAFE_API_KEY: null })}
-            />
-            <div className="grid gap-2">
-              <Label htmlFor="setup-budget">Höchstbetrag je Prüfung (USD)</Label>
-              <Input
-                id="setup-budget"
-                inputMode="decimal"
-                className="w-32"
-                value={fields.NEURALDOC_JEV_BUDGET_USD}
-                onChange={(e) => set("NEURALDOC_JEV_BUDGET_USD", e.target.value)}
-              />
-            </div>
-          </div>
-          <Separator />
-          <div className="grid gap-4">
-            <p className="text-sm font-medium">LLM · formuliert die Entwürfe</p>
+            <p className="text-sm font-medium">LLM · prüft die Doku und formuliert die Korrekturen</p>
             <div className="grid gap-2">
               <Label htmlFor="setup-provider">Anbieter</Label>
               <Select
@@ -327,6 +324,87 @@ export function SetupForm({ setup }: { setup: Setup }) {
               keySet={!!(p.key && secrets[p.key]?.set)}
               baseUrl={provider === "local" ? fields.NEURALDOC_LLM_BASE_URL : undefined}
             />
+          </div>
+          <Separator />
+          <div className="grid gap-4">
+            <div className="grid gap-1">
+              <p className="flex items-center gap-2 text-sm font-medium">
+                Entscheidungsmodell · zweite Meinung zu jedem Befund
+                <Badge variant="outline" className="font-normal">optional</Badge>
+              </p>
+              <p className="text-xs text-muted-foreground">Bestätigt oder verwirft, was das LLM gefunden hat. Das Zuordnen von Doku und Code macht neuraldoc ohne Modell.</p>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="setup-decision">Anbieter</Label>
+              <Select value={decision} onValueChange={(v) => setDecision(v as Decision)}>
+                <SelectTrigger id="setup-decision">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(decisions).map(([id, x]) => (
+                    <SelectItem key={id} value={id}>
+                      {x.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">{decisions[decision].hint}</p>
+            </div>
+            {decision === "jev" && (
+              <SecretField
+                id="setup-jev"
+                label="Jev-Key (TypeSafe)"
+                secret={secrets.TYPESAFE_API_KEY}
+                value={keys.TYPESAFE_API_KEY ?? ""}
+                onChange={(v) => setKey("TYPESAFE_API_KEY", v)}
+                onRemove={() => save.mutate({ TYPESAFE_API_KEY: null })}
+              />
+            )}
+            {(decision === "microsoft" || decision === "laya") && (
+              <div className="grid gap-2">
+                <Label htmlFor="setup-decision-url">{decision === "microsoft" ? "Endpunkt der Foundry-Ressource" : "Adresse des Laya-Servers"}</Label>
+                <Input
+                  id="setup-decision-url"
+                  value={fields.NEURALDOC_DECISION_URL}
+                  onChange={(e) => set("NEURALDOC_DECISION_URL", e.target.value)}
+                  placeholder={decision === "microsoft" ? "https://meine-ressource.services.ai.azure.com" : "http://host.docker.internal:8000"}
+                />
+              </div>
+            )}
+            {(decision === "microsoft" || decision === "laya") && (
+              <div className="grid gap-2">
+                <Label htmlFor="setup-decision-model">{decision === "microsoft" ? "Name der Bereitstellung" : "Checkpoint (leer: multilingual)"}</Label>
+                <Input
+                  id="setup-decision-model"
+                  value={fields.NEURALDOC_DECISION_MODEL}
+                  onChange={(e) => set("NEURALDOC_DECISION_MODEL", e.target.value)}
+                  placeholder={decision === "microsoft" ? "microsoft-decision-1" : "multilingual"}
+                />
+              </div>
+            )}
+            {(decision === "microsoft" || decision === "laya") && (
+              <SecretField
+                id="setup-decision-key"
+                label={decision === "microsoft" ? "API-Key der Foundry-Ressource" : "Key (nur falls dein Server einen verlangt)"}
+                secret={secrets.NEURALDOC_DECISION_API_KEY}
+                value={keys.NEURALDOC_DECISION_API_KEY ?? ""}
+                onChange={(v) => setKey("NEURALDOC_DECISION_API_KEY", v)}
+                onRemove={() => save.mutate({ NEURALDOC_DECISION_API_KEY: null })}
+              />
+            )}
+            {(decision === "jev" || decision === "microsoft") && (
+              <div className="grid gap-2">
+                <Label htmlFor="setup-budget">Höchstbetrag je Prüfung (USD)</Label>
+                <Input
+                  id="setup-budget"
+                  inputMode="decimal"
+                  className="w-32"
+                  value={fields.NEURALDOC_JEV_BUDGET_USD}
+                  onChange={(e) => set("NEURALDOC_JEV_BUDGET_USD", e.target.value)}
+                />
+              </div>
+            )}
+            {setup.decision.error && decision === setup.decision.provider && <p className="text-xs text-destructive">{setup.decision.error}</p>}
           </div>
           <div className="flex items-center gap-3">
             <Button type="submit" disabled={save.isPending}>

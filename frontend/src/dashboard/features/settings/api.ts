@@ -6,7 +6,8 @@ import { profileFromValues, useProfile } from './profile-store'
 export type Secret = { set: boolean; source?: 'ui' | 'env'; hint?: string }
 export type Setup = {
   drafting: { provider?: string; label?: string; model?: string; configured: boolean; error?: string }
-  jev: { required: boolean; configured: boolean; model: string }
+  /** Optional second opinion on findings (mcp/decision.mjs). */
+  decision: { provider: 'off' | 'jev' | 'microsoft' | 'laya'; label: string; where: string | null; configured: boolean; optional: true; error: string | null }
   credentials: Record<string, boolean>
   settings: { values: Record<string, string>; secrets: Record<string, Secret> }
   editable: boolean

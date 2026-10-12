@@ -203,8 +203,8 @@ function JevFiles({ p }: { p: LiveProposal }) {
 function ProjectMethod() {
   return (
     <div className="grid gap-3 text-xs text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground">
-      <p><strong>Erstprüfung.</strong> Jev vergleicht jeden Doku-Abschnitt mit bis zu sechs passenden Stellen im aktuellen Code. Gemeldet werden Widersprüche und fehlende Angaben, wenn das Urteil am wahrscheinlichsten ist (ab 60 % Wahrscheinlichkeit, 50 % Sicherheit). Das Sprachmodell kann danach bestätigen, dass der Text doch stimmt.</p>
-      <p><strong>Korrektur.</strong> Das Sprachmodell erhält den Abschnitt und diese Codestellen. Es muss auf die Belege verweisen, eine Rückfrage stellen oder bestätigen, dass der Text stimmt.</p>
+      <p><strong>Erstprüfung.</strong> Das Sprachmodell vergleicht jeden Doku-Abschnitt mit den passenden Stellen im aktuellen Code. Jeder Befund muss eine Codestelle wörtlich zitieren; ein zweiter Blick verwirft, was der Code nicht trägt. Optional prüft ein Entscheidungsmodell jeden Befund gegen.</p>
+      <p><strong>Korrektur.</strong> Zu jedem Befund steht die geänderte Zeile mit Begründung und Beleg. Wo der Code nicht eindeutig entscheidet, gibt es eine Rückfrage statt einer Änderung.</p>
       <p><strong>Grenzen.</strong> Für eigene Projekte gibt es noch keine gemessene Trefferquote. Codestellen werden über gemeinsame Begriffe gefunden; was anders heißt, kann fehlen. Jede Korrektur muss fachlich geprüft werden.</p>
     </div>
   );

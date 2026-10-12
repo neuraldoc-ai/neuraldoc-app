@@ -180,7 +180,7 @@ export function NodeDetail({
         {n.mapping && (
           <div className="grid gap-2 rounded-lg border p-3 text-xs text-muted-foreground">
             <p>
-              Jev-Vorschlag:{" "}
+              Modell-Vorschlag:{" "}
               {n.mapping.choice === "unknown"
                 ? "keine eindeutige Zuordnung"
                 : nodeById[`m:${n.mapping.choice}`]?.label ||
@@ -381,7 +381,7 @@ export function MappingStatus({
             <span>{parsed} Dateien analysiert</span>
             {semantic?.status === "ready" ? (
               <>
-                <span>{semantic.edges} Jev-Verbindungen</span>
+                <span>{semantic.edges} Modell-Verbindungen</span>
                 {!!semantic.deferred?.length && (
                   <span className="font-medium text-foreground">
                     {semantic.deferred.length} offen
@@ -404,7 +404,7 @@ export function MappingStatus({
         <div className="grid gap-1">
           <h3 className="text-sm font-medium">Analysestatus</h3>
           <p className="text-xs leading-relaxed text-muted-foreground">
-            Code liefert technische Beziehungen. Jev ergänzt fachliche
+            Code liefert technische Beziehungen. Die Prüfung ergänzt fachliche
             Zuordnungen als Modellvorschlag.
           </p>
         </div>
@@ -469,7 +469,7 @@ export function MappingStatus({
           </>
         ) : (
           <p className="text-xs text-muted-foreground">
-            Noch keine aktuellen Jev-Zuordnungen vorhanden.
+            Noch keine Modell-Zuordnungen vorhanden.
           </p>
         )}
         <Link

@@ -61,7 +61,7 @@ The sample is a fictional ERP vendor (MOBIQ) whose documentation is one release 
 
 ### Check your own project
 
-Open **Einstellungen** in the sidebar, enter your name and company, and paste your own keys: Jev (required) and one LLM (OpenAI, Claude, Gemini, Google Cloud Vertex AI or a local model). They are stored in the `neuraldoc-data` volume, apply immediately and are never sent back to the browser. Prefer environment variables? Pass `--env-file .env` (template: [.env.example](.env.example)); keys saved in the interface take precedence.
+Open **Einstellungen** in the sidebar, enter your name and company, and paste your own keys: one LLM (OpenAI, Claude, Gemini, Google Cloud Vertex AI or a local model) and, optionally, a decision model as a second opinion (Jev, Microsoft-Decision-1 or a self-hosted Laya). They are stored in the `neuraldoc-data` volume, apply immediately and are never sent back to the browser. Prefer environment variables? Pass `--env-file .env` (template: [.env.example](.env.example)); keys saved in the interface take precedence.
 
 On the start page **Eigenes Projekt importieren**, later **Übersicht → Eigenes Projekt**:
 
@@ -125,7 +125,7 @@ docker run -p 8080:8080 neuraldoc-showcase
 ```
 repo + docs ──► code graph ──► initial check ─────────────────────────► your review ──► ZIP export
  (upload or      tree-sitter    per section: LLM findings with quotes,   accept, untick   corrected
-  GitHub URL)    + SQL AST      server checks, second look, Jev; per     single changes,  documents
+  GitHub URL)    + SQL AST      server checks, second look, decision    single changes,  documents
                                 document: missing list entries           edit or reject
 ```
 
@@ -158,8 +158,10 @@ Keys, provider and model are set in the app under **Einstellungen** (stored in `
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `TYPESAFE_API_KEY` | Jev, checks documents against the code. Required for your own projects. | none |
-| `NEURALDOC_JEV_BUDGET_USD` | Spending cap per initial check (max 1 USD) | `0.25` |
+| `NEURALDOC_DECISION_PROVIDER` | Optional second opinion on findings: `off`, `jev`, `microsoft` or `laya` | `jev` with a Jev key, else `off` |
+| `TYPESAFE_API_KEY` | Jev (TypeSafe, hosted in the US) | none |
+| `NEURALDOC_DECISION_URL`, `NEURALDOC_DECISION_MODEL`, `NEURALDOC_DECISION_API_KEY` | Microsoft-Decision-1 (Foundry endpoint, deployment name, api-key) or Laya (server address, checkpoint, optional key) | none |
+| `NEURALDOC_JEV_BUDGET_USD` | Spending cap of a paid decision model per initial check (max 1 USD) | `0.25` |
 | `NEURALDOC_GIT_TOKEN` | Personal GitHub token: imports private repositories by URL and, with *Contents* and *Pull requests* write access, opens pull requests (also in Einstellungen) | none |
 | `NEURALDOC_GITHUB_APP_ID` / `NEURALDOC_GITHUB_APP_PRIVATE_KEY` / `NEURALDOC_GITHUB_APP_SLUG` | GitHub App that opens the pull requests as `<slug>[bot]`; Einstellungen creates one from a manifest. Takes precedence over the token | none |
 | `NEURALDOC_GITHUB_PR` | `auto` (after every approval), `manual` (button on the overview) or `off` | `auto` |
@@ -192,7 +194,7 @@ A local LLM on the same computer is reached from the container at `http://host.d
 
 - **Your files stay unchanged** unless you connect GitHub: then approved sections go into a pull request on a `neuraldoc/` branch, never straight into the base branch.
 - **Uploads stay local.** The upload goes only to your own container; the temporary copy is deleted after the import. Secrets such as `.env` files and private keys are filtered out in the browser and again on the server.
-- **What leaves your machine:** when you start the initial check, document sections and code excerpts go to your LLM provider, and the findings with their code excerpts to Jev (TypeSafe API). With a local LLM, only the Jev request leaves your machine. A GitHub URL is cloned directly from GitHub.
+- **What leaves your machine:** when you start the initial check, document sections and code excerpts go to your LLM provider, and, if you chose one, the findings with their code excerpts to the decision model. With a local LLM and no decision model (or a self-hosted Laya), nothing leaves your machine. A GitHub URL is cloned directly from GitHub.
 - **Beispielprojekt laden** clones two public GitHub repositories. The **showcase image** makes no external calls at all.
 - **No telemetry**, no analytics, no tracking. Keys are read at runtime and never written to the image, the caches or the export.
 - Projects, decisions, caches and database connections live in the Docker volume `neuraldoc-data`. **Einstellungen → Zurücksetzen** deletes all projects, or everything including profile, keys and database connections; `docker volume rm neuraldoc-data` deletes the volume.
@@ -235,7 +237,7 @@ Every start, import, check, draft and error is written to the container log, wit
 docker logs -f <container>        # or: Docker Desktop → Containers → neuraldoc → Logs
 ```
 
-The first lines show whether the Jev key and the LLM provider are configured.
+The first lines show whether the LLM provider and the decision model are configured.
 </details>
 
 <details>

@@ -58,9 +58,9 @@ test('refusals, truncation and invented evidence never create caches for the new
     assert.equal(fs.readdirSync(c.stateDir).filter((f) => f.startsWith('draft-')).length, 0)
   }
 })
-test('setup requires Jev, reports only key presence, and rejects invalid endpoint, model and price settings', () => {
+test('setup reports the optional decision model and only key presence, and rejects invalid endpoint, model and price settings', () => {
   const status = setupStatus({ NEURALDOC_DRAFT_PROVIDER: 'openai', OPENAI_API_KEY: 'secret-openai', TYPESAFE_API_KEY: 'secret-jev' })
-  assert.equal(status.jev.required, true); assert.equal(status.jev.configured, true); assert.equal(status.drafting.configured, true); assert.ok(!JSON.stringify(status).includes('secret-'))
+  assert.deepEqual([status.decision.provider, status.decision.configured, status.decision.optional], ['jev', true, true]); assert.equal(status.drafting.configured, true); assert.ok(!JSON.stringify(status).includes('secret-'))
   assert.equal(setupStatus({ NEURALDOC_DRAFT_PROVIDER: 'local' }).drafting.configured, true)
   assert.throws(() => config('local', { NEURALDOC_LLM_BASE_URL: 'http://user:secret@localhost/v1' }), /Zugangsdaten/)
   assert.throws(() => config('openai', { NEURALDOC_LLM_MODEL: 'bad\nmodel' }), /Modellname/)

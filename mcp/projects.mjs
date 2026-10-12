@@ -5,7 +5,8 @@ import { importProject, digest, BUNDLE_ID } from './project-import.mjs'
 import { withFeatures } from './project-features.mjs'
 import { describeFeatures } from './feature-texts.mjs'
 import { withUpload } from './project-upload.mjs'
-import { createJevClient, MODEL } from './semantic-mapping.mjs'
+import { createJevClient } from './semantic-mapping.mjs'
+import { decisionConfig } from './decision.mjs'
 import { codeChunks } from './retrieval.mjs'
 import { DraftError, draftingConfig, draftingStatus } from './drafting.mjs'
 import { applyLineEdits, CHECK_PROMPT_VERSION, checkDocumentLists, checkSection, codeIndex, createSectionRetriever, excerptId, pool, verifyWithJev } from './check.mjs'
@@ -149,27 +150,28 @@ export function projectList() {
 }
 const save = (p) => write(fileFor(p.id), p)
 const requireProject = () => { const project = activeProject(); if (!project) throw new Error('Zuerst ein eigenes Projekt importieren.'); return project }
-const key = (env) => { const value = env.TYPESAFE_API_KEY || env.JEV_API_KEY; if (!value?.trim()) throw new DraftError('Jev-Key fehlt. Unter Einstellungen hinterlegen.', 503); return value.trim() }
+// The optional decision model (decision.mjs): a second opinion on findings, or null when none is chosen.
+const decider = (p, env, createClient) => { const d = decisionConfig(env); return d.configured ? createClient({ ...d.client, cachePath: path.join(projectsDir, p.id, 'jev-cache.json'), budget: Number(env.NEURALDOC_JEV_BUDGET_USD || .25) }) : null }
 
 export { codeChunks }
 const TYPE_LABELS = { nutzer: 'Nutzerhandbuch', dialog: 'Dialogbeschreibung', parameter: 'Parametertabelle', technik: 'Technische Dokumentation', installation: 'Installationsanleitung', architektur: 'Architekturbeschreibung' }
-// Jev's second opinion on a finding. Confirmed findings are marked "sicher", findings Jev clearly refutes are dropped,
-// everything else stays "prüfen". Thresholds tuned on the benchmarks in mcp/eval (README there).
+// The decision model's second opinion on a finding (optional, decision.mjs). Confirmed findings are marked "sicher",
+// findings it clearly refutes are dropped, everything else stays "prüfen". Without a decision model nothing is dropped. Thresholds tuned on the benchmarks in mcp/eval (README there).
 const JEV_SURE = 0.7, JEV_VETO = 0.75, JEV_VETO_CONFIDENCE = 0.6
 export const sectionDocument = (p, section) => ({ title: p.docSources.find((s) => s.id === section.source)?.title ?? section.title, path: section.path, kind: TYPE_LABELS[section.type] || 'Dokumentation' })
 
-/** Jev weighs the findings of one section: clear contradictions are dropped, deletions need a confirmation. */
+/** The decision model weighs the findings of one section: clear contradictions are dropped, deletions need a confirmation. */
 async function weigh(p, section, result, jev, jevVeto = true) {
-  // Links and file names checked against the repository are facts, not opinions: Jev does not weigh them.
+  // Links and file names checked against the repository are facts, not opinions: they are not weighed.
   const facts = result.findings.filter((f) => f.files), open = result.findings.filter((f) => !f.files)
   if (!open.length || !jev) return result
   const opinions = await verifyWithJev(jev, { section, findings: open, excerpts: result.excerpts, total: p.files.length })
   const findings = [...facts], dropped = [...result.dropped]
   open.forEach((f, i) => {
     const o = opinions[i]
-    if (jevVeto && o.verdict === 'refuted' && o.refuted >= JEV_VETO && o.confidence >= JEV_VETO_CONFIDENCE) dropped.push({ kind: f.kind, doc_quote: f.doc_quote, reason: `Jev widerspricht (${Math.round(o.refuted * 100)} %)` })
-    // Deleting text rests on a name the uploaded code lacks; dependencies are never uploaded. So a deletion needs Jev's confirmation too.
-    else if (jevVeto && f.kind === 'removed' && !(o.verdict === 'confirmed' && o.confirmed >= JEV_SURE)) dropped.push({ kind: f.kind, doc_quote: f.doc_quote, reason: 'Streichung ohne Bestätigung durch Jev' })
+    if (jevVeto && o.verdict === 'refuted' && o.refuted >= JEV_VETO && o.confidence >= JEV_VETO_CONFIDENCE) dropped.push({ kind: f.kind, doc_quote: f.doc_quote, reason: `${jev.label ?? 'Jev'} widerspricht (${Math.round(o.refuted * 100)} %)` })
+    // Deleting text rests on a name the uploaded code lacks; dependencies are never uploaded. So a deletion needs a confirmation too.
+    else if (jevVeto && f.kind === 'removed' && !(o.verdict === 'confirmed' && o.confirmed >= JEV_SURE)) dropped.push({ kind: f.kind, doc_quote: f.doc_quote, reason: `Streichung ohne Bestätigung durch ${jev.label ?? 'Jev'}` })
     else findings.push({ ...f, jev: o.verdict ? o : null, sure: o.verdict === 'confirmed' && o.confirmed >= JEV_SURE })
   })
   if (findings.length === result.findings.length) return { ...result, findings }
@@ -231,12 +233,11 @@ export const checkStatus = { running: false, phase: null, done: 0, total: 0, fin
 const progress = (patch) => Object.assign(checkStatus, patch)
 export const isBusy = () => busy || drafting > 0 || checkStatus.running
 
-/** Starts the initial check in the background; setup errors (no project, no LLM, no Jev key, busy) come back at once. */
+/** Starts the initial check in the background; setup errors (no project, no LLM, busy) come back at once. */
 export function startCheck(options) {
   if (checkStatus.running || busy || drafting) throw new DraftError('Es läuft schon ein Import oder Modelllauf. Versuch es gleich noch einmal.', 409)
   const p = requireProject(), env = runtimeEnv()
   if (!draftingStatus(env).configured) throw new DraftError('Zuerst ein LLM unter Einstellungen einrichten.', 503)
-  key(env)
   progress({ running: true, phase: 'sections', done: 0, total: options?.only?.length ?? p.docFiles.filter((d) => d.checkable !== false).length, findings: 0, startedAt: new Date().toISOString(), finishedAt: null, error: null, project: p.id, reason: options?.reason ?? null })
   checkProject(options)
     // A new check can change approved corrections (their decision is then dropped): the pull requests follow.
@@ -255,9 +256,9 @@ export async function checkProject({ createClient = createJevClient, fetchImpl, 
   return exclusive(async () => {
     const p = requireProject(), started = Date.now()
     const env = runtimeEnv()
-    // Findings without an LLM to verify and correct them are a dead end, and Jev costs money: both are set up first.
+    // Findings without an LLM to verify and correct them are a dead end: it is set up first. The decision model is optional.
     if (!draftingStatus(env).configured) throw new DraftError('Zuerst ein LLM unter Einstellungen einrichten.', 503)
-    const jev = createClient({ key: key(env), cachePath: path.join(projectsDir, p.id, 'jev-cache.json'), budget: Number(env.NEURALDOC_JEV_BUDGET_USD || .25) })
+    const jev = decider(p, env, createClient)
     const config = draftingConfig({ ...env, NEURALDOC_STATE_DIR: path.join(projectsDir, p.id) })
     const code = codeIndex(p.files), retriever = createSectionRetriever(p.files), cacheDir = checkCache
     const checkable = p.docFiles.filter((d) => d.checkable !== false), partial = Array.isArray(only) ? new Set(only) : null
@@ -286,13 +287,13 @@ export async function checkProject({ createClient = createJevClient, fetchImpl, 
         return r
       } catch (error) {
         // A wrong key or a missing model fails every section: stop instead of collecting the same error.
-        if (error.status === 503 || [401, 403, 404].includes(error.httpStatus) || /Jev lehnt den Key ab|Jev-Budget/.test(error.message)) throw error
+        if (error.status === 503 || [401, 403, 404].includes(error.httpStatus) || /lehnt den Key ab|Budget erreicht/.test(error.message)) throw error
         failures++; firstError ??= error
         log.warn('check', 'Abschnitt nicht geprüft', { doc: section.path, part: section.part, error: error.message })
         return { status: 'error', reason: error.message, findings: [], dropped: [], excerpts: [], terms: [] }
       } finally {
         progress({ done: ++done, total: targets.length })
-        if (done % 10 === 0) log.info('check', `${done}/${targets.length} Abschnitte geprüft`, { llmUsd: llm.usd.toFixed(4), jevUsd: jev.usage.estimatedUsd?.toFixed?.(4) })
+        if (done % 10 === 0) log.info('check', `${done}/${targets.length} Abschnitte geprüft`, { llmUsd: llm.usd.toFixed(4), jevUsd: jev?.usage.estimatedUsd?.toFixed?.(4) })
       }
     })
     // Without a single section the model actually checked, the run says nothing: keep the previous result.
@@ -322,9 +323,9 @@ export async function checkProject({ createClient = createJevClient, fetchImpl, 
         if (r) { targets.push(section); results.push(r) }
       }
     }
-    progress({ phase: 'jev' })
-    // Jev weighs every finding (one request per section with findings).
-    const weighed = await pool(results, concurrency, (r, i) => r.findings.length ? weigh(p, targets[i], r, jev, jevVeto).catch((error) => { if (/Jev lehnt den Key ab|Jev-Budget/.test(error.message)) throw error; log.warn('check', 'Jev-Prüfung fehlgeschlagen', { doc: targets[i].path, error: error.message }); return r }) : r)
+    if (jev) progress({ phase: 'jev' })
+    // The decision model, if chosen, weighs every finding (one request per section with findings).
+    const weighed = await pool(results, concurrency, (r, i) => r.findings.length ? weigh(p, targets[i], r, jev, jevVeto).catch((error) => { if (/lehnt den Key ab|Budget erreicht/.test(error.message)) throw error; log.warn('check', 'Zweite Meinung fehlgeschlagen', { doc: targets[i].path, error: error.message }); return r }) : r)
     results.splice(0, results.length, ...weighed)
     // Install the complete run at once; a failed run only keeps the caches. A partial run replaces only its sections.
     const previous = p.generated, checked = new Set(targets.map((t) => t.id))
@@ -351,12 +352,12 @@ export async function checkProject({ createClient = createJevClient, fetchImpl, 
     for (const id of Object.keys(p.decisions)) if (!p.generated[id]) delete p.decisions[id]
     const count = (status) => records.filter((r) => r.status === status).length
     const listRecords = lists.map((l, i) => ({ doc: sources[i].id, status: l.status ?? null, skipped: l.skipped, candidates: l.candidates ?? [], added: Object.values(l.bySection).flat().length, dropped: l.dropped }))
-    p.mapping = { model: config.model, verifier: MODEL, kind: 'section-check', promptVersion: CHECK_PROMPT_VERSION, createdAt: new Date().toISOString(), subjects: records.length, skipped: p.docFiles.length - records.length, mismatches: count('findings'), consistent: count('ok'), unclear: count('unclear'), errors: failures, findings: records.reduce((n, r) => n + r.findings, 0), usage: { ...jev.usage, llm }, deferred: records.filter((r) => r.status === 'ok').map((r) => `doc:${r.doc}`), records, lists: partial ? [...(p.mapping?.lists ?? []).filter((l) => !sources.some((s) => s.id === l.doc)), ...listRecords] : listRecords, ...(partial ? { partial: { sections: targets.length, reason } } : {}) }
+    p.mapping = { model: config.model, verifier: jev?.model ?? null, kind: 'section-check', promptVersion: CHECK_PROMPT_VERSION, createdAt: new Date().toISOString(), subjects: records.length, skipped: p.docFiles.length - records.length, mismatches: count('findings'), consistent: count('ok'), unclear: count('unclear'), errors: failures, findings: records.reduce((n, r) => n + r.findings, 0), usage: { ...(jev?.usage ?? {}), llm }, deferred: records.filter((r) => r.status === 'ok').map((r) => `doc:${r.doc}`), records, lists: partial ? [...(p.mapping?.lists ?? []).filter((l) => !sources.some((s) => s.id === l.doc)), ...listRecords] : listRecords, ...(partial ? { partial: { sections: targets.length, reason } } : {}) }
     // The text each section had when it was last checked: what the documentation check looks at again.
     p.checkedText = { ...(partial ? p.checkedText : {}), ...Object.fromEntries(targets.map((t) => [t.id, digest(t.text)])) }
-    p.graph.metadata.semantic = { status: 'ready', model: `${config.model} + ${MODEL}`, createdAt: p.mapping.createdAt, subjects: records.length, edges: p.graph.edges.filter((e) => e.id.startsWith('check:')).length, deferred: p.mapping.deferred, usage: p.mapping.usage }
+    p.graph.metadata.semantic = { status: 'ready', model: jev ? `${config.model} + ${jev.model}` : config.model, createdAt: p.mapping.createdAt, subjects: records.length, edges: p.graph.edges.filter((e) => e.id.startsWith('check:')).length, deferred: p.mapping.deferred, usage: p.mapping.usage }
     p.events.push({ at: p.mapping.createdAt, kind: 'mapping', title: partial ? `${reason || 'Abgleich'}: ${targets.length} Abschnitte geprüft, ${p.dataset.proposals.length} offene Vorschläge` : `Erstprüfung: ${targets.length} Abschnitte, ${p.mapping.mismatches} mit Abweichung` }); save(p)
-    log.info('check', `${label} fertig`, { sections: targets.length, mismatches: p.mapping.mismatches, findings: p.mapping.findings, consistent: p.mapping.consistent, unclear: p.mapping.unclear, errors: failures, llmCalls: llm.calls, cached: llm.cached, llmUsd: llm.usd.toFixed(4), jevUsd: jev.usage.estimatedUsd?.toFixed?.(4), ms: Date.now() - started })
+    log.info('check', `${label} fertig`, { sections: targets.length, mismatches: p.mapping.mismatches, findings: p.mapping.findings, consistent: p.mapping.consistent, unclear: p.mapping.unclear, errors: failures, llmCalls: llm.calls, cached: llm.cached, llmUsd: llm.usd.toFixed(4), jevUsd: jev?.usage.estimatedUsd?.toFixed?.(4), ms: Date.now() - started })
     return projectPayload(p)
   })
 }
@@ -372,7 +373,7 @@ export async function projectDraft(id, answer, { createClient = createJevClient,
     if (!draftingStatus(env).configured) throw new DraftError('Zuerst ein LLM unter Einstellungen einrichten.', 503)
     const section = p.docFiles.find((d) => d.id === (proposal.section ?? proposal.doc))
     const config = draftingConfig({ ...env, NEURALDOC_STATE_DIR: path.join(projectsDir, p.id) })
-    const jev = createClient({ key: key(env), cachePath: path.join(projectsDir, p.id, 'jev-cache.json'), budget: Number(env.NEURALDOC_JEV_BUDGET_USD || .25) })
+    const jev = decider(p, env, createClient)
     const started = Date.now()
     const retriever = createSectionRetriever(p.files)
     const checked = await checkSection({ section, document: sectionDocument(p, section), code: codeIndex(p.files), retriever, config, cacheDir: checkCache, answer, fetchImpl })

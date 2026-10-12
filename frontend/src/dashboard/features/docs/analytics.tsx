@@ -20,7 +20,7 @@ export function AnalyticsPage() {
   const { total, history } = analytics()
   const [release, setRelease] = useState('all')
   const selected = history.find((row) => row.release === release) ?? total
-  if (datasetMode === 'working') return <Frame title='Analytics' lead='Analyse deines importierten Projekts.'><div className='grid gap-4 sm:grid-cols-3'><Stat label='Code-Dateien' value={projectState.project?.files.length || 0} /><Stat label='Dokumente' value={projectState.project?.documents.length || 0} /><Stat label='Mit Jev geprüft' value={projectState.project?.mapping?.subjects || 0} /></div><Card><CardHeader><CardTitle>Noch keine Qualitätsmessung</CardTitle><CardDescription>Präzision und Recall brauchen manuell geprüfte Vergleichsdaten. Die MOBIQ-Benchmarkwerte werden nicht auf dein Projekt übertragen.</CardDescription></CardHeader></Card><UsageSection /></Frame>
+  if (datasetMode === 'working') return <Frame title='Analytics' lead='Analyse deines importierten Projekts.'><div className='grid gap-4 sm:grid-cols-3'><Stat label='Code-Dateien' value={projectState.project?.files.length || 0} /><Stat label='Dokumente' value={projectState.project?.documents.length || 0} /><Stat label='Abschnitte geprüft' value={projectState.project?.mapping?.subjects || 0} /></div><Card><CardHeader><CardTitle>Noch keine Qualitätsmessung</CardTitle><CardDescription>Präzision und Recall brauchen manuell geprüfte Vergleichsdaten. Die MOBIQ-Benchmarkwerte werden nicht auf dein Projekt übertragen.</CardDescription></CardHeader></Card><UsageSection /></Frame>
   return (
     <Frame title='Analytics' lead='Wie gut neuraldoc in den ausgewerteten Releases lag.'>
       <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
