@@ -24,20 +24,24 @@ import { NavGroup } from './nav-group'
 function SidebarBrand() {
   const { toggleSidebar } = useSidebar()
   const profile = useProfile((s) => s.profile)
+  const brand = <>
+    <div className='flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground'>
+      <Logo className='size-4.5' />
+    </div>
+    <span className='flex min-w-0 flex-col leading-tight'>
+      <span className='text-[15px] font-semibold tracking-[-0.03em]'>neuraldoc</span>
+      <span className='truncate text-xs text-muted-foreground'>
+        {datasetMode === 'working' ? `${company.product} · ${profile?.company || 'Eigenes Projekt'}` : datasetMode === 'showcase' ? `Showcase · ${company.product}` : profile?.company || 'Noch kein Projekt'}
+      </span>
+    </span>
+  </>
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <SidebarMenuButton size='lg' tooltip='Seitenleiste ein- und ausklappen' onClick={toggleSidebar}>
-          <div className='flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground'>
-            <Logo className='size-4.5' />
-          </div>
-          <span className='flex min-w-0 flex-col leading-tight'>
-            <span className='text-[15px] font-semibold tracking-[-0.03em]'>neuraldoc</span>
-            <span className='truncate text-xs text-muted-foreground'>
-              {datasetMode === 'working' ? `${company.product} · ${profile?.company || 'Eigenes Projekt'}` : datasetMode === 'showcase' ? `Showcase · ${company.product}` : profile?.company || 'Noch kein Projekt'}
-            </span>
-          </span>
-        </SidebarMenuButton>
+        {/* With a website in front (neuraldoc.de), the brand leads back to it; otherwise it folds the sidebar. */}
+        {import.meta.env.VITE_LANDING_URL
+          ? <SidebarMenuButton size='lg' tooltip='Zur Startseite' asChild><a href={import.meta.env.VITE_LANDING_URL}>{brand}</a></SidebarMenuButton>
+          : <SidebarMenuButton size='lg' tooltip='Seitenleiste ein- und ausklappen' onClick={toggleSidebar}>{brand}</SidebarMenuButton>}
       </SidebarMenuItem>
     </SidebarMenu>
   )
