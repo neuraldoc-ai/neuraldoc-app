@@ -28,7 +28,9 @@ const server = http.createServer((req, res) => {
     // A landing page built into dist/index.html (a hosted demo) is the start page; otherwise the app is.
     if (pathname === '/' && !fs.existsSync(path.join(root, 'index.html'))) { res.writeHead(302, { Location: '/app/' }); res.end(); return }
     const relative = pathname === '/' ? 'index.html' : pathname === '/app' || pathname.startsWith('/app/') ? 'app/index.html' : pathname.replace(/^\/+/, '')
-    const file = path.resolve(root, relative)
+    let file = path.resolve(root, relative)
+    // A page in its own folder (the legal pages of a hosted landing page): /impressum and /impressum/.
+    if (!path.extname(file) && fs.existsSync(path.join(file, 'index.html'))) file = path.join(file, 'index.html')
     if (!file.startsWith(root) || !fs.existsSync(file) || !fs.statSync(file).isFile()) { res.writeHead(404); res.end(); return }
     res.writeHead(200, { 'Content-Type': types[path.extname(file)] ?? 'application/octet-stream', 'Cache-Control': pathname.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache' })
     if (req.method === 'HEAD') res.end()
