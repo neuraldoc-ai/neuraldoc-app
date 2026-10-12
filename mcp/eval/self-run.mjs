@@ -64,20 +64,6 @@ if (history) {
   for (const [rel, text] of texts) entries[`repo/${rel}`] = strToU8(mutate(rel, text, planted))
   await projects.addProject(Buffer.from(zipSync(entries)))
 }
-if (process.argv.includes('--dry')) {
-  // Free: the hints the sections would get (changes since the release they still state, values the code disagrees on).
-  const { codeChanges, sectionChanges, valueConflicts } = await import('../change-facts.mjs')
-  const { createSectionRetriever, sectionTerms } = await import('../check.mjs')
-  const p = projects.activeProject(), retriever = createSectionRetriever(p.files)
-  const diffs = fs.existsSync(path.join(projects.projectsDir, p.id, 'diffs.json')) ? JSON.parse(fs.readFileSync(path.join(projects.projectsDir, p.id, 'diffs.json'), 'utf8')) : {}
-  const changes = p.history ? codeChanges(p.history, diffs) : []
-  console.log('Änderungen seit dem Release:', JSON.stringify(changes.map((c) => c.kind === 'rename' ? `${c.from} → ${c.to}` : `${c.name}: ${c.from} → ${c.to}`)))
-  for (const s of p.docFiles.filter((d) => d.checkable !== false)) {
-    const mine = sectionChanges(s.text, changes), conflicts = valueConflicts(s.text, sectionTerms(s.text), (n) => retriever.values(n))
-    if (mine.length || conflicts.length) console.log(`  ${s.title}: ${mine.map((c) => `Zeile ${c.line} ${c.kind === 'rename' ? c.from : `${c.name} ${c.from}→${c.to}`}`).join('; ')} ${conflicts.map((c) => `[Widerspruch ${c.name}: ${c.values.map((v) => v.value).join(' / ')}]`).join(' ')}`)
-  }
-  process.exit(0)
-}
 const checked = await projects.checkProject()
 const p = projects.activeProject()
 const docKey = (d) => d.path.replace(/^(dokumentation|repository)\//, '')
