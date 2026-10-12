@@ -70,6 +70,64 @@ export async function addProject(zip) {
     return projectPayload(project)
   })
 }
+/** Whether the active project's sources can be read again: a repository by URL, docs by URL, Confluence or Drive. */
+export function refreshable(p = activeProject()) {
+  if (!p || showcaseOnly()) return false
+  return p.sources?.repo?.source === 'url' && (!p.sources.docs || ['url', 'live'].includes(p.sources.docs.source))
+}
+
+/**
+ * Reads the active project's sources again into the same project. The id stays, so proposal ids, decisions, the
+ * Jev cache and the published state of unchanged sections stay too; proposals on a section whose text changed go.
+ * Returns which code files changed and which sections the code or the documentation touched since the last check.
+ */
+export async function refreshProject() {
+  if (!refreshable()) throw new DraftError('Nur Projekte aus einer Repository-URL (mit Doku aus URL, Confluence oder Drive) lassen sich abgleichen. Einen hochgeladenen Ordner bitte neu importieren.', 400)
+  return exclusive(async () => {
+    const old = requireProject(), s = old.sources, live = s.docs?.live
+    const manifest = { repoUrl: s.repo.url, projectName: old.name, ...(s.docs?.source === 'url' ? { docsUrl: s.docs.url } : {}), ...(live?.confluence ? { confluence: { spaces: live.confluence.spaces.map((x) => x.key) } } : {}), ...(live?.drive ? { drive: { folder: live.drive.folder.url } } : {}) }
+    const fresh = await withUpload(null, projectsDir, (input) => importProject(input, { projectsDir }), manifest)
+    if (fresh.id !== old.id) {
+      // The importer wrote its files under the new id: they move to the project's own folder.
+      const from = path.join(projectsDir, fresh.id), to = path.join(projectsDir, old.id)
+      for (const name of ['snapshot', 'diffs.json']) {
+        fs.rmSync(path.join(to, name), { recursive: true, force: true })
+        if (fs.existsSync(path.join(from, name))) fs.cpSync(path.join(from, name), path.join(to, name), { recursive: true })
+      }
+      if (!fs.existsSync(path.join(from, 'project.json'))) fs.rmSync(from, { recursive: true, force: true })
+    }
+    const before = new Map(old.files.map((f) => [f.path, digest(f.text)])), after = new Map(fresh.files.map((f) => [f.path, digest(f.text)]))
+    const files = [...new Set([...before.keys(), ...after.keys()])].filter((f) => before.get(f) !== after.get(f))
+    // Sections that describe a changed file (code brain, now and before) or got code from it in the last check.
+    const touched = new Set(files.flatMap((f) => [...(fresh.brain?.files?.[f] ?? []), ...(old.brain?.files?.[f] ?? [])]))
+    for (const r of old.mapping?.records ?? []) if (r.candidates?.some((c) => files.includes(c.replace(/^file:/, '').replace(/#.*$/, '')))) touched.add(r.doc)
+    // Projects checked before the text was recorded: their sections count as checked as imported.
+    const checkedText = old.checkedText ?? (old.mapping ? Object.fromEntries(old.docFiles.map((d) => [d.id, digest(d.text)])) : {})
+    const text = new Map(fresh.docFiles.map((d) => [d.id, d.text]))
+    const kept = old.dataset.proposals.filter((x) => text.get(x.section) === x.find), keep = new Set(kept.map((x) => x.id))
+    const pick = (o) => Object.fromEntries(Object.entries(o ?? {}).filter(([k]) => keep.has(k)))
+    const at = new Date().toISOString()
+    const p = { ...fresh, id: old.id, name: old.name, createdAt: old.createdAt, refreshedAt: at, dataset: { ...fresh.dataset, proposals: kept }, generated: pick(old.generated), decisions: pick(old.decisions), mapping: old.mapping, checkedText, featureTexts: old.featureTexts, events: [...(old.events ?? []), { at, kind: 'refresh', title: `Quellen neu gelesen: ${files.length} Code-Dateien geändert` }] }
+    save(p)
+    log.info('sync', 'Quellen neu gelesen', { project: p.name, head: p.sources.repo.head?.slice(0, 7), codeFiles: files.length, sections: touched.size, docsChanged: pendingDocs(p).length })
+    return { files, sections: [...touched].filter((id) => text.has(id)), docs: pendingDocs(p) }
+  })
+}
+
+/** Sections whose text differs from the text they had at their last check (new sections included). */
+export function pendingDocs(p = activeProject()) {
+  if (!p?.mapping) return []
+  const checked = p.checkedText ?? {}
+  return p.docFiles.filter((d) => d.checkable !== false && (p.checkedText ? checked[d.id] !== digest(d.text) : false)).map((d) => d.id)
+}
+
+/** Remembers the commit a source repository ('repo' or 'docs') is at, for projects imported before it was recorded. */
+export function rememberHead(kind, head) {
+  const p = activeProject()
+  if (!p?.sources?.[kind] || p.sources[kind].head || busy) return
+  p.sources[kind].head = head; save(p)
+}
+
 export function activateProject(id) {
   if (busy || drafting) throw new DraftError('Du kannst das Projekt wechseln, sobald der laufende Import oder Modelllauf fertig ist.', 409)
   if (showcaseOnly()) throw new DraftError('Der Showcase verwendet nur Beispieldaten.', 403)
@@ -171,6 +229,7 @@ function generationOf(result, section) {
 /** Progress of the running (or last) initial check, for the dashboard: phase sections → lists → jev. */
 export const checkStatus = { running: false, phase: null, done: 0, total: 0, findings: 0, startedAt: null, finishedAt: null, error: null }
 const progress = (patch) => Object.assign(checkStatus, patch)
+export const isBusy = () => busy || drafting > 0 || checkStatus.running
 
 /** Starts the initial check in the background; setup errors (no project, no LLM, no Jev key, busy) come back at once. */
 export function startCheck(options) {
@@ -178,7 +237,7 @@ export function startCheck(options) {
   const p = requireProject(), env = runtimeEnv()
   if (!draftingStatus(env).configured) throw new DraftError('Zuerst ein LLM unter Einstellungen einrichten.', 503)
   key(env)
-  progress({ running: true, phase: 'sections', done: 0, total: p.docFiles.filter((d) => d.checkable !== false).length, findings: 0, startedAt: new Date().toISOString(), finishedAt: null, error: null, project: p.id })
+  progress({ running: true, phase: 'sections', done: 0, total: options?.only?.length ?? p.docFiles.filter((d) => d.checkable !== false).length, findings: 0, startedAt: new Date().toISOString(), finishedAt: null, error: null, project: p.id, reason: options?.reason ?? null })
   checkProject(options)
     // A new check can change approved corrections (their decision is then dropped): the pull requests follow.
     .then((payload) => { progress({ running: false, phase: 'done', findings: payload.project?.mapping?.findings ?? 0, finishedAt: new Date().toISOString() }); scheduleSync(activeProject) })
@@ -189,9 +248,10 @@ export function startCheck(options) {
 /**
  * Initial check: every section of every document against the current code, as if the last release had just shipped.
  * Each section with a verified finding becomes a proposal that already carries its correction; sections the code
- * cannot decide become a question.
+ * cannot decide become a question. With `only` (section ids) just those sections are checked again (a new commit,
+ * changed documentation); every other result, proposal and decision stays.
  */
-export async function checkProject({ createClient = createJevClient, fetchImpl, concurrency = 3, jevVeto = true } = {}) {
+export async function checkProject({ createClient = createJevClient, fetchImpl, concurrency = 3, jevVeto = true, only = null, reason = null } = {}) {
   return exclusive(async () => {
     const p = requireProject(), started = Date.now()
     const env = runtimeEnv()
@@ -200,12 +260,15 @@ export async function checkProject({ createClient = createJevClient, fetchImpl, 
     const jev = createClient({ key: key(env), cachePath: path.join(projectsDir, p.id, 'jev-cache.json'), budget: Number(env.NEURALDOC_JEV_BUDGET_USD || .25) })
     const config = draftingConfig({ ...env, NEURALDOC_STATE_DIR: path.join(projectsDir, p.id) })
     const code = codeIndex(p.files), retriever = createSectionRetriever(p.files), cacheDir = checkCache
-    const targets = p.docFiles.filter((d) => d.checkable !== false)
-    log.info('check', 'Erstprüfung gestartet', { project: p.name, sections: targets.length, skipped: p.docFiles.length - targets.length, excerpts: retriever.chunks.length, model: config.model })
+    const checkable = p.docFiles.filter((d) => d.checkable !== false), partial = Array.isArray(only) ? new Set(only) : null
+    const targets = partial ? checkable.filter((d) => partial.has(d.id)) : checkable
+    const label = partial ? 'Teilprüfung' : 'Erstprüfung'
+    if (partial && !targets.length && !p.docFiles.some((d) => partial.has(d.id))) return projectPayload(p)
+    log.info('check', `${label} gestartet`, { project: p.name, sections: targets.length, skipped: p.docFiles.length - checkable.length, excerpts: retriever.chunks.length, model: config.model, ...(reason ? { reason } : {}) })
     let done = 0, failures = 0, firstError = null
     const llm = { calls: 0, cached: 0, inputTokens: 0, outputTokens: 0, usd: 0 }
     // The changes of the history in plain words (a few cents, cached): what is different now, for whom, where.
-    if (p.history?.features?.length) {
+    if (!partial && p.history?.features?.length) {
       progress({ phase: 'features' })
       try {
         const described = await describeFeatures({ name: p.name, history: p.history, diffs: projectDiffs(p), config, cacheDir, fetchImpl })
@@ -254,7 +317,7 @@ export async function checkProject({ createClient = createJevClient, fetchImpl, 
     const trees = projectTrees(p)
     if (trees.repo || trees.docs) {
       targets.forEach((section, i) => { results[i] = mergeFileFindings(results[i], section, p.docSources.find((s) => s.id === section.source), trees) })
-      for (const section of p.docFiles.filter((d) => d.checkable === false)) {
+      for (const section of p.docFiles.filter((d) => d.checkable === false && (!partial || partial.has(d.id)))) {
         const r = mergeFileFindings(null, section, p.docSources.find((s) => s.id === section.source), trees)
         if (r) { targets.push(section); results.push(r) }
       }
@@ -263,10 +326,13 @@ export async function checkProject({ createClient = createJevClient, fetchImpl, 
     // Jev weighs every finding (one request per section with findings).
     const weighed = await pool(results, concurrency, (r, i) => r.findings.length ? weigh(p, targets[i], r, jev, jevVeto).catch((error) => { if (/Jev lehnt den Key ab|Jev-Budget/.test(error.message)) throw error; log.warn('check', 'Jev-Prüfung fehlgeschlagen', { doc: targets[i].path, error: error.message }); return r }) : r)
     results.splice(0, results.length, ...weighed)
-    // Install the complete run at once; a failed run only keeps the caches.
-    const previous = p.generated
-    p.dataset.proposals = []; p.generated = {}; p.graph.edges = p.graph.edges.filter((edge) => !edge.id.startsWith('jev:') && !edge.id.startsWith('check:'))
-    const records = []
+    // Install the complete run at once; a failed run only keeps the caches. A partial run replaces only its sections.
+    const previous = p.generated, checked = new Set(targets.map((t) => t.id))
+    const keptProposals = partial ? p.dataset.proposals.filter((x) => !checked.has(x.section)) : []
+    p.dataset.proposals = keptProposals
+    p.generated = Object.fromEntries(keptProposals.map((x) => [x.id, previous[x.id]]).filter(([, g]) => g))
+    if (!partial) p.graph.edges = p.graph.edges.filter((edge) => !edge.id.startsWith('jev:') && !edge.id.startsWith('check:'))
+    const records = partial ? (p.mapping?.records ?? []).filter((r) => !checked.has(r.doc)) : []
     results.forEach((r, i) => {
       const section = targets[i]
       records.push({ doc: section.id, status: r.status, findings: r.findings.length, dropped: r.dropped, reason: r.reason, terms: r.terms?.length ?? 0, candidates: r.excerpts.map((c) => c.id), contradicts: [...new Set(r.findings.flatMap((f) => f.evidence.map((e) => r.excerpts.find((c) => excerptId(c) === e.id)?.id)).filter(Boolean))] })
@@ -284,10 +350,13 @@ export async function checkProject({ createClient = createJevClient, fetchImpl, 
     })
     for (const id of Object.keys(p.decisions)) if (!p.generated[id]) delete p.decisions[id]
     const count = (status) => records.filter((r) => r.status === status).length
-    p.mapping = { model: config.model, verifier: MODEL, kind: 'section-check', promptVersion: CHECK_PROMPT_VERSION, createdAt: new Date().toISOString(), subjects: targets.length, skipped: p.docFiles.length - targets.length, mismatches: count('findings'), consistent: count('ok'), unclear: count('unclear'), errors: failures, findings: records.reduce((n, r) => n + r.findings, 0), usage: { ...jev.usage, llm }, deferred: records.filter((r) => r.status === 'ok').map((r) => `doc:${r.doc}`), records, lists: lists.map((l, i) => ({ doc: sources[i].id, status: l.status ?? null, skipped: l.skipped, candidates: l.candidates ?? [], added: Object.values(l.bySection).flat().length, dropped: l.dropped })) }
-    p.graph.metadata.semantic = { status: 'ready', model: `${config.model} + ${MODEL}`, createdAt: p.mapping.createdAt, subjects: targets.length, edges: p.graph.edges.filter((e) => e.id.startsWith('check:')).length, deferred: p.mapping.deferred, usage: p.mapping.usage }
-    p.events.push({ at: p.mapping.createdAt, kind: 'mapping', title: `Erstprüfung: ${targets.length} Abschnitte, ${p.mapping.mismatches} mit Abweichung` }); save(p)
-    log.info('check', 'Erstprüfung fertig', { sections: targets.length, mismatches: p.mapping.mismatches, findings: p.mapping.findings, consistent: p.mapping.consistent, unclear: p.mapping.unclear, errors: failures, llmCalls: llm.calls, cached: llm.cached, llmUsd: llm.usd.toFixed(4), jevUsd: jev.usage.estimatedUsd?.toFixed?.(4), ms: Date.now() - started })
+    const listRecords = lists.map((l, i) => ({ doc: sources[i].id, status: l.status ?? null, skipped: l.skipped, candidates: l.candidates ?? [], added: Object.values(l.bySection).flat().length, dropped: l.dropped }))
+    p.mapping = { model: config.model, verifier: MODEL, kind: 'section-check', promptVersion: CHECK_PROMPT_VERSION, createdAt: new Date().toISOString(), subjects: records.length, skipped: p.docFiles.length - records.length, mismatches: count('findings'), consistent: count('ok'), unclear: count('unclear'), errors: failures, findings: records.reduce((n, r) => n + r.findings, 0), usage: { ...jev.usage, llm }, deferred: records.filter((r) => r.status === 'ok').map((r) => `doc:${r.doc}`), records, lists: partial ? [...(p.mapping?.lists ?? []).filter((l) => !sources.some((s) => s.id === l.doc)), ...listRecords] : listRecords, ...(partial ? { partial: { sections: targets.length, reason } } : {}) }
+    // The text each section had when it was last checked: what the documentation check looks at again.
+    p.checkedText = { ...(partial ? p.checkedText : {}), ...Object.fromEntries(targets.map((t) => [t.id, digest(t.text)])) }
+    p.graph.metadata.semantic = { status: 'ready', model: `${config.model} + ${MODEL}`, createdAt: p.mapping.createdAt, subjects: records.length, edges: p.graph.edges.filter((e) => e.id.startsWith('check:')).length, deferred: p.mapping.deferred, usage: p.mapping.usage }
+    p.events.push({ at: p.mapping.createdAt, kind: 'mapping', title: partial ? `${reason || 'Abgleich'}: ${targets.length} Abschnitte geprüft, ${p.dataset.proposals.length} offene Vorschläge` : `Erstprüfung: ${targets.length} Abschnitte, ${p.mapping.mismatches} mit Abweichung` }); save(p)
+    log.info('check', `${label} fertig`, { sections: targets.length, mismatches: p.mapping.mismatches, findings: p.mapping.findings, consistent: p.mapping.consistent, unclear: p.mapping.unclear, errors: failures, llmCalls: llm.calls, cached: llm.cached, llmUsd: llm.usd.toFixed(4), jevUsd: jev.usage.estimatedUsd?.toFixed?.(4), ms: Date.now() - started })
     return projectPayload(p)
   })
 }

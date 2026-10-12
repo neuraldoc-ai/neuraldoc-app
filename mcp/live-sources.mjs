@@ -176,6 +176,52 @@ export async function fetchDrive(dir, folder, { fetchImpl = fetch, maxFiles = 50
   return { folder: { id, name: root.name, url: `https://drive.google.com/drive/folders/${id}` }, files, warnings }
 }
 
+/* ---------- What changed since the import (versions only, no content) ---------- */
+
+/**
+ * Pages and files that are new, changed or gone since the import: [{ source, title, change }]. Reads only version
+ * numbers and modification times, so it can run every few minutes.
+ */
+export async function liveChanges(live, { fetchImpl = fetch } = {}) {
+  const changes = []
+  if (live?.confluence) {
+    const c = confluence(confluenceConfig(), fetchImpl), known = new Map(Object.values(live.confluence.pages).map((x) => [x.id, x])), seen = new Set()
+    for (const space of live.confluence.spaces) {
+      for (const page of await c.all(`/api/v2/spaces/${space.id}/pages?limit=250&status=current`)) {
+        seen.add(page.id)
+        const before = known.get(page.id)
+        if (!before) changes.push({ source: 'Confluence', title: page.title, change: 'neu' })
+        else if ((page.version?.number ?? 1) !== before.version) changes.push({ source: 'Confluence', title: page.title, change: 'geändert' })
+      }
+    }
+    for (const [id, x] of known) if (!seen.has(id)) changes.push({ source: 'Confluence', title: x.title, change: 'gelöscht' })
+  }
+  if (live?.drive) {
+    const token = await driveToken(driveConfig(), fetchImpl), known = new Map(Object.values(live.drive.files).map((x) => [x.id, x])), seen = new Set()
+    const walk = async (folderId, depth) => {
+      if (depth > 12) return
+      for (let pageToken = ''; ;) {
+        const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`)
+        const r = await fetchImpl(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=nextPageToken,files(id,name,mimeType,modifiedTime)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true${pageToken ? `&pageToken=${pageToken}` : ''}`, { headers: { Authorization: `Bearer ${token}` } })
+        if (!r.ok) throw new DraftError(`Google Drive meldet ${r.status}.`, 502)
+        const list = await r.json()
+        for (const f of list.files ?? []) {
+          if (f.mimeType === 'application/vnd.google-apps.folder') { await walk(f.id, depth + 1); continue }
+          seen.add(f.id)
+          const before = known.get(f.id)
+          if (!before) changes.push({ source: 'Drive', title: f.name, change: 'neu' })
+          else if (f.modifiedTime !== before.modifiedTime) changes.push({ source: 'Drive', title: f.name, change: 'geändert' })
+        }
+        if (!list.nextPageToken) return
+        pageToken = list.nextPageToken
+      }
+    }
+    await walk(live.drive.folder.id, 0)
+    for (const [id, x] of known) if (!seen.has(id)) changes.push({ source: 'Drive', title: x.name, change: 'gelöscht' })
+  }
+  return changes
+}
+
 /* ---------- Writing approved sections back to Confluence ---------- */
 
 const stateDir = () => process.env.NEURALDOC_STATE_DIR ? path.resolve(process.env.NEURALDOC_STATE_DIR) : fileURLToPath(new URL('./state/', import.meta.url))

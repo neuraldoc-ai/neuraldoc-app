@@ -457,6 +457,44 @@ test('a correction may not drop most of the section or paste source code', async
   assert.doesNotThrow(() => validateDraft(draft('# Neu\n\nAlles anders.\n'), { ...context, target: { op: 'replace', instruction: 'x' } }), 'only corrections with preserve are checked')
 })
 
+test('partial check: only the given sections go to the model; other proposals and approvals stay', async () => {
+  await projects.addProject(upload(repo, docs, { repoName: 'teilpruefung' }))
+  await projects.checkProject(run())
+  let p = projects.activeProject()
+  const rabatt = p.dataset.proposals.find((x) => x.title === 'Rabatt'), install = p.docFiles.find((d) => d.path.endsWith('optionen.md'))
+  projects.projectDecisions({ id: rabatt.id, decision: { state: 'uebernommen' } })
+  assert.deepEqual(projects.pendingDocs(), [], 'every section was checked as it is')
+  // Without cached answers a full check asks the model once per section; the partial one asks for its section only.
+  fs.rmSync(path.join(process.env.NEURALDOC_STATE_DIR, 'check-cache'), { recursive: true, force: true })
+  llmCalls = 0
+  const payload = await projects.checkProject({ ...run(), only: [install.id], reason: 'Commit abc1234' })
+  assert.ok(llmCalls >= 1 && llmCalls <= 3, `${llmCalls} model calls`)
+  p = projects.activeProject()
+  assert.ok(p.dataset.proposals.some((x) => x.id === rabatt.id) && p.decisions[rabatt.id]?.state === 'uebernommen')
+  assert.equal(payload.project.mapping.subjects, p.docFiles.filter((d) => d.checkable !== false).length + p.mapping.records.filter((r) => !p.docFiles.find((d) => d.id === r.doc)?.checkable).length)
+  assert.deepEqual(p.mapping.partial, { sections: 1, reason: 'Commit abc1234' })
+  // A section someone edited since its check is what the documentation check looks at.
+  const file = path.join(process.env.NEURALDOC_STATE_DIR, 'projects', p.id, 'project.json'), stored = JSON.parse(fs.readFileSync(file, 'utf8'))
+  stored.docFiles.find((d) => d.id === install.id).text += '\nNeu: Docker.\n'
+  fs.writeFileSync(file, JSON.stringify(stored))
+  assert.deepEqual(projects.pendingDocs(), [install.id])
+})
+
+test('GitHub push webhook: only with its secret and a valid signature', async () => {
+  const crypto = await import('node:crypto')
+  const server = http.createServer((req, res) => middleware(req, res))
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const base = `http://127.0.0.1:${server.address().port}`, body = JSON.stringify({ ref: 'refs/heads/main', repository: { html_url: 'https://github.com/x/y', default_branch: 'main' } })
+  const post = (headers) => fetch(`${base}/api/mcp/github/webhook`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-GitHub-Event': 'push', ...headers }, body })
+  try {
+    assert.equal((await post({})).status, 404, 'off without a secret')
+    process.env.NEURALDOC_GITHUB_WEBHOOK_SECRET = 'geheim'
+    assert.equal((await post({ 'X-Hub-Signature-256': 'sha256=' + '0'.repeat(64) })).status, 401)
+    const signature = 'sha256=' + crypto.createHmac('sha256', 'geheim').update(body).digest('hex')
+    assert.equal((await post({ 'X-Hub-Signature-256': signature })).status, 202, 'another repository: accepted, nothing happens')
+  } finally { delete process.env.NEURALDOC_GITHUB_WEBHOOK_SECRET; await new Promise((resolve) => server.close(resolve)) }
+})
+
 test('reset deletes every project; the app starts empty; the showcase refuses', async () => {
   process.env.NEURALDOC_MODE = 'showcase'
   try { assert.throws(() => projects.resetProjects(), /Showcase/) } finally { delete process.env.NEURALDOC_MODE }

@@ -44,6 +44,7 @@ const mcpServer: Plugin = {
   configureServer: async (server) => {
     const { middleware } = await import('../mcp/handler.mjs')
     server.middlewares.use(middleware)
+    ;(await import('../mcp/source-watch.mjs')).startWatch()
   },
   configurePreviewServer: async (server) => {
     const { middleware } = await import('../mcp/handler.mjs')

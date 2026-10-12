@@ -18,6 +18,7 @@ import { projectTools, projectTool } from './project-mcp.mjs'
 import { projectUsage } from './project-usage.mjs'
 import { appManifest, completeAppManifest, githubStatus, isPublished, proposalLinks, resetGitHub, scheduleSync, setProjectTarget, syncGitHub, testGitHub } from './github.mjs'
 import { confluenceConfig, confluenceLinks, confluenceStatus, driveConfig, isWritten, resetConfluence, scheduleConfluence, syncConfluence, testConfluence, testDrive } from './live-sources.mjs'
+import { checkDocs, githubWebhook, look, syncState } from './source-watch.mjs'
 
 // The MOBIQ showcase reads its dataset (datasets/) as soon as it is loaded, so only showcase mode imports it.
 let showcaseModules
@@ -154,6 +155,7 @@ async function api(req, res, path) {
       if (!sameOrigin && req.headers.authorization !== `Bearer ${TOKEN}`) throw new DraftError('Lokale Projektaktionen benötigen dieselbe Herkunft oder einen MCP-Token.', 403)
     }
     // A public demo: visitors import, check and approve; keys, connections and resets stay as deployed.
+    if (req.method === 'POST' && path === '/api/mcp/github/webhook') { const status = githubWebhook(await readRaw(req, 5_000_000), req.headers); res.writeHead(status); return res.end() }
     if (publicDemo() && req.method === 'POST' && /^\/api\/mcp\/(settings|models|reset|github\/|sources\/|confluence\/|db\/)/.test(path)) throw new DraftError('In der öffentlichen Demo gesperrt. Lokal mit Docker ist alles frei einstellbar.', 403)
     if (req.method === 'GET' && path === '/api/mcp/project') return send(res, 200, { ...projectPayload(), projects: projectList(), profile: showcaseOnly() ? null : profile() },{ 'Cache-Control': 'no-store' })
     if (path.startsWith('/api/mcp/project/') && req.method === 'POST') {
@@ -163,6 +165,10 @@ async function api(req, res, path) {
       if (path === '/api/mcp/project/check') return send(res, 202, startCheck())
     }
     if (req.method === 'GET' && path === '/api/mcp/project/check') return send(res, 200, checkStatus, { 'Cache-Control': 'no-store' })
+    // Keeping the project in step with its sources (source-watch.mjs): look now, or check the changed documentation.
+    if (req.method === 'GET' && path === '/api/mcp/sync') return send(res, 200, syncState(), { 'Cache-Control': 'no-store' })
+    if (req.method === 'POST' && path === '/api/mcp/sync') { localMutation(); return send(res, 200, await look()) }
+    if (req.method === 'POST' && path === '/api/mcp/sync/docs') { localMutation(); return send(res, 202, await checkDocs()) }
     if (req.method === 'GET' && path === '/api/mcp/project/source') return send(res, 200, projectSource(), { 'Cache-Control': 'no-store' })
     if (req.method === 'GET' && path === '/api/mcp/project/commit') return send(res, 200, projectCommit(new URL(req.url, 'http://localhost').searchParams.get('sha')))
     if (req.method === 'GET' && path === '/api/mcp/project/documents') return send(res, 200, projectDocuments(), { 'Cache-Control': 'no-store' })

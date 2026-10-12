@@ -39,9 +39,7 @@ function extract(zip, dir) {
 async function clone(value, dir, label) {
   const parsed = repoUrl(value)
   if (!parsed) throw new DraftError(`${label}: bitte eine https-URL wie https://github.com/organisation/repository angeben.`)
-  // The GitHub App's installation token or the personal token; only ever sent to the configured GitHub host.
-  const token = await cloneToken(parsed.url)
-  const auth = token ? ['-c', `http.extraHeader=Authorization: Basic ${Buffer.from(`x-access-token:${token}`).toString('base64')}`] : []
+  const auth = await gitAuth(parsed.url)
   const started = Date.now()
   log.info('import', `${label}: klone Repository`, { url: parsed.url })
   try {
@@ -54,7 +52,22 @@ async function clone(value, dir, label) {
     throw new DraftError(`${label}: Klonen fehlgeschlagen (${detail.slice(0, 160)}).`, 502)
   }
   log.info('import', `${label}: geklont`, { url: parsed.url, ms: Date.now() - started })
-  return { name: parsed.name, url: parsed.url.replace(/\.git$/, ''), tree: await trackedTree(dir) }
+  const { stdout: head } = await run('git', ['-C', dir, 'rev-parse', 'HEAD'], { windowsHide: true })
+  return { name: parsed.name, url: parsed.url.replace(/\.git$/, ''), head: head.trim(), tree: await trackedTree(dir) }
+}
+
+// The GitHub App's installation token or the personal token; only ever sent to the configured GitHub host.
+async function gitAuth(url) {
+  const token = await cloneToken(url)
+  return token ? ['-c', `http.extraHeader=Authorization: Basic ${Buffer.from(`x-access-token:${token}`).toString('base64')}`] : []
+}
+
+/** The commit a repository's default branch points to now, without cloning (source-watch.mjs). */
+export async function remoteHead(value) {
+  const parsed = repoUrl(value)
+  if (!parsed) throw new DraftError('Keine gültige Repository-URL.')
+  const { stdout } = await run('git', [...await gitAuth(parsed.url), '-c', 'protocol.file.allow=never', '-c', 'protocol.ext.allow=never', 'ls-remote', '--', parsed.url, 'HEAD'], { timeout: 30000, windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })
+  return stdout.split(/\s/)[0] || null
 }
 
 /**
@@ -92,16 +105,16 @@ function uploadedTree(value) {
   return { paths: value.paths.filter(clean).slice(0, 50_000), gitlinks: [], gitignore: Object.fromEntries(Object.entries(value.gitignore ?? {}).filter(([k, v]) => clean(k) && typeof v === 'string').slice(0, 200).map(([k, v]) => [k, v.slice(0, 100_000)])) }
 }
 
-/** Runs `use` with { name, repo, docs } folders and removes everything afterwards. */
-export async function withUpload(zip, workDir, use) {
+/** Runs `use` with { name, repo, docs } folders and removes everything afterwards; `given` stands for the ZIP's manifest (a refresh). */
+export async function withUpload(zip, workDir, use, given) {
   const dir = path.join(workDir, `.upload-${randomUUID()}`)
   fs.mkdirSync(dir, { recursive: true })
   try {
-    const manifest = zip?.length ? extract(zip, dir) : {}
+    const manifest = given ?? (zip?.length ? extract(zip, dir) : {})
     const repoDir = path.join(dir, 'repo'), docsDir = path.join(dir, 'docs')
     const has = (folder) => fs.existsSync(folder) && fs.readdirSync(folder).length > 0
     let repo = null, docs = null
-    if (manifest.repoUrl) { if (has(repoDir)) fs.rmSync(repoDir, { recursive: true }); const cloned = await clone(manifest.repoUrl, repoDir, 'Repository'); repo = { dir: repoDir, label: cloned.name, url: cloned.url, tree: cloned.tree, source: 'url' } }
+    if (manifest.repoUrl) { if (has(repoDir)) fs.rmSync(repoDir, { recursive: true }); const cloned = await clone(manifest.repoUrl, repoDir, 'Repository'); repo = { dir: repoDir, label: cloned.name, url: cloned.url, head: cloned.head, tree: cloned.tree, source: 'url' } }
     else if (has(repoDir)) repo = { dir: repoDir, label: String(manifest.repoName || 'Repository').slice(0, 100), tree: uploadedTree(manifest.repoTree), source: 'upload' }
     const spaces = Array.isArray(manifest.confluence?.spaces) ? manifest.confluence.spaces.map(String).slice(0, 50) : [], folder = typeof manifest.drive?.folder === 'string' ? manifest.drive.folder.slice(0, 500) : ''
     if (spaces.length || folder) {
@@ -113,7 +126,7 @@ export async function withUpload(zip, workDir, use) {
       if (folder) { const drive = await fetchDrive(docsDir, folder); live.drive = { folder: drive.folder, files: drive.files }; warnings.push(...drive.warnings) }
       const label = [live.confluence && `Confluence ${live.confluence.spaces.map((s) => s.key).join(', ')}`, live.drive && `Drive „${live.drive.folder.name}“`].filter(Boolean).join(' + ')
       docs = { dir: docsDir, label, source: 'live', live, tree: null, warnings }
-    } else if (manifest.docsUrl) { if (has(docsDir)) fs.rmSync(docsDir, { recursive: true }); const cloned = await clone(manifest.docsUrl, docsDir, 'Dokumentation'); docs = { dir: docsDir, label: cloned.name, url: cloned.url, tree: cloned.tree, source: 'url' } }
+    } else if (manifest.docsUrl) { if (has(docsDir)) fs.rmSync(docsDir, { recursive: true }); const cloned = await clone(manifest.docsUrl, docsDir, 'Dokumentation'); docs = { dir: docsDir, label: cloned.name, url: cloned.url, head: cloned.head, tree: cloned.tree, source: 'url' } }
     else if (has(docsDir)) docs = { dir: docsDir, label: String(manifest.docsName || 'Dokumentation').slice(0, 100), tree: uploadedTree(manifest.docsTree), source: 'upload' }
     if (!repo) throw new DraftError('Repository fehlt: Ordner oder ZIP hochladen oder eine GitHub-URL angeben.')
     return await use({ name: String(manifest.projectName || repo.label).slice(0, 100), repo, docs })

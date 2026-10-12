@@ -16,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { docTypes, release, datasetMode } from "./data";
 import { ProjectControls, StartCheck } from "./project-controls";
+import { SourceSync } from "./source-sync";
 import { projectState } from "./project";
 import {
   docLabel,
@@ -258,6 +259,7 @@ export function OverviewPage() {
         </Card>
 
         <div className="grid h-fit gap-4">
+          {project && <SourceSync />}
           <Card className="h-fit">
             <CardHeader>
               <CardTitle>Bereits geprüft</CardTitle>

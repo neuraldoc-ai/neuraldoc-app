@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { middleware } from './handler.mjs'
+import { startWatch } from './source-watch.mjs'
 import { setupStatus } from './setup.mjs'
 import { log, logError } from './log.mjs'
 
@@ -38,6 +39,7 @@ server.on('error', (error) => { logError('server', error, { port }); process.exi
 server.listen(port, '0.0.0.0', () => {
   const setup = setupStatus(), mode = process.env.NEURALDOC_MODE === 'showcase' ? 'showcase (Beispieldaten)' : 'eigene Projekte'
   log.info('server', `neuraldoc läuft auf http://localhost:${port}/app/`, { mode, state: process.env.NEURALDOC_STATE_DIR || 'mcp/state' })
+  startWatch()
   if (!fs.existsSync(path.join(root, 'app', 'index.html'))) log.error('server', 'Oberfläche fehlt: frontend/dist wurde nicht gebaut (npm run build).')
   log.info('server', 'Konfiguration', { jev: setup.jev.configured ? 'Key gesetzt' : 'Key fehlt', llm: setup.drafting.configured ? `${setup.drafting.label} ${setup.drafting.model}` : `nicht eingerichtet (${setup.drafting.error || 'Key fehlt'})` })
 })

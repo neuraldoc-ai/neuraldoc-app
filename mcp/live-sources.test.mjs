@@ -6,7 +6,7 @@ import path from 'node:path'
 
 process.env.NEURALDOC_STATE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'nd-live-'))
 Object.assign(process.env, { NEURALDOC_CONFLUENCE_URL: 'https://firma.atlassian.net/wiki/', NEURALDOC_CONFLUENCE_EMAIL: 'a@b.de', NEURALDOC_CONFLUENCE_TOKEN: 'tok' })
-const { fetchConfluence, syncConfluence, confluenceLinks, planConfluence, driveFolderId, isWritten } = await import('./live-sources.mjs')
+const { fetchConfluence, syncConfluence, confluenceLinks, planConfluence, driveFolderId, isWritten, liveChanges } = await import('./live-sources.mjs')
 const { documentText } = await import('./doc-text.mjs')
 
 const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
@@ -80,4 +80,14 @@ test('Drive folder ids come from links or plain ids', () => {
   assert.equal(driveFolderId('https://drive.google.com/drive/folders/1AbCdEfGhIjKlMn?usp=sharing'), '1AbCdEfGhIjKlMn')
   assert.equal(driveFolderId('1AbCdEfGhIjKlMn'), '1AbCdEfGhIjKlMn')
   assert.equal(driveFolderId('https://example.com'), null)
+})
+
+test('watching: only version numbers are read; new, changed and deleted pages are reported', async () => {
+  const live = { spaces: [{ key: 'HB', id: '7' }], pages: { 'confluence/HB/11-a.xml': { id: '11', title: 'Gutscheine', version: 4 }, 'confluence/HB/12-b.xml': { id: '12', title: 'FAQ', version: 1 }, 'confluence/HB/13-c.xml': { id: '13', title: 'Alt', version: 2 } } }
+  const fetchImpl = async (url) => {
+    assert.ok(!url.includes('body-format'), 'no page content while watching')
+    return json({ results: [{ id: '11', title: 'Gutscheine', version: { number: 5 } }, { id: '12', title: 'FAQ', version: { number: 1 } }, { id: '14', title: 'Neu', version: { number: 1 } }] })
+  }
+  const changes = await liveChanges({ confluence: live }, { fetchImpl })
+  assert.deepEqual(changes.map((c) => `${c.title}: ${c.change}`).sort(), ['Alt: gelöscht', 'Gutscheine: geändert', 'Neu: neu'])
 })

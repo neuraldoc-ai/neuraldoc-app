@@ -77,6 +77,28 @@ export async function loadCheckStatus(): Promise<CheckStatus> {
   if (!response.ok) throw new Error('Der Stand der Erstprüfung ist nicht abrufbar.')
   return response.json() as Promise<CheckStatus>
 }
+/** Keeping the project in step with its sources (mcp/source-watch.mjs). */
+export type SyncState = {
+  available: boolean
+  minutes?: number
+  repo?: { label: string; url: string | null; head: string | null }
+  docsWatch?: { ok: boolean; reason?: string }
+  pendingSections?: number
+  running?: 'code' | 'docs' | null
+  lastLook?: string | null
+  lastCode?: { at: string; from: string | null; to: string | null; files: number; sections: number; checked: boolean } | null
+  docs?: { changes: { source: string; title: string; change: 'neu' | 'geändert' | 'gelöscht' }[]; lookedAt: string | null }
+  error?: string | null
+}
+export async function loadSync(): Promise<SyncState> {
+  const response = await fetch('/api/mcp/sync', { cache: 'no-store' })
+  if (!response.ok) throw new Error('Der Abgleich ist nicht abrufbar.')
+  return response.json() as Promise<SyncState>
+}
+export async function syncAction(action: 'look' | 'docs') {
+  await result(await fetch(action === 'docs' ? '/api/mcp/sync/docs' : '/api/mcp/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }))
+}
+
 export async function importProject(archive: Uint8Array) {
   await result(await fetch('/api/mcp/project/import', { method: 'POST', headers: { 'Content-Type': 'application/zip' }, body: archive as Uint8Array<ArrayBuffer> }))
   window.location.assign(`${import.meta.env.BASE_URL}`)
