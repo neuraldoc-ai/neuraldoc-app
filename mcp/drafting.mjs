@@ -200,9 +200,20 @@ export function generateDraft(input, options = {}) {
   return job
 }
 
+// A total limit for model costs across all runs, for a public instance (NEURALDOC_LLM_BUDGET_USD, environment only).
+const spendFile = () => path.join(process.env.NEURALDOC_STATE_DIR ? path.resolve(process.env.NEURALDOC_STATE_DIR) : DEFAULT_STATE, 'llm-spend.json')
+const spentUsd = () => { try { return Number(JSON.parse(fs.readFileSync(spendFile(), 'utf8')).usd) || 0 } catch { return 0 } }
+function addSpend(usd) {
+  if (!Number(process.env.NEURALDOC_LLM_BUDGET_USD) || !usd) return
+  fs.mkdirSync(path.dirname(spendFile()), { recursive: true })
+  fs.writeFileSync(spendFile(), JSON.stringify({ usd: spentUsd() + usd, at: new Date().toISOString() }))
+}
+
 /** One JSON call to the configured provider: { value, inputTokens, outputTokens, costUsd }. Used for drafts and for check findings. */
 export async function callModel(config, { system, content, schema, fetchImpl = fetch, price = modelPrice(config), temperature = 0.2, outputLimit = OUTPUT_LIMIT, thinking, timeoutMs }) {
   if (config.provider !== 'local' && !config.apiKey) throw new DraftError('Es ist noch kein LLM eingerichtet. Hinterleg unter Einstellungen einen Key.', 503)
+  const limit = Number(process.env.NEURALDOC_LLM_BUDGET_USD)
+  if (limit && config.provider !== 'local' && spentUsd() >= limit) throw new DraftError(`Das Budget für Modellaufrufe dieser Instanz ist aufgebraucht (${limit} USD). Ergebnisse aus dem Cache bleiben verfügbar.`, 402)
   const google = ['vertex', 'gemini'].includes(config.provider), label = PROVIDER_LABELS[config.provider]
   const request = google ? {
     systemInstruction: { parts: [{ text: system }] },
@@ -233,6 +244,7 @@ export async function callModel(config, { system, content, schema, fetchImpl = f
   const outputTokens = Number.isInteger(normalized.outputTokens) && normalized.outputTokens >= 0 ? normalized.outputTokens : 0
   const inputTokens = Number.isInteger(normalized.inputTokens) && normalized.inputTokens >= 0 ? normalized.inputTokens : null
   const costUsd = config.provider === 'local' ? 0 : normalized.measuredOutput && inputTokens !== null && Number.isFinite(price.input) && Number.isFinite(price.output) ? (inputTokens * price.input + outputTokens * price.output) / 1e6 : null
+  addSpend(costUsd)
   return { value, inputTokens, outputTokens, costUsd }
 }
 

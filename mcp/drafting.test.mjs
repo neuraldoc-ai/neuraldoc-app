@@ -109,6 +109,32 @@ test('failed requests are not cached and no daily limit blocks later generation'
   assert.equal(draftingConfig({ GOOGLE_CLOUD_PROJECT: 'test-project', NEURALDOC_DRAFT_DAILY_USD: 'invalid' }).dailyLimitUsd, undefined)
 })
 
+test('a total model budget stops new calls once spent; cached drafts still come back', async () => {
+  process.env.NEURALDOC_LLM_BUDGET_USD = '0.0005'
+  try {
+    const cfg = config('total-budget'), fake = provider()
+    await generateDraft(context(), { config: cfg, fetchImpl: fake.fetchImpl })
+    assert.equal((await generateDraft(context(), { config: cfg, fetchImpl: fake.fetchImpl })).cached, true)
+    const other = context(); other.target.id = 'over-budget'
+    await assert.rejects(generateDraft(other, { config: cfg, fetchImpl: fake.fetchImpl }), /Budget für Modellaufrufe/)
+    assert.equal(fake.calls.length, 1)
+  } finally { delete process.env.NEURALDOC_LLM_BUDGET_USD; fs.rmSync(path.join(root, 'llm-spend.json'), { force: true }) }
+})
+
+test('public demo: keys, connections and resets are locked; the project stays usable', async () => {
+  const server = http.createServer((req, res) => middleware(req, res))
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const base = `http://127.0.0.1:${server.address().port}`
+  process.env.NEURALDOC_PUBLIC_DEMO = '1'
+  try {
+    for (const url of ['/api/mcp/settings', '/api/mcp/reset', '/api/mcp/confluence/sync', '/api/mcp/db/connections']) {
+      const response = await fetch(`${base}${url}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base }, body: JSON.stringify({ scope: 'all' }) })
+      assert.equal(response.status, 403, url)
+    }
+    assert.equal((await (await fetch(`${base}/api/mcp/setup`)).json()).editable, false)
+  } finally { delete process.env.NEURALDOC_PUBLIC_DEMO; await new Promise((resolve) => server.close(resolve)) }
+})
+
 test('persisted cache works after a process restart even without credentials', async () => {
   const cfg = config('restart'), fake = provider()
   const first = await generateDraft(context(), { config: cfg, fetchImpl: fake.fetchImpl })

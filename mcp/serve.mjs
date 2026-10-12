@@ -24,8 +24,9 @@ const server = http.createServer((req, res) => {
     let pathname
     try { pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname) } catch { res.writeHead(400); res.end(); return }
     if (pathname === '/health/live') { res.writeHead(200); res.end('ok'); return }
-    if (pathname === '/') { res.writeHead(302, { Location: '/app/' }); res.end(); return }
-    const relative = pathname === '/app' || pathname.startsWith('/app/') ? 'app/index.html' : pathname.replace(/^\/+/, '')
+    // A landing page built into dist/index.html (a hosted demo) is the start page; otherwise the app is.
+    if (pathname === '/' && !fs.existsSync(path.join(root, 'index.html'))) { res.writeHead(302, { Location: '/app/' }); res.end(); return }
+    const relative = pathname === '/' ? 'index.html' : pathname === '/app' || pathname.startsWith('/app/') ? 'app/index.html' : pathname.replace(/^\/+/, '')
     const file = path.resolve(root, relative)
     if (!file.startsWith(root) || !fs.existsSync(file) || !fs.statSync(file).isFile()) { res.writeHead(404); res.end(); return }
     res.writeHead(200, { 'Content-Type': types[path.extname(file)] ?? 'application/octet-stream', 'Cache-Control': pathname.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache' })

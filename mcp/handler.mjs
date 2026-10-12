@@ -26,6 +26,7 @@ const mobiq = () => showcaseModules ??= Promise.all([import('./core.mjs'), impor
 
 // The public showcase keeps the documented demo token; every other installation gets its own.
 export const TOKEN = process.env.NEURALDOC_MCP_TOKEN?.trim() || (process.env.NEURALDOC_MODE === 'showcase' ? 'nd_demo_mobiq_2b7f9c41e8' : installToken())
+const publicDemo = () => process.env.NEURALDOC_PUBLIC_DEMO === '1'
 const SUPPORTED = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']
 const SERVER_INFO = { name: 'neuraldoc', title: 'neuraldoc', version: '0.2.1' }
 const STDIO = path.join(path.dirname(fileURLToPath(import.meta.url)), 'stdio.mjs').split(path.sep).join('/')
@@ -152,6 +153,8 @@ async function api(req, res, path) {
       const sameOrigin = req.headers.origin === `http://${req.headers.host}` || req.headers.origin === `https://${req.headers.host}`
       if (!sameOrigin && req.headers.authorization !== `Bearer ${TOKEN}`) throw new DraftError('Lokale Projektaktionen benötigen dieselbe Herkunft oder einen MCP-Token.', 403)
     }
+    // A public demo: visitors import, check and approve; keys, connections and resets stay as deployed.
+    if (publicDemo() && req.method === 'POST' && /^\/api\/mcp\/(settings|models|reset|github\/|sources\/|confluence\/|db\/)/.test(path)) throw new DraftError('In der öffentlichen Demo gesperrt. Lokal mit Docker ist alles frei einstellbar.', 403)
     if (req.method === 'GET' && path === '/api/mcp/project') return send(res, 200, { ...projectPayload(), projects: projectList(), profile: showcaseOnly() ? null : profile() },{ 'Cache-Control': 'no-store' })
     if (path.startsWith('/api/mcp/project/') && req.method === 'POST') {
       localMutation()
@@ -166,7 +169,7 @@ async function api(req, res, path) {
     if (req.method === 'GET' && path === '/api/mcp/project/export') {
       return send(res, 200, exportProject(), { 'Content-Disposition': 'attachment; filename="neuraldoc-dokumentaenderungen.json"', 'Cache-Control': 'no-store' })
     }
-    if (req.method === 'GET' && path === '/api/mcp/setup') return send(res, 200, { ...setupStatus(), settings: publicSettings(), editable: !showcaseOnly() }, { 'Cache-Control': 'no-store' })
+    if (req.method === 'GET' && path === '/api/mcp/setup') return send(res, 200, { ...setupStatus(), settings: publicSettings(), editable: !showcaseOnly() && !publicDemo() }, { 'Cache-Control': 'no-store' })
     if (req.method === 'POST' && path === '/api/mcp/settings') {
       localMutation()
       if (showcaseOnly()) throw new DraftError('Im Showcase lassen sich keine Keys hinterlegen.', 403)
