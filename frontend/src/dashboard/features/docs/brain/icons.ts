@@ -1,7 +1,9 @@
 import {
   Braces,
+  Hash,
   Building2,
   Database,
+  AlignLeft,
   FileCode2,
   FileText,
   GitCommitHorizontal,
@@ -17,6 +19,7 @@ export const typeIcon: Record<NodeType, typeof Layers> = {
   commit: GitCommitHorizontal,
   ticket: SquareKanban,
   doc: FileText,
+  section: AlignLeft,
   module: Layers,
   department: Building2,
   database: Database,
@@ -25,6 +28,7 @@ export const typeIcon: Record<NodeType, typeof Layers> = {
   column: Table2,
   file: FileCode2,
   function: Braces,
+  symbol: Hash,
   parameter: SlidersHorizontal,
   person: Users,
 };

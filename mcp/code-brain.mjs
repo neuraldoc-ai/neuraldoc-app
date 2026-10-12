@@ -22,20 +22,20 @@ const STRUCTURED = /\.(ya?ml|json|toml|properties|ini|cfg|conf|env(\.[a-z]+)?)$|
 
 export const splitWords = (s) => s.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
 
-/** Keys of a YAML, JSON, TOML, properties or .env file: each leaf by its own name and by its dotted path. */
+/** Keys of a YAML, JSON, TOML, properties or .env file: each leaf by its own name and by its dotted path, with its line. */
 function structuredKeys(text) {
   const out = [], stack = []
-  for (const raw of text.split('\n')) {
+  text.split('\n').forEach((raw, i) => {
     const line = raw.replace(/\r$/, '')
-    if (!line.trim() || /^\s*(#|\/\/|;)/.test(line)) continue
+    if (!line.trim() || /^\s*(#|\/\/|;)/.test(line)) return
     const m = line.match(/^(\s*)(?:-\s+)?["']?([A-Za-z_$][\w$.\-]*)["']?\s*[:=]/)
-    if (!m) continue
+    if (!m) return
     const indent = m[1].length
     while (stack.length && stack.at(-1).indent >= indent) stack.pop()
     const full = [...stack.map((s) => s.key), m[2]].join('.')
-    out.push(m[2], full)
+    out.push({ name: m[2], line: i }, { name: full, line: i })
     if (!/[:=]\s*\S/.test(line.slice(m[0].length - 1)) || /[:=]\s*[{[]\s*$/.test(line)) stack.push({ indent, key: m[2] })
-  }
+  })
   return out
 }
 
@@ -43,10 +43,12 @@ function structuredKeys(text) {
 export function definitions(file) {
   const defs = [], add = (name, kind, line) => { if (name && name.length >= 2 && !KEYWORDS.has(name)) defs.push({ name, kind, line }) }
   if (STRUCTURED.test(file.path)) {
-    for (const k of structuredKeys(file.text)) add(k, 'key', 0)
+    for (const k of structuredKeys(file.text)) add(k.name, 'key', k.line)
     return defs
   }
   const lines = file.text.split('\n')
+  // Only where the type follows the name does `Name Type` declare a field; in Java or Kotlin it is a parameter line.
+  const typeAfterName = /\.(go|sql)$/i.test(file.path)
   let block = false
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
@@ -61,7 +63,7 @@ export function definitions(file) {
     const typed = defs.length === before && line.match(TYPED)
     // A statement keyword in front is a call, not a declaration: `raise TypeError(`, `return new Foo(`, `case X:`.
     if (typed && !KEYWORDS.has(line.trim().split(/\s/)[0]) && !/^\s*(raise|print|echo|del|assert|elif|except|yield|await|throw|go|defer)\b/.test(line)) add(typed[1], typed[2] === '(' ? 'function' : 'value', i)
-    const member = line.match(MEMBER) ?? (defs.length === before && line.match(FIELD))
+    const member = line.match(MEMBER) ?? (defs.length === before && typeAfterName && line.match(FIELD))
     if (member && !typed) add(member[1], 'member', i)
     // Parameters of a declaration: documented options are often plain parameters (timeout=…, debug: boolean).
     // The list after the declared name, not a Go receiver before it.
@@ -490,9 +492,17 @@ export function undocumented(brain, vocab, { limit = 500, prior = true } = {}) {
   brain.files.forEach((f, i) => {
     if (brain.isTest[i] || NOT_SURFACE.test(f.path)) return
     const lines = f.text.split('\n'), go = /\.go$/.test(f.path)
+    // A key that repeats in its file is a field of a schema (typ, standard, beschreibung under every parameter).
+    const keyCount = new Map()
+    for (const d of brain.fileDefs[i]) if (d.kind === 'key') { const leaf = d.name.split('.').pop(); keyCount.set(leaf, (keyCount.get(leaf) ?? 0) + 1) }
     for (const d of brain.fileDefs[i]) {
       const n = d.name
       if (n.length < 4 || /^_|^[0-9]/.test(n) || CODE_COMMON.has(n) || !/[A-Z_\-.]|[a-z][A-Z]/.test(n) && d.kind !== 'string') continue
+      if (d.kind === 'key') {
+        // Leaves only count once per path; a documented parent covers its attributes.
+        const parts = n.split('.')
+        if ((keyCount.get(parts.at(-1)) ?? 0) >= 6 || parts.slice(0, -1).some((p, k) => vocab.exact.has(p) || vocab.text.includes(parts.slice(0, k + 1).join('.')))) continue
+      }
       if (go && d.kind !== 'string' && d.kind !== 'key' && /^[a-z]/.test(n)) continue
       if (/\b(private|internal|fileprivate|protected)\b/.test(lines[d.line] ?? '')) continue
       const documented = vocab.exact.has(n) || vocab.lower.has(n.toLowerCase()) || (d.kind === 'string' || d.kind === 'key') && vocab.text.includes(n)
@@ -509,7 +519,9 @@ export function undocumented(brain, vocab, { limit = 500, prior = true } = {}) {
     const score = (prior ? coverage * 10 : 1) * (SURFACE_KINDS[c.kind] ?? 0.5) * Math.log(2 + fanIn)
     if (score > (best.get(c.name)?.score ?? 0)) best.set(c.name, { name: c.name, kind: c.kind, path: c.path, line: c.line, fanIn, coverage: +coverage.toFixed(2), score })
   }
-  return [...best.values()].sort((a, b) => b.score - a.score).slice(0, limit)
+  // An undocumented key stands for its attributes: TOUR_MAX_LADEVOLUMEN_M3 is listed, not also its ".einheit".
+  const listed = [...best.values()].filter((x) => !(x.kind === 'key' && x.name.includes('.') && x.name.split('.').slice(0, -1).some((_, k, parts) => best.has(parts.slice(0, k + 1).join('.')))))
+  return listed.sort((a, b) => b.score - a.score).slice(0, limit)
 }
 
 /**
@@ -532,6 +544,8 @@ export function deadMentions(brain, sections) {
       if (!span && !prose && !block) continue
       if (brain.tokenDf.has(n) || lowerTokens.has(n.toLowerCase())) continue
       if (/[-.]/.test(n) && allText.includes(n)) continue
+      // A migration or template named in the documentation is a file of the repository, not a name in its text.
+      if (brain.files.some((f) => f.path.includes(n))) continue
       const e = out.get(n) ?? { name: n, sections: [], weight: 0 }
       e.sections.push(s.id); e.weight = Math.max(e.weight, m.weight)
       out.set(n, e)

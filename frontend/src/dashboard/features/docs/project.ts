@@ -22,10 +22,24 @@ export type ProjectState = {
   history?: null | { ref: string; tag: string | null; commits: number }
   projects?: { id: string; name: string; createdAt: string }[]
   dataset: ProjectDataset | null; graph: Brain | null
+  /** The code brain's summary and clean-up (mcp/code-brain.mjs); null in the showcase and for older imports. */
+  codeBrain?: null | {
+    stats: { sections: number; linked: number; links: number; codeFiles: number; linkedFiles: number }
+    cleanup: {
+      undocumented: { name: string; kind: string; path: string; line: number; fanIn: number }[]
+      dead: { name: string; sections: string[]; weight: number }[]
+      unlinked: string[]
+    }
+  }
   /** null in the public showcase, where nobody has a profile. */
   profile: Profile | null
 }
 export let projectState: ProjectState
+/** Number of entries on the Company Brain's Lücken tab. */
+export const gapCount = () => {
+  const c = projectState?.codeBrain?.cleanup
+  return c ? c.unlinked.length + c.undocumented.length + c.dead.length : 0
+}
 export async function loadProject() {
   const response = await fetch('/api/mcp/project', { cache: 'no-store' })
   if (!response.ok) throw new Error('Der neuraldoc-Server antwortet nicht. Läuft der Container?')

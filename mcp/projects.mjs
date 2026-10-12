@@ -4,12 +4,11 @@ import { fileURLToPath } from 'node:url'
 import { importProject, digest, BUNDLE_ID } from './project-import.mjs'
 import { withFeatures } from './project-features.mjs'
 import { describeFeatures } from './feature-texts.mjs'
-import { codeChanges, sectionChanges, valueConflicts } from './change-facts.mjs'
 import { withUpload } from './project-upload.mjs'
 import { createJevClient, MODEL } from './semantic-mapping.mjs'
 import { codeChunks } from './retrieval.mjs'
 import { DraftError, draftingConfig, draftingStatus } from './drafting.mjs'
-import { applyLineEdits, CHECK_PROMPT_VERSION, checkDocumentLists, checkSection, codeIndex, createSectionRetriever, excerptId, pool, sectionTerms, verifyWithJev } from './check.mjs'
+import { applyLineEdits, CHECK_PROMPT_VERSION, checkDocumentLists, checkSection, codeIndex, createSectionRetriever, excerptId, pool, verifyWithJev } from './check.mjs'
 import { log, logError } from './log.mjs'
 import { profile, reviewer, runtimeEnv } from './settings.mjs'
 import { scheduleSync } from './github.mjs'
@@ -37,7 +36,7 @@ export function activeProject() {
 export function projectPayload(project = activeProject()) {
   const mapping = project?.mapping ? (({ records, ...rest }) => rest)(project.mapping) : null
   // The prepared MOBIQ showcase exists only in showcase mode; the normal app starts empty.
-  return { mode: showcaseOnly() ? 'showcase' : project ? 'working' : 'empty', canImport: !showcaseOnly(), project: project ? { id: project.id, name: project.name, sources: project.sources, createdAt: project.createdAt, warnings: project.warnings, mapping, files: project.files.map(({ text, ...rest }) => rest), documents: project.docFiles.map(({ text, ...rest }) => rest), moduleDefs: project.moduleDefs } : null, dataset: project?.dataset ? withReviewer(withFeatures(project, project.dataset)) : null, history: project?.history ? { ref: project.history.ref, tag: project.history.tag, commits: project.history.commits.length } : null, graph: project?.graph ?? null }
+  return { mode: showcaseOnly() ? 'showcase' : project ? 'working' : 'empty', canImport: !showcaseOnly(), project: project ? { id: project.id, name: project.name, sources: project.sources, createdAt: project.createdAt, warnings: project.warnings, mapping, files: project.files.map(({ text, ...rest }) => rest), documents: project.docFiles.map(({ text, ...rest }) => rest), moduleDefs: project.moduleDefs } : null, dataset: project?.dataset ? withReviewer(withFeatures(project, project.dataset)) : null, history: project?.history ? { ref: project.history.ref, tag: project.history.tag, commits: project.history.commits.length } : null, graph: project?.graph ?? null, codeBrain: project?.brain ? { stats: project.brain.stats, cleanup: project.brain.cleanup } : null }
 }
 // Approvals carry the name from the settings, also for projects imported before it was entered.
 function withReviewer(dataset) {
@@ -99,11 +98,6 @@ const TYPE_LABELS = { nutzer: 'Nutzerhandbuch', dialog: 'Dialogbeschreibung', pa
 // Jev's second opinion on a finding. Confirmed findings are marked "sicher", findings Jev clearly refutes are dropped,
 // everything else stays "prüfen". Thresholds tuned on the benchmarks in mcp/eval (README there).
 const JEV_SURE = 0.7, JEV_VETO = 0.75, JEV_VETO_CONFIDENCE = 0.6
-/** What the code says about the values of a section: changes since the last release it still states, and values the code sets differently in different places (change-facts.mjs). */
-function valueFacts(section, retriever, changes) {
-  return { changes: sectionChanges(section.text, changes), conflicts: valueConflicts(section.text, sectionTerms(section.text), (n) => retriever.values(n)) }
-}
-
 export const sectionDocument = (p, section) => ({ title: p.docSources.find((s) => s.id === section.source)?.title ?? section.title, path: section.path, kind: TYPE_LABELS[section.type] || 'Dokumentation' })
 
 /** Jev weighs the findings of one section: clear contradictions are dropped, deletions need a confirmation. */
@@ -206,8 +200,6 @@ export async function checkProject({ createClient = createJevClient, fetchImpl, 
     const jev = createClient({ key: key(env), cachePath: path.join(projectsDir, p.id, 'jev-cache.json'), budget: Number(env.NEURALDOC_JEV_BUDGET_USD || .25) })
     const config = draftingConfig({ ...env, NEURALDOC_STATE_DIR: path.join(projectsDir, p.id) })
     const code = codeIndex(p.files), retriever = createSectionRetriever(p.files), cacheDir = checkCache
-    // Values and names the commits since the last release changed (from the stored diffs; none for an uploaded folder).
-    const changes = p.history ? codeChanges(p.history, projectDiffs(p)) : []
     const targets = p.docFiles.filter((d) => d.checkable !== false)
     log.info('check', 'Erstprüfung gestartet', { project: p.name, sections: targets.length, skipped: p.docFiles.length - targets.length, excerpts: retriever.chunks.length, model: config.model })
     let done = 0, failures = 0, firstError = null
@@ -226,7 +218,7 @@ export async function checkProject({ createClient = createJevClient, fetchImpl, 
     }
     const results = await pool(targets, concurrency, async (section) => {
       try {
-        const r = await checkSection({ section, document: sectionDocument(p, section), code, retriever, config, cacheDir, fetchImpl, ...valueFacts(section, retriever, changes) })
+        const r = await checkSection({ section, document: sectionDocument(p, section), code, retriever, config, cacheDir, fetchImpl })
         if (r.usage) { llm[r.cached ? 'cached' : 'calls']++; if (!r.cached) { llm.inputTokens += r.usage.inputTokens || 0; llm.outputTokens += r.usage.outputTokens || 0; llm.usd += r.usage.costUsd || 0 } }
         return r
       } catch (error) {
@@ -314,7 +306,7 @@ export async function projectDraft(id, answer, { createClient = createJevClient,
     const jev = createClient({ key: key(env), cachePath: path.join(projectsDir, p.id, 'jev-cache.json'), budget: Number(env.NEURALDOC_JEV_BUDGET_USD || .25) })
     const started = Date.now()
     const retriever = createSectionRetriever(p.files)
-    const checked = await checkSection({ section, document: sectionDocument(p, section), code: codeIndex(p.files), retriever, config, cacheDir: checkCache, answer, fetchImpl, ...valueFacts(section, retriever, p.history ? codeChanges(p.history, projectDiffs(p)) : []) })
+    const checked = await checkSection({ section, document: sectionDocument(p, section), code: codeIndex(p.files), retriever, config, cacheDir: checkCache, answer, fetchImpl })
     const r = await weigh(p, section, mergeFileFindings(checked, section, p.docSources.find((s) => s.id === section.source), projectTrees(p)), jev)
     const generated = r.status === 'findings' || r.status === 'unclear' ? generationOf({ ...r, answer }, section) : { text: section.text, why: r.summary || 'Laut Prüfung stimmt der Abschnitt mit dem Code überein.', confidence: 'pruefen', question: '', generation: { status: 'no_change', recommendation: r.summary, id: `check-none-${digest(section.id).slice(0, 8)}`, model: r.model ?? config.model, createdAt: new Date().toISOString(), evidenceIds: [], findings: [], usage: r.usage ?? { inputTokens: null, outputTokens: 0, costUsd: null }, ...(answer ? { answer } : {}) } }
     // Other sections may have been saved meanwhile: read, change and write without awaiting in between.

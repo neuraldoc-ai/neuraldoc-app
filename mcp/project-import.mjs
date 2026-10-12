@@ -6,11 +6,11 @@ import { classify, ignored, LIMITS } from '../frontend/src/dashboard/features/do
 import { documentText, documentTitle, isBinaryDoc, proseWords, sectionHeading, sections } from './doc-text.mjs'
 import { log } from './log.mjs'
 import { readHistory } from './git-history.mjs'
-import { buildCodeBrain } from './code-brain.mjs'
+import { buildCodeBrain, definitions } from './code-brain.mjs'
 
 export const digest = (value) => crypto.createHash('sha256').update(value).digest('hex')
 // Part of the project id: a changed importer builds a fresh project instead of reusing a stale graph.
-const IMPORTER_VERSION = 10
+const IMPORTER_VERSION = 11
 export const BUNDLE_ID = 'erstpruefung'
 
 /** Every regular file below root as a POSIX path; symlinks and ignored folders are never followed. */
@@ -139,22 +139,39 @@ export async function importProject(input, { projectsDir }) {
   const unparsed = files.filter((f) => !analyses.some((a) => a.file === f.path) && !/\.sql$/i.test(f.path)).length
   if (unparsed) warnings.push(`${unparsed} Dateien ohne Strukturanalyse (z. B. Konfiguration oder Sprachen ohne Parser); sie werden trotzdem mit der Doku verglichen.`)
 
-  // Which code each section describes (code-brain.mjs): no model, a few seconds. Documents link to the files their
-  // sections describe; the links carry the sections and the names that tie them together.
+  // Which code each section describes (code-brain.mjs): no model, a few seconds. Every section becomes a node of its
+  // document; it links to the files it describes (with the share as weight) and to the functions, classes and keys it
+  // names that those files define. A name no parser turned into a node (Python, Go …) becomes one here.
   const brain = buildCodeBrain({ files, docFiles })
-  for (const source of docSources) {
-    const targets = new Map()
-    for (const d of docFiles.filter((x) => x.source === source.id)) for (const l of brain.links[d.id] ?? []) {
-      const t = targets.get(l.path) ?? { sections: [], names: new Set(), p: 0 }
-      t.sections.push(d.heading ?? d.title); for (const n of l.names) t.names.add(n.split(':')[0]); t.p = Math.max(t.p, l.p)
-      targets.set(l.path, t)
+  const method = 'Automatisch aus Namen, Pfaden und Begriffen ermittelt'
+  for (const d of docFiles) {
+    const section = `sec:${d.id}`
+    nodes.push({ id: section, type: 'section', label: d.heading ?? d.title, sub: d.title, docId: d.source, evidence: [{ source: d.path, text: d.text.slice(0, 1800) }] })
+    link(`doc:${d.source}`, section, 'contains', { source: d.path, text: d.text.slice(0, 300), method: 'Überschrift im Dokument' })
+    for (const l of brain.links[d.id] ?? []) {
+      const names = l.names.map((n) => { const [name, line] = n.split(':'); return { name, line: Number(line) } })
+      const text = [names.length ? `Nennt ${names.map((n) => n.name).join(', ')}` : '', l.why.length ? `Weil: ${l.why.join(' · ')}` : ''].filter(Boolean).join('\n')
+      edges.push({ id: `${section}->file:${l.path}:describes`, source: section, target: `file:${l.path}`, kind: 'describes', certainty: 'abgeleitet', weight: l.p, evidence: { source: 'Code-Brain', text, method } })
+      for (const n of names) {
+        let fn = nodes.find((x) => x.type === 'function' && x.path === l.path && x.label === `${n.name}()`)?.id
+        if (!fn) {
+          fn = `sym:${l.path}:${n.name}`
+          if (!nodes.some((x) => x.id === fn)) {
+            const file = files.find((f) => f.path === l.path), line = file?.text.split('\n')[n.line - 1] ?? ''
+            // Functions are functions; types, constants, options and keys are elements of the code.
+            const kind = file && definitions(file).find((x) => x.name === n.name && x.line === n.line - 1)?.kind
+            nodes.push({ id: fn, type: kind === 'function' ? 'function' : 'symbol', label: kind === 'function' ? `${n.name}()` : n.name, sub: `${l.path}:${n.line}`, path: l.path, evidence: [{ source: l.path, text: line.trim().slice(0, 300), line: n.line }] })
+            link(`file:${l.path}`, fn, 'defines', { source: l.path, text: line.trim().slice(0, 300), line: n.line, method: 'Deklaration im Code' })
+          }
+        }
+        link(section, fn, 'names', { source: d.path, text: `„${n.name}“ steht im Abschnitt und ist in ${l.path} definiert (Zeile ${n.line}).`, method: 'Name im Text und Deklaration im Code' })
+      }
     }
-    for (const [file, t] of targets) link(`doc:${source.id}`, `file:${file}`, 'describes', { source: 'Code-Brain', text: [...new Set(t.sections)].slice(0, 6).join(' · ') + (t.names.size ? ` — ${[...t.names].slice(0, 8).join(', ')}` : ''), method: 'Namen, Pfade, Imports und Begriffe; gelernte Gewichtung, ohne Modell' }, 'abgeleitet')
   }
   log.info('import', 'Code-Brain erstellt', brain.stats)
   const now = new Date().toISOString(), date = now.slice(0, 10)
   nodes.push({ id: `f:${BUNDLE_ID}`, type: 'feature', label: 'Erstprüfung', sub: `${docFiles.length} Doku-Abschnitte`, description: 'Alle Dokumente gegen den aktuellen Code.' })
-  for (const source of docSources) nodes.push({ id: `doc:${source.id}`, type: 'doc', label: source.title, sub: source.path, doc: source.id, evidence: [{ source: source.path, text: source.text.slice(0, 1800) }] })
+  for (const source of docSources) nodes.push({ id: `doc:${source.id}`, type: 'doc', label: source.title, sub: source.path, doc: source.id, docId: source.id, evidence: [{ source: source.path, text: source.text.slice(0, 1800) }] })
   const dataset = {
     company: { name, short: 'Eigenes Projekt', product: name, claim: 'Importiertes Projekt' },
     currentUser: { name: 'Lokaler Nutzer', role: 'Prüfung & Freigabe', initials: 'DU' },

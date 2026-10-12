@@ -28,6 +28,8 @@ import {
 } from "d3-force";
 import {
   ArrowLeft,
+  ChevronRight,
+  Compass,
   PanelRightClose,
   PanelRightOpen,
   Route,
@@ -61,10 +63,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useTheme } from "@/context/theme-provider";
 import { cn } from "@/lib/utils";
 import { EdgeDetail, MappingStatus, NodeDetail } from "./common";
+import { BrainExplorer, ExplorerStart } from "./explorer";
+import { BrainGaps } from "./gaps";
+import { gapCount } from "../project";
 import { typeIcon } from "./icons";
 import {
   brain,
@@ -92,10 +98,12 @@ const sizes: Record<NodeType, number> = {
   department: 54,
   database: 56,
   doc: 34,
+  section: 28,
   commit: 24,
   ticket: 32,
   file: 30,
   function: 28,
+  symbol: 24,
   parameter: 26,
   table: 38,
   view: 34,
@@ -205,20 +213,21 @@ function layout(
   );
 }
 
-export function BrainWeb() {
+/** The whole network around a centre, with filters and path search; `initialRoot` opens it centred on an object. */
+function BrainNetwork({ initialRoot }: { initialRoot?: string }) {
   const { resolvedTheme } = useTheme();
   const canvas = useRef<HTMLDivElement>(null);
   // The overview condenses the network to its main objects; when they have no connections among them (a project
   // without features), it would be a field of loose dots, so the page starts with every object type.
   const [mode, setMode] = useState(() =>
-    projectConnections(brain.edges, brain.nodes.filter((n) => overviewTypes.includes(n.type)).map((n) => n.id), 5).length ? "overview" : "detail",
+    initialRoot ? "detail" : projectConnections(brain.edges, brain.nodes.filter((n) => overviewTypes.includes(n.type)).map((n) => n.id), 5).length ? "overview" : "detail",
   ),
-    [scope, setScope] = useState("all");
-  const [root, setRoot] = useState(brain.nodes.find((n) => n.type === "feature")?.id || brain.nodes[0]?.id || ""),
+    [scope, setScope] = useState(initialRoot ? "focus" : "all");
+  const [root, setRoot] = useState(initialRoot || brain.nodes.find((n) => n.type === "feature")?.id || brain.nodes[0]?.id || ""),
     [depth, setDepth] = useState("2");
   const [types, setTypes] = useState<NodeType[]>(nodeOrder),
     [onlyProven, setOnlyProven] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null),
+  const [selected, setSelected] = useState<string | null>(initialRoot ?? null),
     [hovered, setHovered] = useState<string | null>(null);
   // Positions the reader dragged a node to; they hold until the visible section changes.
   const [dragged, setDragged] = useState<Record<string, { x: number; y: number }>>({});
@@ -231,7 +240,7 @@ export function BrainWeb() {
     [target, setTarget] = useState("a:Buchhaltung"),
     [targetQuery, setTargetQuery] = useState(""),
     [noPath, setNoPath] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(!!initialRoot);
   const [measured, setMeasured] = useState<
     Record<string, { width: number; height: number }>
   >({});
@@ -404,16 +413,8 @@ export function BrainWeb() {
   });
   return (
     <>
-      <AppHeader crumbs={[{ label: "Company Brain" }]} />
-      <Main
-        fixed
-        fluid
-        className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden py-3"
-      >
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="mr-2 text-xl font-semibold tracking-tight">
-            Company Brain
-          </h1>
           <div className="relative min-w-[200px] flex-1 lg:max-w-sm">
             <Search className="absolute top-2.5 left-3 size-4 text-muted-foreground" />
             <Input
@@ -725,7 +726,7 @@ export function BrainWeb() {
             </div>
           </aside>
         </div>
-      </Main>
+      </div>
       <Dialog open={traceOpen} onOpenChange={setTraceOpen}>
         <DialogContent>
           <DialogHeader>
@@ -782,6 +783,140 @@ export function BrainWeb() {
           )}
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+type Tab = "explore" | "network" | "gaps";
+
+/** Search over every object of the index: names first, then paths and sources. */
+function FindObject({ onPick }: { onPick: (id: string) => void }) {
+  const [search, setSearch] = useState("");
+  const query = search.trim().toLocaleLowerCase("de-DE");
+  const matches = query
+    ? brain.nodes
+        .map((n) => {
+          const label = n.label.toLocaleLowerCase("de-DE");
+          const score = label.startsWith(query) ? 3 : label.includes(query) ? 2 : `${n.sub} ${n.path ?? ""}`.toLocaleLowerCase("de-DE").includes(query) ? 1 : 0;
+          return { n, score };
+        })
+        .filter((m) => m.score)
+        .sort((a, b) => b.score - a.score || a.n.label.length - b.n.label.length)
+        .slice(0, 40)
+    : [];
+  return (
+    <div className="relative min-w-[220px] flex-1 lg:max-w-md">
+      <Search className="absolute top-2.5 left-3 size-4 text-muted-foreground" />
+      <Input
+        aria-label="Im Company Brain suchen"
+        placeholder="Datei, Funktion, Dokument oder Abschnitt …"
+        className="pl-9"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && matches[0]) { onPick(matches[0].n.id); setSearch(""); }
+          if (e.key === "Escape") setSearch("");
+        }}
+      />
+      {query && (
+        <Card className="absolute top-11 left-0 z-30 max-h-96 w-full gap-1 overflow-auto p-2">
+          <span className="px-2 py-1 text-xs text-muted-foreground">
+            {matches.length ? `${matches.length === 40 ? "Erste 40" : matches.length} Treffer` : "Nichts gefunden"}
+          </span>
+          {matches.map(({ n }) => {
+            const Icon = typeIcon[n.type];
+            return (
+              <Button
+                key={n.id}
+                variant="ghost"
+                className="h-auto justify-start gap-2 py-1.5 text-left whitespace-normal"
+                onClick={() => { onPick(n.id); setSearch(""); }}
+              >
+                <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="grid min-w-0">
+                  <span className="truncate text-sm">{n.label}</span>
+                  <span className="truncate text-[11px] font-normal text-muted-foreground">
+                    {typeLabel[n.type]}{n.sub && n.sub !== n.label ? ` · ${n.sub}` : ""}
+                  </span>
+                </span>
+              </Button>
+            );
+          })}
+        </Card>
+      )}
+    </div>
+  );
+}
+
+export function BrainWeb() {
+  const [tab, setTab] = useState<Tab>("explore");
+  // The objects the reader walked through in Erkunden; the last one is in the middle.
+  const [trail, setTrail] = useState<string[]>([]);
+  const [networkRoot, setNetworkRoot] = useState<string | undefined>();
+  const focusId = trail.at(-1);
+  const gaps = gapCount();
+  function focus(id: string) {
+    setTrail((t) => {
+      const at = t.indexOf(id);
+      return at >= 0 ? t.slice(0, at + 1) : [...t, id].slice(-10);
+    });
+    setTab("explore");
+  }
+  return (
+    <>
+      <AppHeader crumbs={[{ label: "Company Brain" }]} />
+      <Main fixed fluid className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden py-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="mr-1 text-xl font-semibold tracking-tight">Company Brain</h1>
+          <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
+            <TabsList>
+              <TabsTrigger value="explore">Erkunden</TabsTrigger>
+              <TabsTrigger value="network">Netz</TabsTrigger>
+              <TabsTrigger value="gaps" className="gap-1.5">
+                Lücken
+                {gaps > 0 && <Badge variant="secondary" className="h-5 px-1.5 text-[11px]">{gaps}</Badge>}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          {tab !== "network" && <FindObject onPick={focus} />}
+        </div>
+        {tab === "explore" && (
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+            <nav aria-label="Erkundungspfad" className="mb-4 flex flex-wrap items-center gap-1 text-sm">
+              <Button variant={focusId ? "ghost" : "secondary"} size="sm" className="h-7 px-2" onClick={() => setTrail([])}>
+                <Compass /> Start
+              </Button>
+              {trail.map((id) => (
+                <span key={id} className="flex items-center gap-1">
+                  <ChevronRight className="size-3.5 text-muted-foreground" />
+                  <Button variant={id === focusId ? "secondary" : "ghost"} size="sm" className="h-7 max-w-56 px-2" onClick={() => focus(id)}>
+                    <span className="truncate">{nodeById[id]?.label ?? id}</span>
+                  </Button>
+                </span>
+              ))}
+            </nav>
+            {focusId && nodeById[focusId] ? (
+              <BrainExplorer
+                key={focusId}
+                focusId={focusId}
+                onFocus={focus}
+                onNetwork={(id) => {
+                  setNetworkRoot(id);
+                  setTab("network");
+                }}
+              />
+            ) : (
+              <ExplorerStart onFocus={focus} />
+            )}
+          </div>
+        )}
+        {tab === "network" && <BrainNetwork key={networkRoot ?? "all"} initialRoot={networkRoot} />}
+        {tab === "gaps" && (
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+            <BrainGaps onOpen={focus} />
+          </div>
+        )}
+      </Main>
     </>
   );
 }

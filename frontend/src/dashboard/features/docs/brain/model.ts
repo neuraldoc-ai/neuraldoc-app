@@ -3,6 +3,7 @@
   | "commit"
   | "ticket"
   | "doc"
+  | "section"
   | "module"
   | "department"
   | "database"
@@ -11,6 +12,7 @@
   | "column"
   | "file"
   | "function"
+  | "symbol"
   | "parameter"
   | "person";
 export type Evidence = {
@@ -57,6 +59,8 @@ export type EdgeKind =
   | "touches"
   | "documents"
   | "describes"
+  | "contains"
+  | "names"
   | "mentions"
   | "supports"
   | "audience";
@@ -69,12 +73,15 @@ export type BrainEdge = {
   kind: SemanticEdgeKind;
   evidence: Evidence;
   certainty: "belegt" | "abgeleitet" | "zugeordnet";
+  /** How strongly the code brain ties a section to a file: the share of its probability mass, 0–1. */
+  weight?: number;
 };
 export const typeLabel: Record<NodeType, string> = {
   feature: "Feature",
   commit: "Commit",
   ticket: "Ticket",
   doc: "Dokument",
+  section: "Abschnitt",
   module: "Modul",
   department: "Fachbereich",
   database: "Datenbank",
@@ -83,8 +90,27 @@ export const typeLabel: Record<NodeType, string> = {
   column: "DB-Feld",
   file: "Datei",
   function: "Funktion",
+  symbol: "Code-Element",
   parameter: "Parameter",
   person: "Autor",
+};
+export const typePlural: Record<NodeType, string> = {
+  feature: "Features",
+  commit: "Commits",
+  ticket: "Tickets",
+  doc: "Dokumente",
+  section: "Abschnitte",
+  module: "Module",
+  department: "Fachbereiche",
+  database: "Datenbanken",
+  table: "Tabellen",
+  view: "SQL-Views",
+  column: "DB-Felder",
+  file: "Dateien",
+  function: "Funktionen",
+  symbol: "Code-Elemente",
+  parameter: "Parameter",
+  person: "Autoren",
 };
 export const edgeLabel: Record<SemanticEdgeKind, string> = {
   commit: "gehört zu",
@@ -108,7 +134,9 @@ export const edgeLabel: Record<SemanticEdgeKind, string> = {
   changes: "ändert Datei",
   touches: "betrifft Modul",
   documents: "Doku-Vorschlag für",
-  describes: "beschreibt Code in",
+  describes: "beschreibt",
+  contains: "enthält",
+  names: "nennt",
   mentions: "nennt Funktion im Diff",
   supports: "Beleg im Doku-Vorschlag",
   audience: "Zielgruppe",
@@ -122,12 +150,14 @@ export const nodeOrder: NodeType[] = [
   "commit",
   "file",
   "function",
+  "symbol",
   "parameter",
   "table",
   "view",
   "column",
   "database",
   "doc",
+  "section",
   "person",
 ];
 export const overviewTypes: NodeType[] = [
