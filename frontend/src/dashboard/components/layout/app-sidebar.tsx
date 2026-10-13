@@ -38,10 +38,8 @@ function SidebarBrand() {
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        {/* With a website in front (neuraldoc.de), the brand leads back to it; otherwise it folds the sidebar. */}
-        {import.meta.env.VITE_LANDING_URL
-          ? <SidebarMenuButton size='lg' tooltip='Zur Startseite' asChild><a href={import.meta.env.VITE_LANDING_URL}>{brand}</a></SidebarMenuButton>
-          : <SidebarMenuButton size='lg' tooltip='Seitenleiste ein- und ausklappen' onClick={toggleSidebar}>{brand}</SidebarMenuButton>}
+        {/* The brand folds the sidebar; the way back to the website is the link in the footer. */}
+        <SidebarMenuButton size='lg' tooltip='Seitenleiste ein- und ausklappen' onClick={toggleSidebar}>{brand}</SidebarMenuButton>
       </SidebarMenuItem>
     </SidebarMenu>
   )

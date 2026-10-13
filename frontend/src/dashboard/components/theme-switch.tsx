@@ -13,7 +13,7 @@ import {
 const options = [
   { value: 'light', label: 'Hell' },
   { value: 'dark', label: 'Dunkel' },
-  { value: 'system', label: 'Wie das System' },
+  { value: 'system', label: 'System' },
 ] as const
 
 export function ThemeSwitch() {
