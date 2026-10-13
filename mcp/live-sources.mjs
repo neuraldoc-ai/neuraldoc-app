@@ -260,8 +260,11 @@ export function syncConfluence(getProject, options = {}) {
   return run
 }
 
+// The public demo reads Confluence with the deployer's account; visitors' approvals never write there.
+const publicDemo = () => process.env.NEURALDOC_PUBLIC_DEMO === '1'
+
 async function syncNow(p, { fetchImpl } = {}) {
-  if (!p?.sources?.docs?.live?.confluence) return { written: 0 }
+  if (!p?.sources?.docs?.live?.confluence || publicDemo()) return { written: 0 }
   const c = confluence(confluenceConfig(), fetchImpl)
   Object.assign(confluenceStatus, { running: true, error: null })
   let written = 0
@@ -297,7 +300,7 @@ let timer = null
 /** After an approval: write a moment later, so a run of quick decisions makes one version per page. */
 export function scheduleConfluence(getProject, delay = 2500) {
   const p = getProject()
-  if (!p?.sources?.docs?.live?.confluence || !confluenceConfig().configured) return false
+  if (!p?.sources?.docs?.live?.confluence || !confluenceConfig().configured || publicDemo()) return false
   clearTimeout(timer)
   timer = setTimeout(() => { syncConfluence(getProject).catch((error) => { confluenceStatus.error = error.message; log.warn('confluence', 'Zurückschreiben fehlgeschlagen', { error: error.message }) }) }, delay)
   timer.unref?.()

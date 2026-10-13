@@ -28,6 +28,8 @@ const mobiq = () => showcaseModules ??= Promise.all([import('./core.mjs'), impor
 // The public showcase keeps the documented demo token; every other installation gets its own.
 export const TOKEN = process.env.NEURALDOC_MCP_TOKEN?.trim() || (process.env.NEURALDOC_MODE === 'showcase' ? 'nd_demo_mobiq_2b7f9c41e8' : installToken())
 const publicDemo = () => process.env.NEURALDOC_PUBLIC_DEMO === '1'
+// Visitors of a public demo see which keys are set, not the account behind the Confluence access.
+const demoSettings = () => { const s = publicSettings(); return { ...s, values: { ...s.values, NEURALDOC_CONFLUENCE_EMAIL: '' } } }
 const SUPPORTED = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']
 const SERVER_INFO = { name: 'neuraldoc', title: 'neuraldoc', version: '0.2.1' }
 const STDIO = path.join(path.dirname(fileURLToPath(import.meta.url)), 'stdio.mjs').split(path.sep).join('/')
@@ -117,7 +119,9 @@ const originOf = (req) => `${req.headers['x-forwarded-proto'] ?? 'http'}://${req
 async function mcpEndpoint(req, res) {
   if (req.method === 'GET' || req.method === 'DELETE') return send(res, 405, { error: 'Dieser Server sendet keine SSE-Streams; bitte POST verwenden.' }, { Allow: 'POST' })
   if (req.method !== 'POST') return send(res, 405, undefined, { Allow: 'POST' })
-  if (req.headers.authorization !== `Bearer ${TOKEN}`) return send(res, 401, { jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Token fehlt oder ist falsch' } }, { 'WWW-Authenticate': 'Bearer' })
+  // The public demo's own pages call /mcp without the token (it is not handed out); agents still need it.
+  const demoPage = publicDemo() && (req.headers.origin === `http://${req.headers.host}` || req.headers.origin === `https://${req.headers.host}`)
+  if (!demoPage && req.headers.authorization !== `Bearer ${TOKEN}`) return send(res, 401, { jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Token fehlt oder ist falsch' } }, { 'WWW-Authenticate': 'Bearer' })
 
   let payload
   try {
@@ -157,7 +161,7 @@ async function api(req, res, path) {
     // A public demo: visitors import, check and approve; keys, connections and resets stay as deployed.
     if (req.method === 'POST' && path === '/api/mcp/github/webhook') { const status = githubWebhook(await readRaw(req, 5_000_000), req.headers); res.writeHead(status); return res.end() }
     if (publicDemo() && req.method === 'POST' && /^\/api\/mcp\/(settings|models|reset|github\/|sources\/|confluence\/|db\/)/.test(path)) throw new DraftError('In der öffentlichen Demo gesperrt. Lokal mit Docker ist alles frei einstellbar.', 403)
-    if (req.method === 'GET' && path === '/api/mcp/project') return send(res, 200, { ...projectPayload(), projects: projectList(), profile: showcaseOnly() ? null : profile() },{ 'Cache-Control': 'no-store' })
+    if (req.method === 'GET' && path === '/api/mcp/project') return send(res, 200, { ...projectPayload(), projects: projectList(), profile: showcaseOnly() ? null : profile(), publicDemo: publicDemo() },{ 'Cache-Control': 'no-store' })
     if (path.startsWith('/api/mcp/project/') && req.method === 'POST') {
       localMutation()
       if (path === '/api/mcp/project/import') return send(res, 200, await addProject(await readRaw(req, LIMITS.uploadBytes)))
@@ -175,7 +179,7 @@ async function api(req, res, path) {
     if (req.method === 'GET' && path === '/api/mcp/project/export') {
       return send(res, 200, exportProject(), { 'Content-Disposition': 'attachment; filename="neuraldoc-dokumentaenderungen.json"', 'Cache-Control': 'no-store' })
     }
-    if (req.method === 'GET' && path === '/api/mcp/setup') return send(res, 200, { ...setupStatus(), settings: publicSettings(), editable: !showcaseOnly() && !publicDemo() }, { 'Cache-Control': 'no-store' })
+    if (req.method === 'GET' && path === '/api/mcp/setup') return send(res, 200, { ...setupStatus(), settings: publicDemo() ? demoSettings() : publicSettings(), editable: !showcaseOnly() && !publicDemo() }, { 'Cache-Control': 'no-store' })
     if (req.method === 'POST' && path === '/api/mcp/settings') {
       localMutation()
       if (showcaseOnly()) throw new DraftError('Im Showcase lassen sich keine Keys hinterlegen.', 403)
@@ -275,9 +279,10 @@ async function api(req, res, path) {
         // A section merged on GitHub is part of the repository now; changing it is a new change there.
         if (project && (body.ids || [body.id]).some((id) => isPublished(project.id, id))) throw new DraftError('Diese Änderung ist auf GitHub schon gemergt und lässt sich hier nicht mehr zurücknehmen.', 409)
         if (project && (body.ids || [body.id]).some((id) => isWritten(project.id, id))) throw new DraftError('Diese Änderung steht schon in Confluence. Zurücknehmen geht dort über den Seitenverlauf.', 409)
-        const decisions = projectDecisions(body); scheduleSync(activeProject); scheduleConfluence(activeProject); return send(res, 200, decisions)
+        // In the public demo approvals stay in the app: nothing goes to GitHub or Confluence.
+        const decisions = projectDecisions(body); if (!publicDemo()) { scheduleSync(activeProject); scheduleConfluence(activeProject) } return send(res, 200, decisions)
       }
-      if (req.method === 'POST' && path === '/api/mcp/decisions/reset') { localMutation(); const decisions = resetProjectDecisions(); scheduleSync(activeProject); return send(res, 200, decisions) }
+      if (req.method === 'POST' && path === '/api/mcp/decisions/reset') { localMutation(); const decisions = resetProjectDecisions(); if (!publicDemo()) scheduleSync(activeProject); return send(res, 200, decisions) }
       if (req.method === 'GET' && /^\/api\/mcp\/changes\//.test(path)) {
         // Where each approved section is on GitHub: its pull request, open or merged.
         const links = project ? proposalLinks(project) : {}
@@ -289,7 +294,8 @@ async function api(req, res, path) {
       if (req.method === 'GET' && path === '/api/mcp/activity') return send(res, 200, { log: [], checks: [], questions: [], writebacks: [], mrComments: [], stats: { calls: 0, answer: 0, raw: 0, perTool: {} } })
       if (req.method === 'POST' && path === '/api/mcp/rules') throw new DraftError('Lokale Projekte verwenden persönliche Freigaben und Dokumentexport.', 400)
       if (req.method === 'GET' && path === '/api/mcp/info') return send(res, 200, {
-        server: SERVER_INFO, token: TOKEN, protocol: SUPPORTED[0], drafting: draftingStatus(), stdioPath: STDIO,
+        // The token opens /mcp; a public demo keeps it to itself.
+        server: SERVER_INFO, token: publicDemo() ? null : TOKEN, protocol: SUPPORTED[0], drafting: draftingStatus(), stdioPath: STDIO,
         tools: projectTools, surfaceTokens: Math.ceil(JSON.stringify(projectTools).length / 4),
         docTypes: docTypeOrder.map((t) => ({ type: t, label: docTypes[t].label, audience: 'Leser der importierten Dokumentation' })),
         people: [local()], rules: { writeBack: false, mrComment: false, approvers: approvers('local') },

@@ -135,6 +135,33 @@ test('public demo: keys, connections and resets are locked; the project stays us
   } finally { delete process.env.NEURALDOC_PUBLIC_DEMO; await new Promise((resolve) => server.close(resolve)) }
 })
 
+test('public demo: no token, no Confluence account and no write-back reach a visitor', async () => {
+  const { scheduleConfluence } = await import('./live-sources.mjs')
+  const { withUpload } = await import('./project-upload.mjs')
+  const { zipSync, strToU8 } = await import('../frontend/server-deps.mjs')
+  const server = http.createServer((req, res) => middleware(req, res))
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const base = `http://127.0.0.1:${server.address().port}`
+  const env = { NEURALDOC_PUBLIC_DEMO: '1', NEURALDOC_CONFLUENCE_URL: 'https://demo.atlassian.net', NEURALDOC_CONFLUENCE_EMAIL: 'owner@example.com', NEURALDOC_CONFLUENCE_TOKEN: 'secret-token' }
+  Object.assign(process.env, env)
+  try {
+    const info = await (await fetch(`${base}/api/mcp/info`)).json()
+    assert.equal(info.token, null)
+    const setup = await (await fetch(`${base}/api/mcp/setup`)).text()
+    assert.ok(!setup.includes('owner@example.com') && !setup.includes('secret-token'))
+    // The demo's own page reaches /mcp without the token; anyone else still needs it.
+    const init = { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 't', version: '1' } } }
+    const call = (headers) => fetch(`${base}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...headers }, body: JSON.stringify(init) })
+    assert.equal((await call({ Origin: base })).status, 200)
+    assert.equal((await call({ Origin: 'https://evil.example' })).status, 401)
+    assert.equal((await call({ Authorization: `Bearer ${TOKEN}` })).status, 200)
+    // Approvals never write to Confluence, and a visitor's upload cannot read spaces with the demo's account.
+    assert.equal(scheduleConfluence(() => ({ sources: { docs: { live: { confluence: { spaces: [] } } } } })), false)
+    const zip = zipSync({ 'manifest.json': strToU8(JSON.stringify({ confluence: { spaces: ['DS'] } })) })
+    await assert.rejects(withUpload(Buffer.from(zip), root, () => null), /öffentlichen Demo/)
+  } finally { for (const k of Object.keys(env)) delete process.env[k]; await new Promise((resolve) => server.close(resolve)) }
+})
+
 test('persisted cache works after a process restart even without credentials', async () => {
   const cfg = config('restart'), fake = provider()
   const first = await generateDraft(context(), { config: cfg, fetchImpl: fake.fetchImpl })

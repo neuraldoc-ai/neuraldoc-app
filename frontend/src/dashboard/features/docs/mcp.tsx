@@ -51,7 +51,8 @@ type Person = { id: string; name: string; role: string }
 type Approver = Person & { self: boolean }
 type Rules = { approvers: Record<DocTypeId, string>; writeBack: boolean; mrComment: boolean }
 type Info = {
-  token: string
+  // null in the public demo: the server keeps its token, agents connect to their own installation.
+  token: string | null
   protocol: string
   stdioPath: string
   tools: { name: ToolName; title: string; description: string; example: Record<string, unknown> }[]
@@ -209,6 +210,16 @@ function CopyLine({ value, multiline }: { value: string; multiline?: boolean }) 
 }
 
 function Connect({ info, className }: { info: Info; className?: string }) {
+  if (!info.token) return (
+    <Card className={className}>
+      <CardHeader>
+        <CardTitle>Verbinden</CardTitle>
+        <CardDescription className='flex flex-wrap items-center gap-1.5'>
+          <KeyRound className='size-3.5' /> In der öffentlichen Demo bleibt der Zugang beim Server. Deinen Agenten verbindest du mit deiner eigenen Installation (Docker, siehe GitHub). Unten kannst du die Werkzeuge hier ausprobieren.
+        </CardDescription>
+      </CardHeader>
+    </Card>
+  )
   const url = endpoint()
   const auth = `Bearer ${info.token}`
   const snippets: [string, string, string][] = [
@@ -345,12 +356,12 @@ function ToolCard({ step, tool, stats, onTry }: { step: number; tool: Info['tool
 
 type CallResult = { text: string; data: unknown; tokens?: Tokens; error?: boolean }
 
-function useMcp(token: string, protocol: string) {
+function useMcp(token: string | null, protocol: string) {
   const session = useRef<string | null>(null)
   const rpc = async (body: unknown) => {
     const r = await fetch('/mcp', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', Authorization: `Bearer ${token}`, ...(session.current ? { 'Mcp-Session-Id': session.current } : {}) },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(session.current ? { 'Mcp-Session-Id': session.current } : {}) },
       body: JSON.stringify(body),
     })
     const sid = r.headers.get('Mcp-Session-Id')

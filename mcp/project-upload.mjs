@@ -117,6 +117,8 @@ export async function withUpload(zip, workDir, use, given) {
     if (manifest.repoUrl) { if (has(repoDir)) fs.rmSync(repoDir, { recursive: true }); const cloned = await clone(manifest.repoUrl, repoDir, 'Repository'); repo = { dir: repoDir, label: cloned.name, url: cloned.url, head: cloned.head, tree: cloned.tree, source: 'url' } }
     else if (has(repoDir)) repo = { dir: repoDir, label: String(manifest.repoName || 'Repository').slice(0, 100), tree: uploadedTree(manifest.repoTree), source: 'upload' }
     const spaces = Array.isArray(manifest.confluence?.spaces) ? manifest.confluence.spaces.map(String).slice(0, 50) : [], folder = typeof manifest.drive?.folder === 'string' ? manifest.drive.folder.slice(0, 500) : ''
+    // The public demo's Confluence and Drive access is for its own sample project (a refresh), never for a visitor's import.
+    if ((spaces.length || folder) && !given && process.env.NEURALDOC_PUBLIC_DEMO === '1') throw new DraftError('In der öffentlichen Demo lassen sich Confluence und Google Drive nicht importieren. Lokal mit Docker geht das mit eigenen Zugangsdaten.', 403)
     if (spaces.length || folder) {
       // Live sources: Confluence spaces and a Drive folder are read into the docs folder like an upload.
       if (has(docsDir)) fs.rmSync(docsDir, { recursive: true })
