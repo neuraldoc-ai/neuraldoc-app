@@ -2,7 +2,11 @@ import { installDataset, installShowcase, type ProjectDataset } from './data'
 import { installBrain, showcaseBrain, type Brain } from './brain/model'
 import { useProfile, type Profile } from '@/features/settings/profile-store'
 
-type Source = { label: string; source: 'upload' | 'url' }
+/** A repository from a URL carries its address and the commit read; live docs name their Confluence spaces and Drive folder. */
+type Source = {
+  label: string; source: 'upload' | 'url'; url?: string | null; head?: string | null
+  live?: { confluence?: { site: string; spaces: { key: string; name: string }[] }; drive?: { folder: { url: string; name: string } } }
+}
 export type ProjectState = {
   /** showcase only in the showcase build (NEURALDOC_MODE=showcase); the normal app is empty or working. */
   mode: 'showcase' | 'working' | 'empty'; canImport: boolean
@@ -33,6 +37,8 @@ export type ProjectState = {
   }
   /** null in the public showcase, where nobody has a profile. */
   profile: Profile | null
+  /** The hosted demo (neuraldoc.de): visitors get a short tour of where the sample data lives. */
+  publicDemo?: boolean
 }
 export let projectState: ProjectState
 /** Number of entries on the Company Brain's Lücken tab. */

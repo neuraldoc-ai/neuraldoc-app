@@ -9,6 +9,7 @@ import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { SkipToMain } from '@/components/skip-to-main'
 import { CommitViewer } from '@/features/docs/commit-viewer'
+import { DemoIntro } from '@/features/docs/demo-intro'
 
 type AuthenticatedLayoutProps = {
   children?: React.ReactNode
@@ -43,6 +44,7 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
             {children ?? (datasetMode === 'empty' && !WITHOUT_PROJECT.includes(pathname) ? <EmptyStart /> : <Outlet />)}
           </SidebarInset>
           <CommitViewer />
+          <DemoIntro />
         </SidebarProvider>
       </LayoutProvider>
     </SearchProvider>

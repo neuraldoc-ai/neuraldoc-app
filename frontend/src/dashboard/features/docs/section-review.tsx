@@ -4,16 +4,18 @@
  * Changes can be taken one by one; the rest of the section stays as it is.
  */
 import { useMemo, useState, type ReactNode } from "react";
-import { Check, Pencil, X } from "lucide-react";
+import { Check, ExternalLink, Pencil, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
+import { codeUrl, parseEvidence, quoteLines } from "./code-link";
 import type { Finding } from "./generation-store";
 import { applyLineEdits, changeRows } from "./line-diff";
 import { InlineMarkdown, MarkdownRows } from "./markdown";
 import type { LiveProposal } from "./model";
 import { projectState } from "./project";
+import { useProjectSource } from "./project-sources";
 import { useDecisions } from "./store";
 
 const KIND: Record<Finding["kind"], { label: string; tone: string }> = {
@@ -84,6 +86,22 @@ export function SectionReview({ p, active, onActivate, editing, onEdit, editor }
   );
 }
 
+/** "path, Zeilen a–b", linked to those lines in GitHub or GitLab when the project came from a repository address. */
+function EvidencePlace({ source, quote }: { source: string; quote: string }) {
+  const place = parseEvidence(source);
+  const { data } = useProjectSource();
+  if (!place) return <>{source}</>;
+  const [from, to] = quoteLines(data?.repository.files[place.path]?.content, place.from, place.to, quote);
+  const label = `${place.path}, ${from === to ? `Zeile ${from}` : `Zeilen ${from}–${to}`}`;
+  const url = codeUrl(place.path, from, to);
+  if (!url) return <>{label}</>;
+  return (
+    <a href={url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-foreground underline decoration-foreground/30 underline-offset-2 hover:decoration-foreground">
+      {label} <ExternalLink className="size-3" />
+    </a>
+  );
+}
+
 function FindingItem({ id, f, n, checked, focused, onToggle, onFocus }: { id: string; f: Finding; n: number; checked: boolean; focused: boolean; onToggle: () => void; onFocus: () => void }) {
   const files = projectState.project?.files.length ?? 0;
   return (
@@ -98,7 +116,7 @@ function FindingItem({ id, f, n, checked, focused, onToggle, onFocus }: { id: st
         <p className="leading-snug"><InlineMarkdown text={f.explanation} /></p>
         {f.evidence.map((e, k) => (
           <figure key={k} className="grid gap-1">
-            <figcaption className="text-xs text-muted-foreground">{f.files ? "Im Repository" : "Im Code"}: {e.source.replace(/:(\d+)-(\d+)$/, ", Zeilen $1–$2")}</figcaption>
+            <figcaption className="text-xs text-muted-foreground">{f.files ? "Im Repository" : "Im Code"}: <EvidencePlace source={e.source} quote={e.quote} /></figcaption>
             <pre className="max-h-28 overflow-auto rounded-md border bg-muted/40 px-2.5 py-1.5 font-mono text-[12px] leading-5 whitespace-pre-wrap">{e.quote}</pre>
           </figure>
         ))}
